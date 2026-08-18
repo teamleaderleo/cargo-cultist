@@ -1,3 +1,4 @@
+mod ci_test_filters;
 mod diff;
 mod finding;
 mod report;
@@ -8,6 +9,9 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::process;
 
+use ci_test_filters::{
+    analyze_ci_test_filters, build_ci_test_filter_analysis, print_ci_test_filter_report,
+};
 use diff::{build_diff_analysis_report, git_repo_root, print_diff_report};
 use report::build_test_module_analysis;
 use test_modules::{analyze_test_modules, print_test_module_report};
@@ -47,6 +51,11 @@ fn run() -> Result<(), Box<dyn Error>> {
     if args.first().is_some_and(|arg| arg == "diff") {
         args.remove(0);
         return run_diff(args);
+    }
+
+    if args.first().is_some_and(|arg| arg == "ci-tests") {
+        args.remove(0);
+        return run_ci_tests(args);
     }
 
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
@@ -98,6 +107,33 @@ fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
         }
         OutputFormat::Json => {
             let analysis = build_diff_analysis_report(&root, base.as_deref(), &report)?;
+            println!("{}", serde_json::to_string_pretty(&analysis)?);
+        }
+    }
+
+    Ok(())
+}
+
+fn run_ci_tests(args: Vec<String>) -> Result<(), Box<dyn Error>> {
+    if args.iter().any(|arg| arg == "-h" || arg == "--help") {
+        print_ci_tests_help();
+        return Ok(());
+    }
+
+    let (format, path) = parse_root_args(args)?;
+    let requested_root = path.unwrap_or(env::current_dir()?);
+    let requested_root = requested_root.canonicalize()?;
+    let root = git_repo_root(&requested_root)?;
+    let report = analyze_ci_test_filters(&root)?;
+
+    match format {
+        OutputFormat::Text => {
+            println!("cargo-cultist {VERSION}");
+            println!("repository: {}\n", root.display());
+            print_ci_test_filter_report(&root, &report);
+        }
+        OutputFormat::Json => {
+            let analysis = build_ci_test_filter_analysis(&root, &report);
             println!("{}", serde_json::to_string_pretty(&analysis)?);
         }
     }
@@ -186,8 +222,8 @@ fn print_help() {
     println!(
         "cargo-cultist {VERSION}\n\
 Repository-aware analysis for Rust codebases.\n\n\
-USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n\n\
-COMMANDS:\n    diff    Inspect changed Rust code against repository precedent.\n\n\
+USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist ci-tests [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist ci-tests [--format text|json] [PATH]\n\n\
+COMMANDS:\n    diff        Inspect changed Rust code against repository precedent.\n    ci-tests    Compare supported CI test filters with explicit test names.\n\n\
 Without a command, cargo-cultist inspects repository-wide test-module naming\n\
 conventions without inventing a universal rule."
     );
@@ -201,6 +237,18 @@ By default, compares the working tree (including staged changes) against HEAD.\n
 With --base REV, compares changes from the merge base of REV and HEAD.\n\n\
 The first diff-aware check looks for added or renamed #[cfg(test)] modules and\n\
 compares their names with repository-wide and same-file precedent."
+    );
+}
+
+fn print_ci_tests_help() {
+    println!(
+        "cargo-cultist ci-tests\n\n\
+USAGE:\n    cargo cultist ci-tests [--format text|json] [PATH]\n\n\
+Research instrumentation for CI test-filter drift. The first slice recognizes\n\
+literal single-line `cargo test --lib FILTER` commands in GitHub Actions and\n\
+compares FILTER with explicit #[test] function names in Rust source.\n\n\
+A zero explicit-name match is a question, not proof that Cargo executes zero\n\
+tests: macro-generated or build-time tests remain an explicit UNKNOWN."
     );
 }
 

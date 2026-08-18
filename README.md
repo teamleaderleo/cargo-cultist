@@ -4,6 +4,8 @@
 
 `cargo-cultist` is an experiment in repository-aware analysis for Rust codebases.
 
+> Status: very early prototype. The current analyzer is deterministic, local, and read-only.
+
 Traditional linters are strongest when a rule is already known. `cargo-cultist` starts one step earlier: it gathers facts about what a repository actually does, identifies deviations or unexplained patterns, and raises questions without pretending every observation is an error.
 
 The long-term model is deliberately split into three layers:

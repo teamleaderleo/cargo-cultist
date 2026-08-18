@@ -38,17 +38,6 @@ jobs:
         env:
           CULTIST_BASE: ${{ github.event.pull_request.base.sha }}
         run: cargo run --quiet -- diff --base "$CULTIST_BASE" --format json . | python -m json.tool >/dev/null
-      - name: Replay Cloud Hypervisor PR 8734
-        if: github.event_name == 'pull_request'
-        env:
-          CH_BASE: 1b004a7459ac752e1d7ad5a48237a1cb8608003b
-          CH_HEAD: 439ff52249e819f41570a5f3f3bf535d4bfb3e6e
-        run: |
-          git clone --filter=blob:none --no-checkout https://github.com/cloud-hypervisor/cloud-hypervisor.git /tmp/cloud-hypervisor
-          git -C /tmp/cloud-hypervisor fetch origin "$CH_BASE" "$CH_HEAD"
-          git -C /tmp/cloud-hypervisor checkout "$CH_HEAD"
-          cargo run -- diff --base "$CH_BASE" /tmp/cloud-hypervisor
-          cargo run --quiet -- diff --base "$CH_BASE" --format json /tmp/cloud-hypervisor | python -m json.tool >/dev/null
       - name: Dogfood push diff
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
         env:

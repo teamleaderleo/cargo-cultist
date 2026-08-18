@@ -62,7 +62,10 @@ pub fn print_diff_report(
         Some(base) => println!("  comparing against: {base}"),
         None => println!("  comparing working tree against: HEAD"),
     }
-    println!("  Rust files with added lines: {}", changed.rust_file_count());
+    println!(
+        "  Rust files with added lines: {}",
+        changed.rust_file_count()
+    );
 
     if changed_modules.is_empty() {
         println!("\nOBSERVATION");
@@ -138,7 +141,9 @@ pub fn print_diff_report(
         }
 
         println!("\nQUESTION");
-        println!("  Is the distinct module name intentional, or should it follow nearby precedent?");
+        println!(
+            "  Is the distinct module name intentional, or should it follow nearby precedent?"
+        );
     }
 
     if finding_count == 0 {

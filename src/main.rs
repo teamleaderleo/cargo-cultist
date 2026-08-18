@@ -107,9 +107,7 @@ fn parse_root_args(args: Vec<String>) -> Result<(OutputFormat, Option<PathBuf>),
         match arg.as_str() {
             "--format" => {
                 format = parse_output_format(
-                    &args
-                        .next()
-                        .ok_or("`--format` requires `text` or `json`")?,
+                    &args.next().ok_or("`--format` requires `text` or `json`")?,
                 )?;
             }
             _ if arg.starts_with('-') => {
@@ -117,7 +115,9 @@ fn parse_root_args(args: Vec<String>) -> Result<(OutputFormat, Option<PathBuf>),
             }
             _ => {
                 if path.is_some() {
-                    return Err("expected at most one path argument; try `cargo cultist --help`".into());
+                    return Err(
+                        "expected at most one path argument; try `cargo cultist --help`".into(),
+                    );
                 }
                 path = Some(PathBuf::from(arg));
             }
@@ -145,9 +145,7 @@ fn parse_diff_args(
             }
             "--format" => {
                 format = parse_output_format(
-                    &args
-                        .next()
-                        .ok_or("`--format` requires `text` or `json`")?,
+                    &args.next().ok_or("`--format` requires `text` or `json`")?,
                 )?;
             }
             _ if arg.starts_with('-') => {
@@ -175,7 +173,9 @@ fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
     match value {
         "text" => Ok(OutputFormat::Text),
         "json" => Ok(OutputFormat::Json),
-        _ => Err(format!("unsupported output format `{value}`; expected `text` or `json`")),
+        _ => Err(format!(
+            "unsupported output format `{value}`; expected `text` or `json`"
+        )),
     }
 }
 

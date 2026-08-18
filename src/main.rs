@@ -1,6 +1,6 @@
-mod ci_test_filters;
 mod diff;
 mod finding;
+mod history;
 mod report;
 mod test_modules;
 
@@ -9,10 +9,10 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::process;
 
-use ci_test_filters::{
-    analyze_ci_test_filters, build_ci_test_filter_analysis, print_ci_test_filter_report,
-};
 use diff::{build_diff_analysis_report, git_repo_root, print_diff_report};
+use history::{
+    DEFAULT_MAX_COMMITS, HistoryOptions, analyze_historical_companions, print_history_report,
+};
 use report::build_test_module_analysis;
 use test_modules::{analyze_test_modules, print_test_module_report};
 
@@ -29,6 +29,13 @@ enum OutputFormat {
 struct DiffArgs {
     base: Option<String>,
     path: Option<PathBuf>,
+    format: OutputFormat,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct HistoryArgs {
+    path: PathBuf,
+    max_commits: usize,
     format: OutputFormat,
 }
 
@@ -53,9 +60,9 @@ fn run() -> Result<(), Box<dyn Error>> {
         return run_diff(args);
     }
 
-    if args.first().is_some_and(|arg| arg == "ci-tests") {
+    if args.first().is_some_and(|arg| arg == "history") {
         args.remove(0);
-        return run_ci_tests(args);
+        return run_history(args);
     }
 
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
@@ -114,27 +121,57 @@ fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn run_ci_tests(args: Vec<String>) -> Result<(), Box<dyn Error>> {
+fn run_history(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
-        print_ci_tests_help();
+        print_history_help();
         return Ok(());
     }
 
-    let (format, path) = parse_root_args(args)?;
-    let requested_root = path.unwrap_or(env::current_dir()?);
-    let requested_root = requested_root.canonicalize()?;
-    let root = git_repo_root(&requested_root)?;
-    let report = analyze_ci_test_filters(&root)?;
+    let HistoryArgs {
+        path,
+        max_commits,
+        format,
+    } = parse_history_args(args)?;
+
+    let requested = if path.is_absolute() {
+        path
+    } else {
+        env::current_dir()?.join(path)
+    };
+    let requested = requested.canonicalize()?;
+    if !requested.is_file() {
+        return Err(format!(
+            "history currently expects a file path; got {}",
+            requested.display()
+        )
+        .into());
+    }
+
+    let probe = requested
+        .parent()
+        .ok_or("could not determine the history path's parent directory")?;
+    let root = git_repo_root(probe)?;
+    let anchor = requested
+        .strip_prefix(&root)
+        .map_err(|_| "history path is outside the resolved Git repository")?;
+
+    let report = analyze_historical_companions(
+        &root,
+        anchor,
+        HistoryOptions {
+            max_commits,
+            ..HistoryOptions::default()
+        },
+    )?;
 
     match format {
         OutputFormat::Text => {
             println!("cargo-cultist {VERSION}");
             println!("repository: {}\n", root.display());
-            print_ci_test_filter_report(&root, &report);
+            print_history_report(&report);
         }
         OutputFormat::Json => {
-            let analysis = build_ci_test_filter_analysis(&root, &report);
-            println!("{}", serde_json::to_string_pretty(&analysis)?);
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
     }
 
@@ -208,6 +245,55 @@ fn parse_diff_args(args: Vec<String>) -> Result<DiffArgs, Box<dyn Error>> {
     Ok(parsed)
 }
 
+fn parse_history_args(args: Vec<String>) -> Result<HistoryArgs, Box<dyn Error>> {
+    let mut path = None;
+    let mut max_commits = DEFAULT_MAX_COMMITS;
+    let mut format = OutputFormat::Text;
+    let mut args = args.into_iter();
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--max-commits" => {
+                let value = args
+                    .next()
+                    .ok_or("`--max-commits` requires a positive integer")?;
+                max_commits = value
+                    .parse::<usize>()
+                    .map_err(|_| "`--max-commits` requires a positive integer")?;
+                if max_commits == 0 {
+                    return Err("`--max-commits` requires a positive integer".into());
+                }
+            }
+            "--format" => {
+                format = parse_output_format(
+                    &args.next().ok_or("`--format` requires `text` or `json`")?,
+                )?;
+            }
+            _ if arg.starts_with('-') => {
+                return Err(format!(
+                    "unknown history option `{arg}`; try `cargo cultist history --help`"
+                )
+                .into());
+            }
+            _ => {
+                if path.is_some() {
+                    return Err(
+                        "history expects exactly one file path; try `cargo cultist history --help`"
+                            .into(),
+                    );
+                }
+                path = Some(PathBuf::from(arg));
+            }
+        }
+    }
+
+    Ok(HistoryArgs {
+        path: path.ok_or("history requires a file path")?,
+        max_commits,
+        format,
+    })
+}
+
 fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
     match value {
         "text" => Ok(OutputFormat::Text),
@@ -222,8 +308,8 @@ fn print_help() {
     println!(
         "cargo-cultist {VERSION}\n\
 Repository-aware analysis for Rust codebases.\n\n\
-USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist ci-tests [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist ci-tests [--format text|json] [PATH]\n\n\
-COMMANDS:\n    diff        Inspect changed Rust code against repository precedent.\n    ci-tests    Compare supported CI test filters with explicit test names.\n\n\
+USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist history [--max-commits N] [--format text|json] FILE\n\n\
+COMMANDS:\n    diff       Inspect changed Rust code against repository precedent.\n    history    Explore which paths historically change with one file.\n\n\
 Without a command, cargo-cultist inspects repository-wide test-module naming\n\
 conventions without inventing a universal rule."
     );
@@ -240,15 +326,16 @@ compares their names with repository-wide and same-file precedent."
     );
 }
 
-fn print_ci_tests_help() {
+fn print_history_help() {
     println!(
-        "cargo-cultist ci-tests\n\n\
-USAGE:\n    cargo cultist ci-tests [--format text|json] [PATH]\n\n\
-Research instrumentation for CI test-filter drift. The first slice recognizes\n\
-literal single-line `cargo test --lib FILTER` commands in GitHub Actions and\n\
-compares FILTER with explicit #[test] function names in Rust source.\n\n\
-A zero explicit-name match is a question, not proof that Cargo executes zero\n\
-tests: macro-generated or build-time tests remain an explicit UNKNOWN."
+        "cargo-cultist history\n\n\
+USAGE:\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n\n\
+Explores the most recent non-merge commits touching FILE and reports which\n\
+other paths changed in the same considered commits. Revert commits and broad\n\
+commits changing more than 100 paths are excluded from the first-pass cohort.\n\n\
+This is research instrumentation for temporal and negative-space precedent.\n\
+It reports associations, examples, and counterexamples without turning\n\
+co-change frequency into a correctness claim."
     );
 }
 
@@ -278,6 +365,39 @@ mod tests {
             parse_root_args(vec!["--format".to_string(), "json".to_string()]).unwrap();
         assert_eq!(format, OutputFormat::Json);
         assert_eq!(path, None);
+    }
+
+    #[test]
+    fn parses_history_path_limit_and_format() {
+        let parsed = parse_history_args(vec![
+            "--max-commits".to_string(),
+            "42".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+            "src/lib.rs".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(parsed.path, PathBuf::from("src/lib.rs"));
+        assert_eq!(parsed.max_commits, 42);
+        assert_eq!(parsed.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn rejects_missing_history_path() {
+        assert!(parse_history_args(vec![]).is_err());
+    }
+
+    #[test]
+    fn rejects_zero_history_limit() {
+        assert!(
+            parse_history_args(vec![
+                "--max-commits".to_string(),
+                "0".to_string(),
+                "src/lib.rs".to_string(),
+            ])
+            .is_err()
+        );
     }
 
     #[test]

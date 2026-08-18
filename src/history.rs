@@ -1,0 +1,462 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::error::Error;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use serde::Serialize;
+
+use crate::finding::REPORT_SCHEMA_VERSION;
+
+pub const DEFAULT_MAX_COMMITS: usize = 100;
+const DEFAULT_MAX_PATHS_PER_COMMIT: usize = 100;
+const DEFAULT_TOP_COMPANIONS: usize = 15;
+const EXAMPLE_LIMIT: usize = 3;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct HistoryOptions {
+    pub max_commits: usize,
+    pub max_paths_per_commit: usize,
+}
+
+impl Default for HistoryOptions {
+    fn default() -> Self {
+        Self {
+            max_commits: DEFAULT_MAX_COMMITS,
+            max_paths_per_commit: DEFAULT_MAX_PATHS_PER_COMMIT,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub struct CommitSummary {
+    pub sha: String,
+    pub date: String,
+    pub subject: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub struct ExcludedCommit {
+    #[serde(flatten)]
+    pub commit: CommitSummary,
+    pub reason: String,
+    pub changed_paths: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HistoricalCompanion {
+    pub path: String,
+    pub support: usize,
+    pub opportunities: usize,
+    pub support_percent: f64,
+    pub examples: Vec<CommitSummary>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub counterexamples: Vec<CommitSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct HistoryReport {
+    pub schema_version: u32,
+    pub analysis: String,
+    pub repository: String,
+    pub anchor: String,
+    pub requested_max_commits: usize,
+    pub discovered_commits: usize,
+    pub considered_commits: usize,
+    pub broad_commit_threshold: usize,
+    pub excluded_commits: Vec<ExcludedCommit>,
+    pub companions: Vec<HistoricalCompanion>,
+    pub limitations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct HistoricalCommit {
+    summary: CommitSummary,
+    paths: Vec<PathBuf>,
+}
+
+pub fn analyze_historical_companions(
+    root: &Path,
+    anchor: &Path,
+    options: HistoryOptions,
+) -> Result<HistoryReport, Box<dyn Error>> {
+    if anchor.is_absolute() {
+        return Err("history anchor must be repository-relative".into());
+    }
+    if options.max_commits == 0 {
+        return Err("history max commit count must be greater than zero".into());
+    }
+    if options.max_paths_per_commit == 0 {
+        return Err("history broad-commit threshold must be greater than zero".into());
+    }
+
+    let commit_shas = anchor_commit_shas(root, anchor, options.max_commits)?;
+    let discovered_commits = commit_shas.len();
+    let mut considered = Vec::new();
+    let mut excluded_commits = Vec::new();
+
+    for sha in commit_shas {
+        let commit = read_commit(root, &sha)?;
+        if is_revert_subject(&commit.summary.subject) {
+            excluded_commits.push(ExcludedCommit {
+                commit: commit.summary,
+                reason: "revert commit".to_string(),
+                changed_paths: commit.paths.len(),
+            });
+            continue;
+        }
+        if commit.paths.len() > options.max_paths_per_commit {
+            excluded_commits.push(ExcludedCommit {
+                commit: commit.summary,
+                reason: format!(
+                    "broad commit changed more than {} paths",
+                    options.max_paths_per_commit
+                ),
+                changed_paths: commit.paths.len(),
+            });
+            continue;
+        }
+        considered.push(commit);
+    }
+
+    let companions = build_companions(anchor, &considered);
+
+    Ok(HistoryReport {
+        schema_version: REPORT_SCHEMA_VERSION,
+        analysis: "historical_companions".to_string(),
+        repository: root.display().to_string(),
+        anchor: anchor.display().to_string(),
+        requested_max_commits: options.max_commits,
+        discovered_commits,
+        considered_commits: considered.len(),
+        broad_commit_threshold: options.max_paths_per_commit,
+        excluded_commits,
+        companions,
+        limitations: vec![
+            "Rename history uses the current path identity only.".to_string(),
+            "The first cohort filter removes reverts and broad commits; subsystem and semantic cohort selection remain research work.".to_string(),
+            "Co-change is correlation evidence. The explorer reports association without assigning correctness or intent.".to_string(),
+        ],
+    })
+}
+
+pub fn print_history_report(report: &HistoryReport) {
+    println!("HISTORICAL COMPANIONS");
+    println!("  anchor: {}", report.anchor);
+    println!(
+        "  cohort: {} considered commit(s) from {} discovered non-merge commit(s)",
+        report.considered_commits, report.discovered_commits
+    );
+    println!(
+        "  broad-commit threshold: {} changed paths",
+        report.broad_commit_threshold
+    );
+
+    if report.considered_commits == 0 {
+        println!("\nOBSERVATION");
+        println!("  No history remained after the current cohort filters.");
+        print_excluded(report);
+        print_limitations(report);
+        return;
+    }
+
+    if report.companions.is_empty() {
+        println!("\nOBSERVATION");
+        println!("  The considered commits contain no recurring companion paths.");
+        print_excluded(report);
+        print_limitations(report);
+        return;
+    }
+
+    println!("\nCOMPANIONS");
+    for companion in report.companions.iter().take(DEFAULT_TOP_COMPANIONS) {
+        println!(
+            "  {:<56} {:>3}/{:<3} {:>5.1}%",
+            companion.path, companion.support, companion.opportunities, companion.support_percent
+        );
+        for example in &companion.examples {
+            println!(
+                "    example {}  {}  {}",
+                short_sha(&example.sha),
+                example.date,
+                example.subject
+            );
+        }
+    }
+
+    let with_counterexamples: Vec<_> = report
+        .companions
+        .iter()
+        .take(5)
+        .filter(|companion| !companion.counterexamples.is_empty())
+        .collect();
+
+    if !with_counterexamples.is_empty() {
+        println!("\nCOUNTEREXAMPLE SAMPLE");
+        for companion in with_counterexamples {
+            println!("  {}", companion.path);
+            for example in &companion.counterexamples {
+                println!(
+                    "    absent {}  {}  {}",
+                    short_sha(&example.sha),
+                    example.date,
+                    example.subject
+                );
+            }
+        }
+    }
+
+    println!("\nOBSERVATION");
+    println!(
+        "  These are historical co-change associations for the current path, before semantic cohort selection or finding thresholds."
+    );
+    println!("\nQUESTION");
+    println!(
+        "  Which of these companions represent a repository custom worth comparing against a future diff?"
+    );
+
+    print_excluded(report);
+    print_limitations(report);
+}
+
+fn print_excluded(report: &HistoryReport) {
+    if report.excluded_commits.is_empty() {
+        return;
+    }
+
+    println!("\nEXCLUDED COMMITS");
+    for excluded in report.excluded_commits.iter().take(10) {
+        println!(
+            "  {}  {} path(s)  {}  {}",
+            short_sha(&excluded.commit.sha),
+            excluded.changed_paths,
+            excluded.reason,
+            excluded.commit.subject
+        );
+    }
+    if report.excluded_commits.len() > 10 {
+        println!(
+            "  ... {} more excluded commit(s)",
+            report.excluded_commits.len() - 10
+        );
+    }
+}
+
+fn print_limitations(report: &HistoryReport) {
+    println!("\nLIMITATIONS");
+    for limitation in &report.limitations {
+        println!("  - {limitation}");
+    }
+}
+
+fn anchor_commit_shas(
+    root: &Path,
+    anchor: &Path,
+    max_commits: usize,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "-c",
+            "core.quotepath=false",
+            "log",
+            "--format=%H",
+            "--no-merges",
+            "-n",
+        ])
+        .arg(max_commits.to_string())
+        .arg("--")
+        .arg(anchor)
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git log failed for {}: {stderr}", anchor.display()).into());
+    }
+
+    let stdout = String::from_utf8(output.stdout)?;
+    Ok(stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect())
+}
+
+fn read_commit(root: &Path, sha: &str) -> Result<HistoricalCommit, Box<dyn Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "-c",
+            "core.quotepath=false",
+            "show",
+            "--format=%H%x1f%cI%x1f%s%x1e",
+            "--name-only",
+            "--no-renames",
+            "--no-color",
+            "--no-ext-diff",
+            "--root",
+        ])
+        .arg(sha)
+        .arg("--")
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git show failed for {sha}: {stderr}").into());
+    }
+
+    parse_commit_show(&String::from_utf8(output.stdout)?)
+        .ok_or_else(|| format!("could not parse git show output for {sha}").into())
+}
+
+fn parse_commit_show(output: &str) -> Option<HistoricalCommit> {
+    let (metadata, paths) = output.split_once('\u{1e}')?;
+    let mut fields = metadata.trim().splitn(3, '\u{1f}');
+    let sha = fields.next()?.trim().to_string();
+    let date = fields.next()?.trim().to_string();
+    let subject = fields.next()?.trim().to_string();
+
+    let paths = paths
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    Some(HistoricalCommit {
+        summary: CommitSummary { sha, date, subject },
+        paths,
+    })
+}
+
+fn build_companions(anchor: &Path, commits: &[HistoricalCommit]) -> Vec<HistoricalCompanion> {
+    let mut support = BTreeMap::<PathBuf, Vec<usize>>::new();
+
+    for (commit_index, commit) in commits.iter().enumerate() {
+        for path in &commit.paths {
+            if path == anchor {
+                continue;
+            }
+            support.entry(path.clone()).or_default().push(commit_index);
+        }
+    }
+
+    let opportunities = commits.len();
+    let mut companions: Vec<_> = support
+        .into_iter()
+        .map(|(path, present_in)| {
+            let present: BTreeSet<_> = present_in.iter().copied().collect();
+            let examples = present_in
+                .iter()
+                .take(EXAMPLE_LIMIT)
+                .map(|index| commits[*index].summary.clone())
+                .collect();
+            let counterexamples = (0..commits.len())
+                .filter(|index| !present.contains(index))
+                .take(EXAMPLE_LIMIT)
+                .map(|index| commits[index].summary.clone())
+                .collect();
+            let support_count = present_in.len();
+            let support_percent = if opportunities == 0 {
+                0.0
+            } else {
+                (support_count as f64 / opportunities as f64 * 1000.0).round() / 10.0
+            };
+
+            HistoricalCompanion {
+                path: path.display().to_string(),
+                support: support_count,
+                opportunities,
+                support_percent,
+                examples,
+                counterexamples,
+            }
+        })
+        .collect();
+
+    companions.sort_by(|a, b| b.support.cmp(&a.support).then_with(|| a.path.cmp(&b.path)));
+    companions
+}
+
+fn is_revert_subject(subject: &str) -> bool {
+    subject
+        .trim_start()
+        .to_ascii_lowercase()
+        .starts_with("revert")
+}
+
+fn short_sha(sha: &str) -> &str {
+    sha.get(..sha.len().min(8)).unwrap_or(sha)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn commit(sha: &str, subject: &str, paths: &[&str]) -> HistoricalCommit {
+        HistoricalCommit {
+            summary: CommitSummary {
+                sha: sha.to_string(),
+                date: "2026-08-18T12:00:00Z".to_string(),
+                subject: subject.to_string(),
+            },
+            paths: paths.iter().map(PathBuf::from).collect(),
+        }
+    }
+
+    #[test]
+    fn parses_git_show_record() {
+        let output = concat!(
+            "abcdef\x1f2026-08-18T12:00:00Z\x1ffeat: example\x1e\n",
+            "src/a.rs\n",
+            "tests/a.rs\n",
+        );
+        let parsed = parse_commit_show(output).unwrap();
+        assert_eq!(parsed.summary.sha, "abcdef");
+        assert_eq!(parsed.summary.subject, "feat: example");
+        assert_eq!(
+            parsed.paths,
+            vec![PathBuf::from("src/a.rs"), PathBuf::from("tests/a.rs")]
+        );
+    }
+
+    #[test]
+    fn counts_companions_and_retains_counterexamples() {
+        let commits = vec![
+            commit("a", "one", &["src/a.rs", "tests/a.rs", "generated/a.rs"]),
+            commit("b", "two", &["src/a.rs", "tests/a.rs"]),
+            commit("c", "three", &["src/a.rs", "tests/a.rs", "generated/a.rs"]),
+        ];
+
+        let companions = build_companions(Path::new("src/a.rs"), &commits);
+        assert_eq!(companions[0].path, "tests/a.rs");
+        assert_eq!(companions[0].support, 3);
+        assert_eq!(companions[0].support_percent, 100.0);
+        assert!(companions[0].counterexamples.is_empty());
+
+        assert_eq!(companions[1].path, "generated/a.rs");
+        assert_eq!(companions[1].support, 2);
+        assert_eq!(companions[1].support_percent, 66.7);
+        assert_eq!(companions[1].counterexamples.len(), 1);
+        assert_eq!(companions[1].counterexamples[0].sha, "b");
+    }
+
+    #[test]
+    fn sorts_equal_support_by_path() {
+        let commits = vec![commit("a", "one", &["src/a.rs", "z.rs", "b.rs"])];
+        let companions = build_companions(Path::new("src/a.rs"), &commits);
+        assert_eq!(companions[0].path, "b.rs");
+        assert_eq!(companions[1].path, "z.rs");
+    }
+
+    #[test]
+    fn recognizes_revert_subjects() {
+        assert!(is_revert_subject("Revert \"feat: thing\""));
+        assert!(is_revert_subject("revert: temporary change"));
+        assert!(!is_revert_subject("feat: ordinary change"));
+    }
+}

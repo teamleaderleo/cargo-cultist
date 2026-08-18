@@ -39,10 +39,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         return Err("expected at most one path argument; try `cargo cultist --help`".into());
     }
 
-    let root = args
-        .pop()
-        .map(PathBuf::from)
-        .unwrap_or(env::current_dir()?);
+    let root = args.pop().map(PathBuf::from).unwrap_or(env::current_dir()?);
     let root = root.canonicalize()?;
 
     println!("cargo-cultist {VERSION}");

@@ -55,6 +55,19 @@ jobs:
             > research-output/oxc-rules.json
           python -m json.tool research-output/oxc-rules.json >/dev/null
 
+      - name: Replay Oxc generated-registry history
+        run: |
+          cultist/target/debug/cargo-cultist history \
+            --max-commits 100 \
+            corpus/oxc/crates/oxc_linter/src/generated/rules_enum.rs \
+            | tee research-output/oxc-rules-enum.txt
+          cultist/target/debug/cargo-cultist history \
+            --max-commits 100 \
+            --format json \
+            corpus/oxc/crates/oxc_linter/src/generated/rules_enum.rs \
+            > research-output/oxc-rules-enum.json
+          python -m json.tool research-output/oxc-rules-enum.json >/dev/null
+
       - name: Checkout Codex corpus pin
         uses: actions/checkout@v4
         with:
@@ -65,7 +78,7 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
-      - name: Replay Codex protocol history
+      - name: Replay Codex shared-protocol history
         run: |
           cultist/target/debug/cargo-cultist history \
             --max-commits 100 \
@@ -77,6 +90,32 @@ jobs:
             corpus/codex/codex-rs/app-server-protocol/src/protocol/common.rs \
             > research-output/codex-protocol-common.json
           python -m json.tool research-output/codex-protocol-common.json >/dev/null
+
+      - name: Replay Codex v2 thread-protocol history
+        run: |
+          cultist/target/debug/cargo-cultist history \
+            --max-commits 100 \
+            corpus/codex/codex-rs/app-server-protocol/src/protocol/v2/thread.rs \
+            | tee research-output/codex-v2-thread.txt
+          cultist/target/debug/cargo-cultist history \
+            --max-commits 100 \
+            --format json \
+            corpus/codex/codex-rs/app-server-protocol/src/protocol/v2/thread.rs \
+            > research-output/codex-v2-thread.json
+          python -m json.tool research-output/codex-v2-thread.json >/dev/null
+
+      - name: Replay Codex exporter history
+        run: |
+          cultist/target/debug/cargo-cultist history \
+            --max-commits 100 \
+            corpus/codex/codex-rs/app-server-protocol/src/export.rs \
+            | tee research-output/codex-export.txt
+          cultist/target/debug/cargo-cultist history \
+            --max-commits 100 \
+            --format json \
+            corpus/codex/codex-rs/app-server-protocol/src/export.rs \
+            > research-output/codex-export.json
+          python -m json.tool research-output/codex-export.json >/dev/null
 
       - name: Upload research receipts
         uses: actions/upload-artifact@v4

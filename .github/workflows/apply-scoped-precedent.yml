@@ -1,0 +1,258 @@
+name: Apply scoped precedent patch
+
+on:
+  push:
+    branches:
+      - feature/scoped-precedent
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply scoped precedent changes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/diff.rs')
+          text = path.read_text()
+
+          old = '''        let repository_count = counts.get(&occurrence.name).copied().unwrap_or_default();
+          let one_off = repository_count == 1 && report.occurrences.len() > 1;
+
+          if different_local_names.is_empty() && !one_off {
+'''
+          new = '''        let repository_count = counts.get(&occurrence.name).copied().unwrap_or_default();
+          let one_off = repository_count == 1 && report.occurrences.len() > 1;
+          let tension = precedent_tension(&counts, &local_names);
+
+          if different_local_names.is_empty() && !one_off {
+'''
+          if text.count(old) != 2:
+              raise SystemExit(f'expected 2 occurrence blocks, found {text.count(old)}')
+          text = text.replace(old, new)
+
+          old = '''        if !different_local_names.is_empty() {
+              finding = finding.with_claim(Claim::new(
+                  ClaimKind::Observed,
+                  format!(
+                      "The same file also uses: {}.",
+                      different_local_names
+                          .iter()
+                          .map(|name| format!("`{name}`"))
+                          .collect::<Vec<_>>()
+                          .join(", ")
+                  ),
+              ));
+          }
+
+          let observation = if !different_local_names.is_empty() && one_off {
+              "The new name differs from this file's existing precedent and is unique in the repository."
+          } else if !different_local_names.is_empty() {
+              "The new name differs from this file's existing test-module precedent."
+          } else {
+              "The new name is unique among the repository's test-gated modules."
+          };
+
+          finding = finding
+              .with_claim(Claim::new(ClaimKind::Observed, observation))
+'''
+          new = '''        if !different_local_names.is_empty() {
+              finding = finding.with_claim(Claim::new(
+                  ClaimKind::Observed,
+                  format!(
+                      "The same file also uses: {}.",
+                      different_local_names
+                          .iter()
+                          .map(|name| format!("`{name}`"))
+                          .collect::<Vec<_>>()
+                          .join(", ")
+                  ),
+              ));
+          }
+
+          if let Some((repository_name, file_name)) = tension {
+              finding.kind = "test-module-precedent-tension".to_string();
+              finding.title = "Test-module precedent tension".to_string();
+              finding = finding.with_claim(Claim::new(
+                  ClaimKind::Observed,
+                  format!(
+                      "Repository-wide precedent favors `{repository_name}`, while existing file-local precedent favors `{file_name}`."
+                  ),
+              ));
+          }
+
+          let observation = match tension {
+              Some((repository_name, file_name)) => {
+                  let alignment = if occurrence.name == repository_name {
+                      "The change follows repository-wide precedent and differs from file-local precedent."
+                  } else if occurrence.name == file_name {
+                      "The change follows file-local precedent and differs from repository-wide precedent."
+                  } else {
+                      "The change follows neither of the two conflicting precedent scopes."
+                  };
+                  format!("Repository-wide and file-local precedent disagree. {alignment}")
+              }
+              None if !different_local_names.is_empty() && one_off => {
+                  "The new name differs from this file's existing precedent and is unique in the repository.".to_string()
+              }
+              None if !different_local_names.is_empty() => {
+                  "The new name differs from this file's existing test-module precedent.".to_string()
+              }
+              None => "The new name is unique among the repository's test-gated modules.".to_string(),
+          };
+
+          finding = finding
+              .with_claim(Claim::new(ClaimKind::Observed, observation))
+'''
+          if old not in text:
+              raise SystemExit('JSON finding block anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        if !different_local_names.is_empty() {
+              println!(
+                  "  The same file also uses: {}.",
+                  different_local_names
+                      .iter()
+                      .map(|name| format!("`{name}`"))
+                      .collect::<Vec<_>>()
+                      .join(", ")
+              );
+          }
+
+          println!("\\nOBSERVATION");
+          if !different_local_names.is_empty() && one_off {
+              println!(
+                  "  The new name differs from this file's existing precedent and is unique in the repository."
+              );
+          } else if !different_local_names.is_empty() {
+              println!("  The new name differs from this file's existing test-module precedent.");
+          } else {
+              println!("  The new name is unique among the repository's test-gated modules.");
+          }
+'''
+          new = '''        if !different_local_names.is_empty() {
+              println!(
+                  "  The same file also uses: {}.",
+                  different_local_names
+                      .iter()
+                      .map(|name| format!("`{name}`"))
+                      .collect::<Vec<_>>()
+                      .join(", ")
+              );
+          }
+
+          if let Some((repository_name, file_name)) = tension {
+              println!("\\nPRECEDENT TENSION");
+              println!("  Repository-wide precedent favors: `{repository_name}`");
+              println!("  Existing file-local precedent favors: `{file_name}`");
+          }
+
+          println!("\\nOBSERVATION");
+          if let Some((repository_name, file_name)) = tension {
+              if occurrence.name == repository_name {
+                  println!(
+                      "  Repository-wide and file-local precedent disagree. The change follows repository-wide precedent and differs from file-local precedent."
+                  );
+              } else if occurrence.name == file_name {
+                  println!(
+                      "  Repository-wide and file-local precedent disagree. The change follows file-local precedent and differs from repository-wide precedent."
+                  );
+              } else {
+                  println!(
+                      "  Repository-wide and file-local precedent disagree. The change follows neither scope."
+                  );
+              }
+          } else if !different_local_names.is_empty() && one_off {
+              println!(
+                  "  The new name differs from this file's existing precedent and is unique in the repository."
+              );
+          } else if !different_local_names.is_empty() {
+              println!("  The new name differs from this file's existing test-module precedent.");
+          } else {
+              println!("  The new name is unique among the repository's test-gated modules.");
+          }
+'''
+          if old not in text:
+              raise SystemExit('text finding block anchor not found')
+          text = text.replace(old, new, 1)
+
+          anchor = '''fn top_counts_summary(counts: &BTreeMap<String, usize>) -> String {
+'''
+          helpers = '''fn repository_dominant_name(counts: &BTreeMap<String, usize>) -> Option<&str> {
+              let dominant_count = counts.values().copied().max()?;
+              let mut dominant = counts
+                  .iter()
+                  .filter(|(_, count)| **count == dominant_count)
+                  .map(|(name, _)| name.as_str());
+              let first = dominant.next()?;
+              dominant.next().is_none().then_some(first)
+          }
+
+          fn file_local_name(local_names: &BTreeSet<String>) -> Option<&str> {
+              (local_names.len() == 1)
+                  .then(|| local_names.iter().next().map(String::as_str))
+                  .flatten()
+          }
+
+          fn precedent_tension<'a>(
+              counts: &'a BTreeMap<String, usize>,
+              local_names: &'a BTreeSet<String>,
+          ) -> Option<(&'a str, &'a str)> {
+              let repository_name = repository_dominant_name(counts)?;
+              let file_name = file_local_name(local_names)?;
+              (repository_name != file_name).then_some((repository_name, file_name))
+          }
+
+          '''
+          if anchor not in text:
+              raise SystemExit('helper anchor not found')
+          text = text.replace(anchor, helpers + anchor, 1)
+
+          test_anchor = '''    #[test]
+              fn parses_added_lines_from_zero_context_diff() {
+'''
+          test = '''    #[test]
+              fn detects_scope_tension_only_with_clear_precedent() {
+                  let counts = BTreeMap::from([
+                      ("tests".to_string(), 33),
+                      ("unit_tests".to_string(), 89),
+                  ]);
+                  let local_names = BTreeSet::from(["tests".to_string()]);
+                  assert_eq!(
+                      precedent_tension(&counts, &local_names),
+                      Some(("unit_tests", "tests"))
+                  );
+
+                  let mixed_local = BTreeSet::from([
+                      "tests".to_string(),
+                      "special_tests".to_string(),
+                  ]);
+                  assert_eq!(precedent_tension(&counts, &mixed_local), None);
+
+                  let tied_counts = BTreeMap::from([
+                      ("tests".to_string(), 10),
+                      ("unit_tests".to_string(), 10),
+                  ]);
+                  assert_eq!(precedent_tension(&tied_counts, &local_names), None);
+              }
+
+          '''
+          if test_anchor not in text:
+              raise SystemExit('test anchor not found')
+          text = text.replace(test_anchor, test + test_anchor, 1)
+
+          path.write_text(text)
+          PY
+          cargo fmt
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/diff.rs
+          git commit -m 'Add scope-aware precedent tension'
+          git push

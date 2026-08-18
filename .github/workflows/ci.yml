@@ -28,6 +28,10 @@ jobs:
         run: cargo run -- .
       - name: Dogfood repository JSON
         run: cargo run --quiet -- --format json . | python -m json.tool >/dev/null
+      - name: Dogfood CI test-filter inventory
+        run: cargo run -- ci-tests .
+      - name: Dogfood CI test-filter JSON
+        run: cargo run --quiet -- ci-tests --format json . | python -m json.tool >/dev/null
       - name: Dogfood pull request diff
         if: github.event_name == 'pull_request'
         env:

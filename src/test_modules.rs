@@ -122,7 +122,10 @@ pub fn print_test_module_report(root: &Path, report: &TestModuleReport) {
 fn print_local_mixes(root: &Path, report: &TestModuleReport) {
     let mut by_file = BTreeMap::<&PathBuf, Vec<&TestModuleOccurrence>>::new();
     for occurrence in &report.occurrences {
-        by_file.entry(&occurrence.path).or_default().push(occurrence);
+        by_file
+            .entry(&occurrence.path)
+            .or_default()
+            .push(occurrence);
     }
 
     let mixed_files: Vec<_> = by_file
@@ -154,11 +157,7 @@ fn print_local_mixes(root: &Path, report: &TestModuleReport) {
     println!("  Is the local mix deliberate, or would one name make the file easier to read?");
 }
 
-fn print_one_off_names(
-    root: &Path,
-    report: &TestModuleReport,
-    counts: &[(&str, usize)],
-) {
+fn print_one_off_names(root: &Path, report: &TestModuleReport, counts: &[(&str, usize)]) {
     let one_off_names: Vec<_> = counts
         .iter()
         .filter(|(_, count)| *count == 1)
@@ -172,7 +171,10 @@ fn print_one_off_names(
     println!("\nONE-OFF NAMES");
     for occurrence in &report.occurrences {
         if one_off_names.contains(&occurrence.name.as_str()) {
-            let path = occurrence.path.strip_prefix(root).unwrap_or(&occurrence.path);
+            let path = occurrence
+                .path
+                .strip_prefix(root)
+                .unwrap_or(&occurrence.path);
             println!(
                 "  {}:{}  mod {}",
                 path.display(),
@@ -183,7 +185,9 @@ fn print_one_off_names(
     }
 
     println!("\nQUESTION");
-    println!("  Are these one-off names intentionally scoped, or accidental deviations from local precedent?");
+    println!(
+        "  Are these one-off names intentionally scoped, or accidental deviations from local precedent?"
+    );
 }
 
 fn print_parse_failures(root: &Path, report: &TestModuleReport) {

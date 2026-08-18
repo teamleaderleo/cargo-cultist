@@ -32,6 +32,61 @@ jobs:
         run: cargo run -- history --max-commits 20 src/main.rs
       - name: Dogfood history JSON
         run: cargo run --quiet -- history --max-commits 20 --format json src/main.rs | python -m json.tool >/dev/null
+      - name: Dogfood CI test-filter inventory
+        run: cargo run -- ci-tests .
+      - name: Dogfood CI test-filter JSON
+        run: cargo run --quiet -- ci-tests --format json . | python -m json.tool >/dev/null
+      - name: Exercise CI test-filter positive and control fixtures
+        run: |
+          set -euo pipefail
+
+          fixture="$(mktemp -d)"
+          mkdir -p "$fixture/src" "$fixture/.github/workflows"
+          git -C "$fixture" init -q
+
+          cat > "$fixture/src/lib.rs" <<'EOF'
+          #[cfg(test)]
+          mod tests {
+              #[test]
+              fn existing_test() {}
+          }
+          EOF
+
+          cat > "$fixture/.github/workflows/test.yml" <<'EOF'
+          name: fixture
+          on: [push]
+          jobs:
+            test:
+              runs-on: ubuntu-latest
+              steps:
+                - run: cargo test --lib stale_filter
+          EOF
+
+          cargo run --quiet -- ci-tests --format json "$fixture" > /tmp/cultist-ci-test-stale.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/cultist-ci-test-stale.json').read_text())
+          findings = report['findings']
+          assert len(findings) == 1, findings
+          finding = findings[0]
+          assert finding['kind'] == 'ci-test-filter-inventory-miss', finding
+          assert [claim['kind'] for claim in finding['claims']] == [
+              'proven', 'observed', 'unknown'
+          ], finding
+          assert 'stale_filter' in finding['question'], finding
+          PY
+
+          sed -i 's/stale_filter/existing_test/' "$fixture/.github/workflows/test.yml"
+          cargo run --quiet -- ci-tests --format json "$fixture" > /tmp/cultist-ci-test-control.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/cultist-ci-test-control.json').read_text())
+          assert report['findings'] == [], report
+          PY
       - name: Dogfood pull request diff
         if: github.event_name == 'pull_request'
         env:

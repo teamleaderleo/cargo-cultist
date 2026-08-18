@@ -114,7 +114,10 @@ pub fn build_diff_analysis_report(
                     ),
                 )
                 .with_evidence(Evidence::at(
-                    format!("This change adds `mod {}` behind a test cfg.", occurrence.name),
+                    format!(
+                        "This change adds `mod {}` behind a test cfg.",
+                        occurrence.name
+                    ),
                     occurrence_location,
                 ))
                 .with_evidence(Evidence::new(format!(

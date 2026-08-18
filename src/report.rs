@@ -42,7 +42,10 @@ pub fn build_test_module_analysis(root: &Path, report: &TestModuleReport) -> Ana
     analysis.claims.push(
         Claim::new(
             ClaimKind::Observed,
-            format!("Found {total} test-gated modules across {} distinct names.", counts.len()),
+            format!(
+                "Found {total} test-gated modules across {} distinct names.",
+                counts.len()
+            ),
         )
         .with_evidence(Evidence::new(format!("Repository counts: {distribution}."))),
     );

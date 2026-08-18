@@ -14,11 +14,11 @@ The long-term model is deliberately split into three layers:
 - **Observations** — repository-specific patterns and deviations derived from those facts.
 - **Explanations** — optional interpretation of why those patterns may exist. This layer may eventually use an LLM, but the tool should not require one to discover that something is interesting.
 
-## First prototype
+## Current checks
 
-The first check looks at `#[cfg(test)]` modules and reports the names a repository actually uses. It also calls out one-off names and files that mix multiple test-module names.
+### Repository test-module conventions
 
-Example:
+The default command looks at `#[cfg(test)]` modules and reports the names a repository actually uses. It also calls out one-off names and files that mix multiple test-module names.
 
 ```text
 $ cargo cultist
@@ -38,6 +38,40 @@ QUESTION
   Are these one-off names intentionally scoped, or accidental deviations from local precedent?
 ```
 
+### Diff-aware precedent
+
+`cargo cultist diff` looks only at test-module declarations added or renamed by the current change and compares them with both repository-wide and same-file precedent.
+
+By default it compares staged and unstaged work against `HEAD`:
+
+```bash
+cargo cultist diff
+```
+
+For a branch or pull request, provide a base revision:
+
+```bash
+cargo cultist diff --base origin/main
+```
+
+A finding can look like:
+
+```text
+FINDING 1: test-module precedent
+  pci/src/vfio.rs:2675 adds `mod mmio_region_range_tests` behind a test cfg.
+
+FACTS
+  `mmio_region_range_tests` appears 1 time(s) across 53 test-gated modules.
+  Repository counts: `unit_tests`=31, `tests`=21, `mmio_region_range_tests`=1.
+  The same file also uses: `tests`.
+
+OBSERVATION
+  The new name differs from this file's existing precedent and is unique in the repository.
+
+QUESTION
+  Is the distinct module name intentional, or should it follow nearby precedent?
+```
+
 That distinction is the point: the primitive is a **finding**, not a lint error.
 
 ## Usage
@@ -46,6 +80,7 @@ From this repository while developing:
 
 ```bash
 cargo run -- /path/to/a/rust/repository
+cargo run -- diff --base origin/main /path/to/a/rust/repository
 ```
 
 After installing locally:
@@ -54,17 +89,25 @@ After installing locally:
 cargo install --path .
 cd /path/to/a/rust/repository
 cargo cultist
+cargo cultist diff
 ```
 
 You can also invoke the binary directly:
 
 ```bash
 cargo-cultist /path/to/a/rust/repository
+cargo-cultist diff --base origin/main /path/to/a/rust/repository
 ```
+
+## Dogfooding
+
+CI runs formatting, Clippy, and tests, then runs `cargo-cultist` against its own repository. Pull-request and push CI also run the diff analyzer against the relevant base commit.
+
+The tool is expected to be able to inspect its own changes without special treatment.
 
 ## Near-term ideas
 
-- Compare a diff against nearby repository precedent.
+- Extend diff analysis beyond test-module names.
 - Flag test-only global state and show nearby alternatives.
 - Find duplicated local mechanisms when a common helper already exists.
 - Connect unusual constants or workarounds to Git history.

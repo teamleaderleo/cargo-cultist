@@ -171,10 +171,7 @@ pub fn print_history_report(report: &HistoryReport) {
     for companion in report.companions.iter().take(DEFAULT_TOP_COMPANIONS) {
         println!(
             "  {:<56} {:>3}/{:<3} {:>5.1}%",
-            companion.path,
-            companion.support,
-            companion.opportunities,
-            companion.support_percent
+            companion.path, companion.support, companion.opportunities, companion.support_percent
         );
         for example in &companion.examples {
             println!(
@@ -381,11 +378,7 @@ fn build_companions(anchor: &Path, commits: &[HistoricalCommit]) -> Vec<Historic
         })
         .collect();
 
-    companions.sort_by(|a, b| {
-        b.support
-            .cmp(&a.support)
-            .then_with(|| a.path.cmp(&b.path))
-    });
+    companions.sort_by(|a, b| b.support.cmp(&a.support).then_with(|| a.path.cmp(&b.path)));
     companions
 }
 

@@ -102,21 +102,23 @@ mod tests {
                 ClaimKind::Derived,
                 "The diff changes one Rust file.",
             )],
-            findings: vec![Finding::new("example", "Example tension")
-                .at(Location::new("src/lib.rs", Some(42)))
-                .with_claim(
-                    Claim::new(ClaimKind::Observed, "Two scopes disagree.").with_evidence(
-                        Evidence::at(
-                            "The file already uses `tests`.",
-                            Location::new("src/lib.rs", Some(10)),
+            findings: vec![
+                Finding::new("example", "Example tension")
+                    .at(Location::new("src/lib.rs", Some(42)))
+                    .with_claim(
+                        Claim::new(ClaimKind::Observed, "Two scopes disagree.").with_evidence(
+                            Evidence::at(
+                                "The file already uses `tests`.",
+                                Location::new("src/lib.rs", Some(10)),
+                            ),
                         ),
-                    ),
-                )
-                .with_claim(Claim::new(
-                    ClaimKind::Unknown,
-                    "The repository does not state which scope wins.",
-                ))
-                .with_question("Which scope is intentional here?")],
+                    )
+                    .with_claim(Claim::new(
+                        ClaimKind::Unknown,
+                        "The repository does not state which scope wins.",
+                    ))
+                    .with_question("Which scope is intentional here?"),
+            ],
         };
 
         let rendered = render_analysis_report(&report);

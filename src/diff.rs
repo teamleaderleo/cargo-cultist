@@ -59,7 +59,7 @@ pub fn print_diff_report(
 
     println!("DIFF PRECEDENT");
     match base {
-        Some(base) => println!("  comparing against: {base}"),
+        Some(base) => println!("  comparing changes from merge base with: {base}"),
         None => println!("  comparing working tree against: HEAD"),
     }
     println!(
@@ -155,8 +155,12 @@ pub fn print_diff_report(
 }
 
 fn git_diff(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
-    let mut command = Command::new("git");
-    command
+    let anchor = match base {
+        Some(base) => merge_base(root, base)?,
+        None => "HEAD".to_string(),
+    };
+
+    let output = Command::new("git")
         .arg("-C")
         .arg(root)
         .args([
@@ -168,16 +172,31 @@ fn git_diff(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
             "--no-color",
             "--no-prefix",
         ])
-        .arg(base.unwrap_or("HEAD"))
-        .arg("--");
+        .arg(anchor)
+        .arg("--")
+        .output()?;
 
-    let output = command.output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("git diff failed: {stderr}").into());
     }
 
     Ok(String::from_utf8(output.stdout)?)
+}
+
+fn merge_base(root: &Path, base: &str) -> Result<String, Box<dyn Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["merge-base", base, "HEAD"])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("could not find merge base for `{base}` and HEAD: {stderr}").into());
+    }
+
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
 fn parse_changed_lines(patch: &str) -> ChangedLines {

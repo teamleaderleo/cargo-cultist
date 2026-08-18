@@ -28,7 +28,7 @@ pub struct FilteredLibTestCommand {
 #[derive(Debug, Default)]
 pub struct CiTestFilterReport {
     pub tests: Vec<ExplicitTest>,
-    pub possible_name_fragments: BTreeSet<String>,
+    pub possible_module_fragments: BTreeSet<String>,
     pub commands: Vec<FilteredLibTestCommand>,
     pub parse_failures: Vec<(PathBuf, String)>,
 }
@@ -117,7 +117,7 @@ pub fn build_ci_test_filter_analysis(root: &Path, report: &CiTestFilterReport) -
         let mut observed = Claim::new(
             ClaimKind::Observed,
             format!(
-                "None of the {} explicit `#[test]` function names, inline module names, or Rust source path components found by this syntax scan contains `{}`.",
+                "None of the {} explicit `#[test]` function names or declared Rust module names found by this syntax scan contains `{}`.",
                 report.tests.len(),
                 command.filter
             ),
@@ -156,7 +156,7 @@ pub fn build_ci_test_filter_analysis(root: &Path, report: &CiTestFilterReport) -
 fn has_possible_explicit_match(report: &CiTestFilterReport, filter: &str) -> bool {
     report.tests.iter().any(|test| test.name.contains(filter))
         || report
-            .possible_name_fragments
+            .possible_module_fragments
             .iter()
             .any(|fragment| fragment.contains(filter))
 }
@@ -177,15 +177,13 @@ fn collect_explicit_tests(
         }
 
         let path = entry.path();
-        collect_path_fragments(root, path, &mut report.possible_name_fragments);
-
         let source = fs::read_to_string(path)?;
         match syn::parse_file(&source) {
             Ok(file) => {
                 let mut visitor = ExplicitTestVisitor {
                     path,
                     tests: &mut report.tests,
-                    possible_name_fragments: &mut report.possible_name_fragments,
+                    possible_module_fragments: &mut report.possible_module_fragments,
                 };
                 visitor.visit_file(&file);
             }
@@ -196,17 +194,6 @@ fn collect_explicit_tests(
     }
 
     Ok(())
-}
-
-fn collect_path_fragments(root: &Path, path: &Path, fragments: &mut BTreeSet<String>) {
-    let relative = path.strip_prefix(root).unwrap_or(path);
-    for component in relative.components() {
-        let value = component.as_os_str().to_string_lossy();
-        let value = value.strip_suffix(".rs").unwrap_or(&value);
-        if !value.is_empty() {
-            fragments.insert(value.to_string());
-        }
-    }
 }
 
 fn collect_workflow_commands(
@@ -343,16 +330,14 @@ fn should_visit_rust(entry: &DirEntry) -> bool {
 struct ExplicitTestVisitor<'a> {
     path: &'a Path,
     tests: &'a mut Vec<ExplicitTest>,
-    possible_name_fragments: &'a mut BTreeSet<String>,
+    possible_module_fragments: &'a mut BTreeSet<String>,
 }
 
 impl<'ast> Visit<'ast> for ExplicitTestVisitor<'_> {
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
         if has_test_attr(&node.attrs) {
-            let name = node.sig.ident.to_string();
-            self.possible_name_fragments.insert(name.clone());
             self.tests.push(ExplicitTest {
-                name,
+                name: node.sig.ident.to_string(),
                 path: self.path.to_path_buf(),
                 line: span_line(node.sig.ident.span()),
             });
@@ -361,7 +346,7 @@ impl<'ast> Visit<'ast> for ExplicitTestVisitor<'_> {
     }
 
     fn visit_item_mod(&mut self, node: &'ast ItemMod) {
-        self.possible_name_fragments.insert(node.ident.to_string());
+        self.possible_module_fragments.insert(node.ident.to_string());
         visit::visit_item_mod(self, node);
     }
 }
@@ -441,17 +426,18 @@ mod tests {
     }
 
     #[test]
-    fn module_or_path_fragments_suppress_false_zero_match() {
+    fn declared_module_names_suppress_qualified_filter_misses() {
         let mut report = CiTestFilterReport::default();
         report.tests.push(ExplicitTest {
             name: "works".to_string(),
             path: PathBuf::from("src/foo.rs"),
             line: 1,
         });
-        report.possible_name_fragments.insert("foo".to_string());
+        report.possible_module_fragments.insert("foo".to_string());
 
         assert!(has_possible_explicit_match(&report, "foo"));
         assert!(has_possible_explicit_match(&report, "works"));
+        assert!(!has_possible_explicit_match(&report, "src"));
         assert!(!has_possible_explicit_match(&report, "missing"));
     }
 }

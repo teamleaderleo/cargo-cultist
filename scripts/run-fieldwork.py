@@ -74,6 +74,9 @@ def prepare_repository(
         return cache[key]
 
     destination = workdir / f"repo-{len(cache) + 1}"
+    if destination.exists():
+        shutil.rmtree(destination)
+
     command(
         [
             "git",
@@ -125,7 +128,9 @@ def check_expectations(case: dict[str, Any], payload: dict[str, Any]) -> None:
 
     required_kinds = expected.get("finding_kinds", [])
     if required_kinds:
-        if not isinstance(required_kinds, list) or not all(isinstance(kind, str) for kind in required_kinds):
+        if not isinstance(required_kinds, list) or not all(
+            isinstance(kind, str) for kind in required_kinds
+        ):
             fail(case, "`finding_kinds` must be an array of strings")
         actual_kinds = {
             finding.get("kind")
@@ -163,8 +168,8 @@ def check_expectations(case: dict[str, Any], payload: dict[str, Any]) -> None:
             actual = actual_companions.get(path)
             if actual is None:
                 fail(case, f"expected companion {path!r} was not reported")
-            check_numeric_bound(case, path, actual, companion_expectation, "support", "min_support", min)
-            check_numeric_bound(case, path, actual, companion_expectation, "support", "max_support", max)
+            check_numeric_bound(case, path, actual, companion_expectation, "support", "min_support")
+            check_numeric_bound(case, path, actual, companion_expectation, "support", "max_support")
             if "opportunities" in companion_expectation:
                 wanted = companion_expectation["opportunities"]
                 if actual.get("opportunities") != wanted:
@@ -181,7 +186,6 @@ def check_numeric_bound(
     expected: dict[str, Any],
     actual_key: str,
     expected_key: str,
-    bound: Any,
 ) -> None:
     if expected_key not in expected:
         return

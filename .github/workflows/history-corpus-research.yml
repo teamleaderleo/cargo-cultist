@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - experiment/history-companions
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read

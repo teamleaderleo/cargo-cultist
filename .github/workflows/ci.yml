@@ -24,6 +24,11 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+      - name: Validate Fieldwork harness
+        run: |
+          python -m py_compile scripts/run-fieldwork.py
+          python -m json.tool fieldwork/cases.json >/dev/null
+          python scripts/run-fieldwork.py --list >/dev/null
       - name: Dogfood repository scan
         run: cargo run -- .
       - name: Dogfood repository JSON

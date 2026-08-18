@@ -51,7 +51,7 @@ Issue #36 should remain open until a real positive case is recovered or a broade
 
 ## Synthetic end-to-end discriminator
 
-PR #46 CI should keep one disposable repository fixture for the exact supported syntax family.
+PR #46 CI keeps one disposable repository fixture for the exact supported syntax family.
 
 Fixture A:
 
@@ -61,7 +61,7 @@ src/lib.rs:
   fn existing_test() {}
 
 .github/workflows/test.yml:
-  run: cargo test --lib stale_filter
+  - run: cargo test --lib stale_filter
 ```
 
 Expected JSON:
@@ -77,6 +77,22 @@ Expected JSON:
 - zero findings.
 
 This proves the analyzer can distinguish its own positive and negative cells without claiming the synthetic fixture is external evidence.
+
+### Self-dogfood finding
+
+The first execution of this fixture failed for an analyzer reason rather than a product reason: the workflow scanner recognized bare `run:` lines and block-scalar contents, but missed the ordinary GitHub Actions list-item form:
+
+```text
+- run: cargo test --lib stale_filter
+```
+
+The stale-selector fixture therefore produced zero findings. The parser now strips an optional YAML list-item prefix before recognizing `run:`, and the list-item form has a unit control. This is retained because the fixture already demonstrated its second job: challenge the analyzer's own evidence collection before external promotion.
+
+## Shared rendering integration
+
+While this experiment was open, `main` changed repository and diff output so text and JSON render from one shared `AnalysisReport` model. PR #46 was reconciled onto that model as well: `ci-tests` now builds one provenance-bearing report and delegates both presentation formats to the shared renderer.
+
+That is the desired direction for future analyzers. Evidence collection and claim classification belong to the analyzer; terminal prose and JSON are views over the same findings.
 
 ## Promotion direction
 

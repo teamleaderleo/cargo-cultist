@@ -1,6 +1,7 @@
 mod diff;
 mod finding;
 mod history;
+mod render;
 mod report;
 mod test_modules;
 
@@ -9,12 +10,14 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::process;
 
-use diff::{build_diff_analysis_report, git_repo_root, print_diff_report};
+use diff::{build_diff_analysis_report, git_repo_root};
+use finding::AnalysisReport;
 use history::{
     DEFAULT_MAX_COMMITS, HistoryOptions, analyze_historical_companions, print_history_report,
 };
+use render::render_analysis_report;
 use report::build_test_module_analysis;
-use test_modules::{analyze_test_modules, print_test_module_report};
+use test_modules::analyze_test_modules;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -78,20 +81,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     let (format, path) = parse_root_args(args)?;
     let root = path.unwrap_or(env::current_dir()?).canonicalize()?;
     let report = analyze_test_modules(&root)?;
-
-    match format {
-        OutputFormat::Text => {
-            println!("cargo-cultist {VERSION}");
-            println!("repository: {}\n", root.display());
-            print_test_module_report(&root, &report);
-        }
-        OutputFormat::Json => {
-            let analysis = build_test_module_analysis(&root, &report);
-            println!("{}", serde_json::to_string_pretty(&analysis)?);
-        }
-    }
-
-    Ok(())
+    let analysis = build_test_module_analysis(&root, &report);
+    emit_analysis(&analysis, format)
 }
 
 fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
@@ -105,16 +96,19 @@ fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     let requested_root = requested_root.canonicalize()?;
     let root = git_repo_root(&requested_root)?;
     let report = analyze_test_modules(&root)?;
+    let analysis = build_diff_analysis_report(&root, base.as_deref(), &report)?;
+    emit_analysis(&analysis, format)
+}
 
+fn emit_analysis(analysis: &AnalysisReport, format: OutputFormat) -> Result<(), Box<dyn Error>> {
     match format {
         OutputFormat::Text => {
             println!("cargo-cultist {VERSION}");
-            println!("repository: {}\n", root.display());
-            print_diff_report(&root, base.as_deref(), &report)?;
+            println!("repository: {}\n", analysis.repository);
+            print!("{}", render_analysis_report(analysis));
         }
         OutputFormat::Json => {
-            let analysis = build_diff_analysis_report(&root, base.as_deref(), &report)?;
-            println!("{}", serde_json::to_string_pretty(&analysis)?);
+            println!("{}", serde_json::to_string_pretty(analysis)?);
         }
     }
 

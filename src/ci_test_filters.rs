@@ -1,10 +1,11 @@
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use proc_macro2::Span;
 use syn::visit::{self, Visit};
-use syn::{Attribute, ItemFn};
+use syn::{Attribute, ItemFn, ItemMod};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
@@ -27,6 +28,7 @@ pub struct FilteredLibTestCommand {
 #[derive(Debug, Default)]
 pub struct CiTestFilterReport {
     pub tests: Vec<ExplicitTest>,
+    pub possible_name_fragments: BTreeSet<String>,
     pub commands: Vec<FilteredLibTestCommand>,
     pub parse_failures: Vec<(PathBuf, String)>,
 }
@@ -91,11 +93,7 @@ pub fn build_ci_test_filter_analysis(root: &Path, report: &CiTestFilterReport) -
     }
 
     for command in &report.commands {
-        if report
-            .tests
-            .iter()
-            .any(|test| test.name.contains(&command.filter))
-        {
+        if has_possible_explicit_match(report, &command.filter) {
             continue;
         }
 
@@ -119,8 +117,9 @@ pub fn build_ci_test_filter_analysis(root: &Path, report: &CiTestFilterReport) -
         let mut observed = Claim::new(
             ClaimKind::Observed,
             format!(
-                "None of the {} explicit `#[test]` function names found in Rust source contains `{}`.",
-                report.tests.len(), command.filter
+                "None of the {} explicit `#[test]` function names, inline module names, or Rust source path components found by this syntax scan contains `{}`.",
+                report.tests.len(),
+                command.filter
             ),
         );
         for test in report.tests.iter().take(5) {
@@ -157,7 +156,10 @@ pub fn build_ci_test_filter_analysis(root: &Path, report: &CiTestFilterReport) -
 pub fn print_ci_test_filter_report(root: &Path, report: &CiTestFilterReport) {
     println!("CI TEST FILTER INVENTORY");
     println!("  explicit #[test] declarations   {}", report.tests.len());
-    println!("  supported filtered commands     {}", report.commands.len());
+    println!(
+        "  supported filtered commands     {}",
+        report.commands.len()
+    );
 
     if !report.parse_failures.is_empty() {
         println!("\nPARSE NOTES");
@@ -171,17 +173,24 @@ pub fn print_ci_test_filter_report(root: &Path, report: &CiTestFilterReport) {
 
     let mut misses = 0;
     for command in &report.commands {
-        let matches = report
+        let direct_matches = report
             .tests
             .iter()
             .filter(|test| test.name.contains(&command.filter))
             .count();
+        let qualifier_match = report
+            .possible_name_fragments
+            .iter()
+            .any(|fragment| fragment.contains(&command.filter));
         let path = relative_path(root, &command.workflow_path);
         println!(
-            "\n  {}:{}  filter `{}` -> {} explicit match(es)",
-            path, command.line, command.filter, matches
+            "\n  {}:{}  filter `{}` -> {} explicit function-name match(es)",
+            path, command.line, command.filter, direct_matches
         );
-        if matches == 0 && !report.tests.is_empty() {
+
+        if direct_matches == 0 && qualifier_match {
+            println!("    possible module/path qualifier match; syntax-only miss suppressed");
+        } else if direct_matches == 0 && !report.tests.is_empty() {
             misses += 1;
             println!("    command: {}", command.command);
         }
@@ -192,20 +201,33 @@ pub fn print_ci_test_filter_report(root: &Path, report: &CiTestFilterReport) {
         println!("  No supported `cargo test --lib FILTER` workflow commands were found.");
     } else if misses == 0 {
         println!("\nOBSERVATION");
-        println!("  Every supported workflow filter matches at least one explicit test name.");
+        println!(
+            "  Every supported workflow filter has an explicit function-name or module/path hint."
+        );
     } else {
         println!("\nQUESTION");
         println!(
-            "  Do the zero-match filters rely on generated tests, or have their intended tests moved or been renamed?"
+            "  Do the zero-hint filters rely on generated tests, or have their intended tests moved or been renamed?"
         );
     }
+}
+
+fn has_possible_explicit_match(report: &CiTestFilterReport, filter: &str) -> bool {
+    report.tests.iter().any(|test| test.name.contains(filter))
+        || report
+            .possible_name_fragments
+            .iter()
+            .any(|fragment| fragment.contains(filter))
 }
 
 fn collect_explicit_tests(
     root: &Path,
     report: &mut CiTestFilterReport,
 ) -> Result<(), Box<dyn Error>> {
-    for entry in WalkDir::new(root).into_iter().filter_entry(should_visit_rust) {
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_entry(should_visit_rust)
+    {
         let entry = entry?;
         if !entry.file_type().is_file()
             || entry.path().extension().and_then(|ext| ext.to_str()) != Some("rs")
@@ -214,12 +236,15 @@ fn collect_explicit_tests(
         }
 
         let path = entry.path();
+        collect_path_fragments(root, path, &mut report.possible_name_fragments);
+
         let source = fs::read_to_string(path)?;
         match syn::parse_file(&source) {
             Ok(file) => {
                 let mut visitor = ExplicitTestVisitor {
                     path,
                     tests: &mut report.tests,
+                    possible_name_fragments: &mut report.possible_name_fragments,
                 };
                 visitor.visit_file(&file);
             }
@@ -230,6 +255,17 @@ fn collect_explicit_tests(
     }
 
     Ok(())
+}
+
+fn collect_path_fragments(root: &Path, path: &Path, fragments: &mut BTreeSet<String>) {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    for component in relative.components() {
+        let value = component.as_os_str().to_string_lossy();
+        let value = value.strip_suffix(".rs").unwrap_or(&value);
+        if !value.is_empty() {
+            fragments.insert(value.to_string());
+        }
+    }
 }
 
 fn collect_workflow_commands(
@@ -273,7 +309,10 @@ fn workflow_shell_line(line: &str) -> Option<&str> {
         return None;
     }
 
-    let candidate = trimmed.strip_prefix("run:").map(str::trim).unwrap_or(trimmed);
+    let candidate = trimmed
+        .strip_prefix("run:")
+        .map(str::trim)
+        .unwrap_or(trimmed);
     if candidate.starts_with("cargo test ") {
         Some(candidate)
     } else {
@@ -299,8 +338,15 @@ fn parse_filtered_lib_test_command(command: &str) -> Option<String> {
 
         match token {
             "--lib" => saw_lib = true,
-            "--locked" | "--quiet" | "-q" | "--release" | "--no-fail-fast"
-            | "--no-default-features" | "--all-features" | "--frozen" | "--offline" => {}
+            "--locked"
+            | "--quiet"
+            | "-q"
+            | "--release"
+            | "--no-fail-fast"
+            | "--no-default-features"
+            | "--all-features"
+            | "--frozen"
+            | "--offline" => {}
             "--features" | "--color" | "--jobs" | "-j" | "--profile" | "--target"
             | "--target-dir" | "--config" => {
                 index += 1;
@@ -308,9 +354,9 @@ fn parse_filtered_lib_test_command(command: &str) -> Option<String> {
                     return None;
                 }
             }
-            "-p" | "--package" | "--workspace" | "--test" | "--tests" | "--bin"
-            | "--bins" | "--example" | "--examples" | "--doc" | "--all-targets"
-            | "--exclude" | "--manifest-path" => return None,
+            "-p" | "--package" | "--workspace" | "--test" | "--tests" | "--bin" | "--bins"
+            | "--example" | "--examples" | "--doc" | "--all-targets" | "--exclude"
+            | "--manifest-path" => return None,
             _ if token.starts_with('-') => return None,
             _ => {
                 if filter.is_some() {
@@ -358,18 +404,26 @@ fn should_visit_rust(entry: &DirEntry) -> bool {
 struct ExplicitTestVisitor<'a> {
     path: &'a Path,
     tests: &'a mut Vec<ExplicitTest>,
+    possible_name_fragments: &'a mut BTreeSet<String>,
 }
 
 impl<'ast> Visit<'ast> for ExplicitTestVisitor<'_> {
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
         if has_test_attr(&node.attrs) {
+            let name = node.sig.ident.to_string();
+            self.possible_name_fragments.insert(name.clone());
             self.tests.push(ExplicitTest {
-                name: node.sig.ident.to_string(),
+                name,
                 path: self.path.to_path_buf(),
                 line: span_line(node.sig.ident.span()),
             });
         }
         visit::visit_item_fn(self, node);
+    }
+
+    fn visit_item_mod(&mut self, node: &'ast ItemMod) {
+        self.possible_name_fragments.insert(node.ident.to_string());
+        visit::visit_item_mod(self, node);
     }
 }
 
@@ -441,5 +495,20 @@ mod tests {
             Some("cargo test --lib test_rollback")
         );
         assert_eq!(workflow_shell_line("        run: |"), None);
+    }
+
+    #[test]
+    fn module_or_path_fragments_suppress_false_zero_match() {
+        let mut report = CiTestFilterReport::default();
+        report.tests.push(ExplicitTest {
+            name: "works".to_string(),
+            path: PathBuf::from("src/foo.rs"),
+            line: 1,
+        });
+        report.possible_name_fragments.insert("foo".to_string());
+
+        assert!(has_possible_explicit_match(&report, "foo"));
+        assert!(has_possible_explicit_match(&report, "works"));
+        assert!(!has_possible_explicit_match(&report, "missing"));
     }
 }

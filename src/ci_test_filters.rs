@@ -346,7 +346,8 @@ impl<'ast> Visit<'ast> for ExplicitTestVisitor<'_> {
     }
 
     fn visit_item_mod(&mut self, node: &'ast ItemMod) {
-        self.possible_module_fragments.insert(node.ident.to_string());
+        self.possible_module_fragments
+            .insert(node.ident.to_string());
         visit::visit_item_mod(self, node);
     }
 }

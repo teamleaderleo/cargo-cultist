@@ -89,13 +89,13 @@ fn parse_diff_args(args: Vec<String>) -> Result<(Option<String>, Option<PathBuf>
                 if base.is_some() {
                     return Err("`--base` may only be specified once".into());
                 }
-                base = Some(
-                    args.next()
-                        .ok_or("`--base` requires a Git revision")?,
-                );
+                base = Some(args.next().ok_or("`--base` requires a Git revision")?);
             }
             _ if arg.starts_with('-') => {
-                return Err(format!("unknown diff option `{arg}`; try `cargo cultist diff --help`").into());
+                return Err(format!(
+                    "unknown diff option `{arg}`; try `cargo cultist diff --help`"
+                )
+                .into());
             }
             _ => {
                 if path.is_some() {

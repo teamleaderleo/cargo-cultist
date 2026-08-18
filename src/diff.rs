@@ -526,10 +526,7 @@ mod tests {
 
     #[test]
     fn detects_scope_tension_only_with_clear_precedent() {
-        let counts = BTreeMap::from([
-            ("tests".to_string(), 33),
-            ("unit_tests".to_string(), 88),
-        ]);
+        let counts = BTreeMap::from([("tests".to_string(), 33), ("unit_tests".to_string(), 88)]);
         let local_names = BTreeSet::from(["tests".to_string()]);
         assert_eq!(
             precedent_tension(&counts, &local_names),
@@ -539,10 +536,8 @@ mod tests {
         let mixed_local = BTreeSet::from(["tests".to_string(), "special_tests".to_string()]);
         assert_eq!(precedent_tension(&counts, &mixed_local), None);
 
-        let tied_counts = BTreeMap::from([
-            ("tests".to_string(), 10),
-            ("unit_tests".to_string(), 10),
-        ]);
+        let tied_counts =
+            BTreeMap::from([("tests".to_string(), 10), ("unit_tests".to_string(), 10)]);
         assert_eq!(precedent_tension(&tied_counts, &local_names), None);
     }
 

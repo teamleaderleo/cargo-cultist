@@ -21,6 +21,13 @@ enum OutputFormat {
     Json,
 }
 
+#[derive(Debug, Default, Eq, PartialEq)]
+struct DiffArgs {
+    base: Option<String>,
+    path: Option<PathBuf>,
+    format: OutputFormat,
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("cargo-cultist: {error}");
@@ -77,7 +84,7 @@ fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let (base, path, format) = parse_diff_args(args)?;
+    let DiffArgs { base, path, format } = parse_diff_args(args)?;
     let requested_root = path.unwrap_or(env::current_dir()?);
     let requested_root = requested_root.canonicalize()?;
     let root = git_repo_root(&requested_root)?;
@@ -127,24 +134,20 @@ fn parse_root_args(args: Vec<String>) -> Result<(OutputFormat, Option<PathBuf>),
     Ok((format, path))
 }
 
-fn parse_diff_args(
-    args: Vec<String>,
-) -> Result<(Option<String>, Option<PathBuf>, OutputFormat), Box<dyn Error>> {
-    let mut base = None;
-    let mut path = None;
-    let mut format = OutputFormat::Text;
+fn parse_diff_args(args: Vec<String>) -> Result<DiffArgs, Box<dyn Error>> {
+    let mut parsed = DiffArgs::default();
     let mut args = args.into_iter();
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--base" => {
-                if base.is_some() {
+                if parsed.base.is_some() {
                     return Err("`--base` may only be specified once".into());
                 }
-                base = Some(args.next().ok_or("`--base` requires a Git revision")?);
+                parsed.base = Some(args.next().ok_or("`--base` requires a Git revision")?);
             }
             "--format" => {
-                format = parse_output_format(
+                parsed.format = parse_output_format(
                     &args.next().ok_or("`--format` requires `text` or `json`")?,
                 )?;
             }
@@ -155,18 +158,18 @@ fn parse_diff_args(
                 .into());
             }
             _ => {
-                if path.is_some() {
+                if parsed.path.is_some() {
                     return Err(
                         "expected at most one path argument; try `cargo cultist diff --help`"
                             .into(),
                     );
                 }
-                path = Some(PathBuf::from(arg));
+                parsed.path = Some(PathBuf::from(arg));
             }
         }
     }
 
-    Ok((base, path, format))
+    Ok(parsed)
 }
 
 fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
@@ -207,7 +210,7 @@ mod tests {
 
     #[test]
     fn parses_diff_base_path_and_format() {
-        let (base, path, format) = parse_diff_args(vec![
+        let parsed = parse_diff_args(vec![
             "--base".to_string(),
             "origin/main".to_string(),
             "--format".to_string(),
@@ -216,9 +219,9 @@ mod tests {
         ])
         .unwrap();
 
-        assert_eq!(base.as_deref(), Some("origin/main"));
-        assert_eq!(path, Some(PathBuf::from(".")));
-        assert_eq!(format, OutputFormat::Json);
+        assert_eq!(parsed.base.as_deref(), Some("origin/main"));
+        assert_eq!(parsed.path, Some(PathBuf::from(".")));
+        assert_eq!(parsed.format, OutputFormat::Json);
     }
 
     #[test]

@@ -57,7 +57,6 @@ pub fn build_diff_analysis_report(
     let patch = git_diff(root, base)?;
     let changed = parse_changed_lines(&patch);
     let changed_modules = changed_test_modules(root, report, &changed);
-    let counts = module_name_counts(report);
 
     let mut analysis = AnalysisReport::new("diff-precedent", root.to_string_lossy().into_owned());
     analysis.claims.push(Claim::new(
@@ -89,8 +88,14 @@ pub fn build_diff_analysis_report(
             .filter(|name| name.as_str() != occurrence.name)
             .cloned()
             .collect();
-        let repository_count = counts.get(&occurrence.name).copied().unwrap_or_default();
-        let one_off = repository_count == 1 && report.occurrences.len() > 1;
+        let precedent_counts = module_name_counts_excluding(report, occurrence);
+        let repository_count = precedent_counts
+            .get(&occurrence.name)
+            .copied()
+            .unwrap_or_default();
+        let precedent_total = report.occurrences.len().saturating_sub(1);
+        let one_off = repository_count == 0 && precedent_total > 0;
+        let tension = precedent_tension(&precedent_counts, &local_names);
 
         if different_local_names.is_empty() && !one_off {
             continue;
@@ -108,9 +113,8 @@ pub fn build_diff_analysis_report(
                 Claim::new(
                     ClaimKind::Observed,
                     format!(
-                        "`{}` appears {repository_count} time(s) across {} test-gated modules.",
-                        occurrence.name,
-                        report.occurrences.len()
+                        "`{}` appears {repository_count} time(s) across {precedent_total} existing test-gated modules, excluding the changed declaration.",
+                        occurrence.name
                     ),
                 )
                 .with_evidence(Evidence::at(
@@ -121,8 +125,8 @@ pub fn build_diff_analysis_report(
                     occurrence_location,
                 ))
                 .with_evidence(Evidence::new(format!(
-                    "Repository counts: {}.",
-                    top_counts_summary(&counts)
+                    "Repository precedent counts: {}.",
+                    top_counts_summary(&precedent_counts)
                 ))),
             );
 
@@ -130,7 +134,7 @@ pub fn build_diff_analysis_report(
             finding = finding.with_claim(Claim::new(
                 ClaimKind::Observed,
                 format!(
-                    "The same file also uses: {}.",
+                    "The same file already uses: {}.",
                     different_local_names
                         .iter()
                         .map(|name| format!("`{name}`"))
@@ -140,12 +144,38 @@ pub fn build_diff_analysis_report(
             ));
         }
 
-        let observation = if !different_local_names.is_empty() && one_off {
-            "The new name differs from this file's existing precedent and is unique in the repository."
-        } else if !different_local_names.is_empty() {
-            "The new name differs from this file's existing test-module precedent."
-        } else {
-            "The new name is unique among the repository's test-gated modules."
+        if let Some((repository_name, file_name)) = tension {
+            finding.kind = "test-module-precedent-tension".to_string();
+            finding.title = "Test-module precedent tension".to_string();
+            finding = finding.with_claim(Claim::new(
+                ClaimKind::Observed,
+                format!(
+                    "Repository-wide precedent favors `{repository_name}`, while existing file-local precedent favors `{file_name}`."
+                ),
+            ));
+        }
+
+        let observation = match tension {
+            Some((repository_name, file_name)) => {
+                let alignment = if occurrence.name == repository_name {
+                    "The change follows repository-wide precedent and differs from file-local precedent."
+                } else if occurrence.name == file_name {
+                    "The change follows file-local precedent and differs from repository-wide precedent."
+                } else {
+                    "The change follows neither of the two conflicting precedent scopes."
+                };
+                format!("Repository-wide and file-local precedent disagree. {alignment}")
+            }
+            None if !different_local_names.is_empty() && one_off => {
+                "The new name differs from this file's existing precedent and does not appear elsewhere in the repository.".to_string()
+            }
+            None if !different_local_names.is_empty() => {
+                "The new name differs from this file's existing test-module precedent.".to_string()
+            }
+            None => {
+                "The new name does not appear among the repository's existing test-gated modules."
+                    .to_string()
+            }
         };
 
         finding = finding
@@ -207,7 +237,6 @@ pub fn print_diff_report(
         );
     }
 
-    let counts = module_name_counts(report);
     let mut finding_count = 0;
 
     for occurrence in changed_modules {
@@ -216,8 +245,14 @@ pub fn print_diff_report(
             .iter()
             .filter(|name| name.as_str() != occurrence.name)
             .collect();
-        let repository_count = counts.get(&occurrence.name).copied().unwrap_or_default();
-        let one_off = repository_count == 1 && report.occurrences.len() > 1;
+        let precedent_counts = module_name_counts_excluding(report, occurrence);
+        let repository_count = precedent_counts
+            .get(&occurrence.name)
+            .copied()
+            .unwrap_or_default();
+        let precedent_total = report.occurrences.len().saturating_sub(1);
+        let one_off = repository_count == 0 && precedent_total > 0;
+        let tension = precedent_tension(&precedent_counts, &local_names);
 
         if different_local_names.is_empty() && !one_off {
             continue;
@@ -234,16 +269,14 @@ pub fn print_diff_report(
         );
         println!("\nFACTS");
         println!(
-            "  `{}` appears {} time(s) across {} test-gated modules.",
-            occurrence.name,
-            repository_count,
-            report.occurrences.len()
+            "  `{}` appears {} time(s) across {} existing test-gated modules, excluding this changed declaration.",
+            occurrence.name, repository_count, precedent_total
         );
-        print_top_counts(&counts);
+        print_top_counts(&precedent_counts);
 
         if !different_local_names.is_empty() {
             println!(
-                "  The same file also uses: {}.",
+                "  The same file already uses: {}.",
                 different_local_names
                     .iter()
                     .map(|name| format!("`{name}`"))
@@ -252,15 +285,37 @@ pub fn print_diff_report(
             );
         }
 
+        if let Some((repository_name, file_name)) = tension {
+            println!("\nPRECEDENT TENSION");
+            println!("  Repository-wide precedent favors: `{repository_name}`");
+            println!("  Existing file-local precedent favors: `{file_name}`");
+        }
+
         println!("\nOBSERVATION");
-        if !different_local_names.is_empty() && one_off {
+        if let Some((repository_name, file_name)) = tension {
+            if occurrence.name == repository_name {
+                println!(
+                    "  Repository-wide and file-local precedent disagree. The change follows repository-wide precedent and differs from file-local precedent."
+                );
+            } else if occurrence.name == file_name {
+                println!(
+                    "  Repository-wide and file-local precedent disagree. The change follows file-local precedent and differs from repository-wide precedent."
+                );
+            } else {
+                println!(
+                    "  Repository-wide and file-local precedent disagree. The change follows neither scope."
+                );
+            }
+        } else if !different_local_names.is_empty() && one_off {
             println!(
-                "  The new name differs from this file's existing precedent and is unique in the repository."
+                "  The new name differs from this file's existing precedent and does not appear elsewhere in the repository."
             );
         } else if !different_local_names.is_empty() {
             println!("  The new name differs from this file's existing test-module precedent.");
         } else {
-            println!("  The new name is unique among the repository's test-gated modules.");
+            println!(
+                "  The new name does not appear among the repository's existing test-gated modules."
+            );
         }
 
         println!("\nQUESTION");
@@ -384,9 +439,18 @@ fn changed_test_modules<'a>(
         .collect()
 }
 
-fn module_name_counts(report: &TestModuleReport) -> BTreeMap<String, usize> {
+fn module_name_counts_excluding(
+    report: &TestModuleReport,
+    target: &TestModuleOccurrence,
+) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for occurrence in &report.occurrences {
+        if occurrence.path == target.path
+            && occurrence.line == target.line
+            && occurrence.name == target.name
+        {
+            continue;
+        }
         *counts.entry(occurrence.name.clone()).or_default() += 1;
     }
     counts
@@ -404,6 +468,33 @@ fn same_file_names(report: &TestModuleReport, target: &TestModuleOccurrence) -> 
         .collect()
 }
 
+fn repository_dominant_name(counts: &BTreeMap<String, usize>) -> Option<&str> {
+    let dominant_count = counts.values().copied().max()?;
+    let mut dominant = counts
+        .iter()
+        .filter(|(_, count)| **count == dominant_count)
+        .map(|(name, _)| name.as_str());
+    let first = dominant.next()?;
+    dominant.next().is_none().then_some(first)
+}
+
+fn file_local_name(local_names: &BTreeSet<String>) -> Option<&str> {
+    if local_names.len() == 1 {
+        local_names.iter().next().map(String::as_str)
+    } else {
+        None
+    }
+}
+
+fn precedent_tension<'a>(
+    counts: &'a BTreeMap<String, usize>,
+    local_names: &'a BTreeSet<String>,
+) -> Option<(&'a str, &'a str)> {
+    let repository_name = repository_dominant_name(counts)?;
+    let file_name = file_local_name(local_names)?;
+    (repository_name != file_name).then_some((repository_name, file_name))
+}
+
 fn top_counts_summary(counts: &BTreeMap<String, usize>) -> String {
     let mut counts: Vec<_> = counts.iter().collect();
     counts.sort_by(|(name_a, count_a), (name_b, count_b)| {
@@ -419,7 +510,10 @@ fn top_counts_summary(counts: &BTreeMap<String, usize>) -> String {
 }
 
 fn print_top_counts(counts: &BTreeMap<String, usize>) {
-    println!("  Repository counts: {}.", top_counts_summary(counts));
+    println!(
+        "  Repository precedent counts: {}.",
+        top_counts_summary(counts)
+    );
 }
 
 fn relative_path<'a>(root: &'a Path, path: &'a Path) -> &'a Path {
@@ -429,6 +523,53 @@ fn relative_path<'a>(root: &'a Path, path: &'a Path) -> &'a Path {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_scope_tension_only_with_clear_precedent() {
+        let counts = BTreeMap::from([
+            ("tests".to_string(), 33),
+            ("unit_tests".to_string(), 88),
+        ]);
+        let local_names = BTreeSet::from(["tests".to_string()]);
+        assert_eq!(
+            precedent_tension(&counts, &local_names),
+            Some(("unit_tests", "tests"))
+        );
+
+        let mixed_local = BTreeSet::from(["tests".to_string(), "special_tests".to_string()]);
+        assert_eq!(precedent_tension(&counts, &mixed_local), None);
+
+        let tied_counts = BTreeMap::from([
+            ("tests".to_string(), 10),
+            ("unit_tests".to_string(), 10),
+        ]);
+        assert_eq!(precedent_tension(&tied_counts, &local_names), None);
+    }
+
+    #[test]
+    fn excludes_changed_occurrence_from_precedent_counts() {
+        let root = Path::new("/repo");
+        let changed = TestModuleOccurrence {
+            name: "unit_tests".to_string(),
+            path: root.join("src/lib.rs"),
+            line: 40,
+        };
+        let report = TestModuleReport {
+            occurrences: vec![
+                TestModuleOccurrence {
+                    name: "tests".to_string(),
+                    path: root.join("src/lib.rs"),
+                    line: 20,
+                },
+                changed.clone(),
+            ],
+            parse_failures: Vec::new(),
+        };
+
+        let counts = module_name_counts_excluding(&report, &changed);
+        assert_eq!(counts.get("tests"), Some(&1));
+        assert_eq!(counts.get("unit_tests"), None);
+    }
 
     #[test]
     fn parses_added_lines_from_zero_context_diff() {

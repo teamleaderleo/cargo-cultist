@@ -3,6 +3,7 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
 use crate::test_modules::{TestModuleOccurrence, TestModuleReport};
 
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -46,6 +47,128 @@ pub fn git_repo_root(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
     let stdout = String::from_utf8(output.stdout)?;
     Ok(PathBuf::from(stdout.trim()).canonicalize()?)
+}
+
+pub fn build_diff_analysis_report(
+    root: &Path,
+    base: Option<&str>,
+    report: &TestModuleReport,
+) -> Result<AnalysisReport, Box<dyn Error>> {
+    let patch = git_diff(root, base)?;
+    let changed = parse_changed_lines(&patch);
+    let changed_modules = changed_test_modules(root, report, &changed);
+    let counts = module_name_counts(report);
+
+    let mut analysis = AnalysisReport::new("diff-precedent", root.to_string_lossy().into_owned());
+    analysis.claims.push(Claim::new(
+        ClaimKind::Derived,
+        match base {
+            Some(base) => format!(
+                "The diff contains added lines in {} Rust file(s), measured from the merge base with `{base}`.",
+                changed.rust_file_count()
+            ),
+            None => format!(
+                "The working-tree diff contains added lines in {} Rust file(s) relative to HEAD.",
+                changed.rust_file_count()
+            ),
+        },
+    ));
+
+    if changed_modules.is_empty() {
+        analysis.claims.push(Claim::new(
+            ClaimKind::Observed,
+            "No added or renamed test-gated module declarations were found in the diff.",
+        ));
+        return Ok(analysis);
+    }
+
+    for occurrence in changed_modules {
+        let local_names = same_file_names(report, occurrence);
+        let different_local_names: Vec<_> = local_names
+            .iter()
+            .filter(|name| name.as_str() != occurrence.name)
+            .cloned()
+            .collect();
+        let repository_count = counts.get(&occurrence.name).copied().unwrap_or_default();
+        let one_off = repository_count == 1 && report.occurrences.len() > 1;
+
+        if different_local_names.is_empty() && !one_off {
+            continue;
+        }
+
+        let occurrence_location = Location::new(
+            relative_path(root, &occurrence.path)
+                .to_string_lossy()
+                .into_owned(),
+            Some(occurrence.line),
+        );
+        let mut finding = Finding::new("test-module-precedent", "Test-module precedent")
+            .at(occurrence_location.clone())
+            .with_claim(
+                Claim::new(
+                    ClaimKind::Observed,
+                    format!(
+                        "`{}` appears {repository_count} time(s) across {} test-gated modules.",
+                        occurrence.name,
+                        report.occurrences.len()
+                    ),
+                )
+                .with_evidence(Evidence::at(
+                    format!(
+                        "This change adds `mod {}` behind a test cfg.",
+                        occurrence.name
+                    ),
+                    occurrence_location,
+                ))
+                .with_evidence(Evidence::new(format!(
+                    "Repository counts: {}.",
+                    top_counts_summary(&counts)
+                ))),
+            );
+
+        if !different_local_names.is_empty() {
+            finding = finding.with_claim(Claim::new(
+                ClaimKind::Observed,
+                format!(
+                    "The same file also uses: {}.",
+                    different_local_names
+                        .iter()
+                        .map(|name| format!("`{name}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            ));
+        }
+
+        let observation = if !different_local_names.is_empty() && one_off {
+            "The new name differs from this file's existing precedent and is unique in the repository."
+        } else if !different_local_names.is_empty() {
+            "The new name differs from this file's existing test-module precedent."
+        } else {
+            "The new name is unique among the repository's test-gated modules."
+        };
+
+        finding = finding
+            .with_claim(Claim::new(ClaimKind::Observed, observation))
+            .with_claim(Claim::new(
+                ClaimKind::Unknown,
+                "Repository evidence alone does not establish which naming scope should govern this change.",
+            ))
+            .with_question(
+                "Is the distinct module name intentional, or should it follow nearby precedent?",
+            );
+
+        analysis.findings.push(finding);
+    }
+
+    if analysis.findings.is_empty() {
+        analysis.claims.push(Claim::new(
+            ClaimKind::Observed,
+            "The changed test-module names match existing repository precedent.",
+        ));
+    }
+
+    Ok(analysis)
 }
 
 pub fn print_diff_report(
@@ -281,19 +404,22 @@ fn same_file_names(report: &TestModuleReport, target: &TestModuleOccurrence) -> 
         .collect()
 }
 
-fn print_top_counts(counts: &BTreeMap<String, usize>) {
+fn top_counts_summary(counts: &BTreeMap<String, usize>) -> String {
     let mut counts: Vec<_> = counts.iter().collect();
     counts.sort_by(|(name_a, count_a), (name_b, count_b)| {
         count_b.cmp(count_a).then(name_a.cmp(name_b))
     });
 
-    let summary = counts
+    counts
         .into_iter()
         .take(5)
         .map(|(name, count)| format!("`{name}`={count}"))
         .collect::<Vec<_>>()
-        .join(", ");
-    println!("  Repository counts: {summary}.");
+        .join(", ")
+}
+
+fn print_top_counts(counts: &BTreeMap<String, usize>) {
+    println!("  Repository counts: {}.", top_counts_summary(counts));
 }
 
 fn relative_path<'a>(root: &'a Path, path: &'a Path) -> &'a Path {

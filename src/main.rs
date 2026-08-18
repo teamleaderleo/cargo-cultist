@@ -1,4 +1,6 @@
 mod diff;
+mod finding;
+mod report;
 mod test_modules;
 
 use std::env;
@@ -6,10 +8,25 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::process;
 
-use diff::{git_repo_root, print_diff_report};
+use diff::{build_diff_analysis_report, git_repo_root, print_diff_report};
+use report::build_test_module_analysis;
 use test_modules::{analyze_test_modules, print_test_module_report};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+enum OutputFormat {
+    #[default]
+    Text,
+    Json,
+}
+
+#[derive(Debug, Default, Eq, PartialEq)]
+struct DiffArgs {
+    base: Option<String>,
+    path: Option<PathBuf>,
+    format: OutputFormat,
+}
 
 fn main() {
     if let Err(error) = run() {
@@ -42,18 +59,21 @@ fn run() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    if args.len() > 1 {
-        return Err("expected at most one path argument; try `cargo cultist --help`".into());
-    }
-
-    let root = args.pop().map(PathBuf::from).unwrap_or(env::current_dir()?);
-    let root = root.canonicalize()?;
-
-    println!("cargo-cultist {VERSION}");
-    println!("repository: {}\n", root.display());
-
+    let (format, path) = parse_root_args(args)?;
+    let root = path.unwrap_or(env::current_dir()?).canonicalize()?;
     let report = analyze_test_modules(&root)?;
-    print_test_module_report(&root, &report);
+
+    match format {
+        OutputFormat::Text => {
+            println!("cargo-cultist {VERSION}");
+            println!("repository: {}\n", root.display());
+            print_test_module_report(&root, &report);
+        }
+        OutputFormat::Json => {
+            let analysis = build_test_module_analysis(&root, &report);
+            println!("{}", serde_json::to_string_pretty(&analysis)?);
+        }
+    }
 
     Ok(())
 }
@@ -64,32 +84,72 @@ fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let (base, path) = parse_diff_args(args)?;
+    let DiffArgs { base, path, format } = parse_diff_args(args)?;
     let requested_root = path.unwrap_or(env::current_dir()?);
     let requested_root = requested_root.canonicalize()?;
     let root = git_repo_root(&requested_root)?;
-
-    println!("cargo-cultist {VERSION}");
-    println!("repository: {}\n", root.display());
-
     let report = analyze_test_modules(&root)?;
-    print_diff_report(&root, base.as_deref(), &report)?;
+
+    match format {
+        OutputFormat::Text => {
+            println!("cargo-cultist {VERSION}");
+            println!("repository: {}\n", root.display());
+            print_diff_report(&root, base.as_deref(), &report)?;
+        }
+        OutputFormat::Json => {
+            let analysis = build_diff_analysis_report(&root, base.as_deref(), &report)?;
+            println!("{}", serde_json::to_string_pretty(&analysis)?);
+        }
+    }
 
     Ok(())
 }
 
-fn parse_diff_args(args: Vec<String>) -> Result<(Option<String>, Option<PathBuf>), Box<dyn Error>> {
-    let mut base = None;
+fn parse_root_args(args: Vec<String>) -> Result<(OutputFormat, Option<PathBuf>), Box<dyn Error>> {
+    let mut format = OutputFormat::Text;
     let mut path = None;
     let mut args = args.into_iter();
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--format" => {
+                format = parse_output_format(
+                    &args.next().ok_or("`--format` requires `text` or `json`")?,
+                )?;
+            }
+            _ if arg.starts_with('-') => {
+                return Err(format!("unknown option `{arg}`; try `cargo cultist --help`").into());
+            }
+            _ => {
+                if path.is_some() {
+                    return Err(
+                        "expected at most one path argument; try `cargo cultist --help`".into(),
+                    );
+                }
+                path = Some(PathBuf::from(arg));
+            }
+        }
+    }
+
+    Ok((format, path))
+}
+
+fn parse_diff_args(args: Vec<String>) -> Result<DiffArgs, Box<dyn Error>> {
+    let mut parsed = DiffArgs::default();
+    let mut args = args.into_iter();
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
             "--base" => {
-                if base.is_some() {
+                if parsed.base.is_some() {
                     return Err("`--base` may only be specified once".into());
                 }
-                base = Some(args.next().ok_or("`--base` requires a Git revision")?);
+                parsed.base = Some(args.next().ok_or("`--base` requires a Git revision")?);
+            }
+            "--format" => {
+                parsed.format = parse_output_format(
+                    &args.next().ok_or("`--format` requires `text` or `json`")?,
+                )?;
             }
             _ if arg.starts_with('-') => {
                 return Err(format!(
@@ -98,25 +158,35 @@ fn parse_diff_args(args: Vec<String>) -> Result<(Option<String>, Option<PathBuf>
                 .into());
             }
             _ => {
-                if path.is_some() {
+                if parsed.path.is_some() {
                     return Err(
                         "expected at most one path argument; try `cargo cultist diff --help`"
                             .into(),
                     );
                 }
-                path = Some(PathBuf::from(arg));
+                parsed.path = Some(PathBuf::from(arg));
             }
         }
     }
 
-    Ok((base, path))
+    Ok(parsed)
+}
+
+fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
+    match value {
+        "text" => Ok(OutputFormat::Text),
+        "json" => Ok(OutputFormat::Json),
+        _ => Err(format!(
+            "unsupported output format `{value}`; expected `text` or `json`"
+        )),
+    }
 }
 
 fn print_help() {
     println!(
         "cargo-cultist {VERSION}\n\
 Repository-aware analysis for Rust codebases.\n\n\
-USAGE:\n    cargo cultist [PATH]\n    cargo cultist diff [--base REV] [PATH]\n    cargo-cultist [PATH]\n    cargo-cultist diff [--base REV] [PATH]\n\n\
+USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n\n\
 COMMANDS:\n    diff    Inspect changed Rust code against repository precedent.\n\n\
 Without a command, cargo-cultist inspects repository-wide test-module naming\n\
 conventions without inventing a universal rule."
@@ -126,9 +196,9 @@ conventions without inventing a universal rule."
 fn print_diff_help() {
     println!(
         "cargo-cultist diff\n\n\
-USAGE:\n    cargo cultist diff [--base REV] [PATH]\n\n\
+USAGE:\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n\n\
 By default, compares the working tree (including staged changes) against HEAD.\n\
-With --base REV, compares the current working tree against that Git revision.\n\n\
+With --base REV, compares changes from the merge base of REV and HEAD.\n\n\
 The first diff-aware check looks for added or renamed #[cfg(test)] modules and\n\
 compares their names with repository-wide and same-file precedent."
     );
@@ -139,16 +209,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_diff_base_and_path() {
-        let (base, path) = parse_diff_args(vec![
+    fn parses_diff_base_path_and_format() {
+        let parsed = parse_diff_args(vec![
             "--base".to_string(),
             "origin/main".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
             ".".to_string(),
         ])
         .unwrap();
 
-        assert_eq!(base.as_deref(), Some("origin/main"));
-        assert_eq!(path, Some(PathBuf::from(".")));
+        assert_eq!(parsed.base.as_deref(), Some("origin/main"));
+        assert_eq!(parsed.path, Some(PathBuf::from(".")));
+        assert_eq!(parsed.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn parses_root_json_format() {
+        let (format, path) =
+            parse_root_args(vec!["--format".to_string(), "json".to_string()]).unwrap();
+        assert_eq!(format, OutputFormat::Json);
+        assert_eq!(path, None);
     }
 
     #[test]

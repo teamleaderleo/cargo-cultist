@@ -48,7 +48,7 @@ By default it compares staged and unstaged work against `HEAD`:
 cargo cultist diff
 ```
 
-For a branch or pull request, provide a base revision:
+For a branch or pull request, provide a base revision. `cargo-cultist` finds the merge base between that revision and `HEAD`, then compares the current working tree from that point so the result follows branch/PR semantics and still includes local staged or unstaged work:
 
 ```bash
 cargo cultist diff --base origin/main

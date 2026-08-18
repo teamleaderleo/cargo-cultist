@@ -378,13 +378,6 @@ fn top_counts_summary(counts: &BTreeMap<String, usize>) -> String {
         .join(", ")
 }
 
-fn print_top_counts(counts: &BTreeMap<String, usize>) {
-    println!(
-        "  Repository precedent counts: {}.",
-        top_counts_summary(counts)
-    );
-}
-
 fn relative_path<'a>(root: &'a Path, path: &'a Path) -> &'a Path {
     path.strip_prefix(root).unwrap_or(path)
 }

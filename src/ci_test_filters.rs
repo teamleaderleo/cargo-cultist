@@ -153,65 +153,6 @@ pub fn build_ci_test_filter_analysis(root: &Path, report: &CiTestFilterReport) -
     analysis
 }
 
-pub fn print_ci_test_filter_report(root: &Path, report: &CiTestFilterReport) {
-    println!("CI TEST FILTER INVENTORY");
-    println!("  explicit #[test] declarations   {}", report.tests.len());
-    println!(
-        "  supported filtered commands     {}",
-        report.commands.len()
-    );
-
-    if !report.parse_failures.is_empty() {
-        println!("\nPARSE NOTES");
-        for (path, error) in &report.parse_failures {
-            println!("  {}: {error}", relative_path(root, path));
-        }
-        println!("\nOBSERVATION");
-        println!("  The explicit test inventory is incomplete, so filter misses are suppressed.");
-        return;
-    }
-
-    let mut misses = 0;
-    for command in &report.commands {
-        let direct_matches = report
-            .tests
-            .iter()
-            .filter(|test| test.name.contains(&command.filter))
-            .count();
-        let qualifier_match = report
-            .possible_name_fragments
-            .iter()
-            .any(|fragment| fragment.contains(&command.filter));
-        let path = relative_path(root, &command.workflow_path);
-        println!(
-            "\n  {}:{}  filter `{}` -> {} explicit function-name match(es)",
-            path, command.line, command.filter, direct_matches
-        );
-
-        if direct_matches == 0 && qualifier_match {
-            println!("    possible module/path qualifier match; syntax-only miss suppressed");
-        } else if direct_matches == 0 && !report.tests.is_empty() {
-            misses += 1;
-            println!("    command: {}", command.command);
-        }
-    }
-
-    if report.commands.is_empty() {
-        println!("\nOBSERVATION");
-        println!("  No supported `cargo test --lib FILTER` workflow commands were found.");
-    } else if misses == 0 {
-        println!("\nOBSERVATION");
-        println!(
-            "  Every supported workflow filter has an explicit function-name or module/path hint."
-        );
-    } else {
-        println!("\nQUESTION");
-        println!(
-            "  Do the zero-hint filters rely on generated tests, or have their intended tests moved or been renamed?"
-        );
-    }
-}
-
 fn has_possible_explicit_match(report: &CiTestFilterReport, filter: &str) -> bool {
     report.tests.iter().any(|test| test.name.contains(filter))
         || report
@@ -309,10 +250,7 @@ fn workflow_shell_line(line: &str) -> Option<&str> {
         return None;
     }
 
-    let step = trimmed
-        .strip_prefix("- ")
-        .map(str::trim)
-        .unwrap_or(trimmed);
+    let step = trimmed.strip_prefix("- ").map(str::trim).unwrap_or(trimmed);
     let candidate = step.strip_prefix("run:").map(str::trim).unwrap_or(step);
     if candidate.starts_with("cargo test ") {
         Some(candidate)

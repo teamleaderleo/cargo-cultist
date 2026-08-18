@@ -1,19 +1,18 @@
 name: Remove final legacy renderer helper
 
 on:
-  pull_request:
+  push:
+    branches:
+      - feature/unified-report-rendering
 
 permissions:
   contents: write
 
 jobs:
   cleanup:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feature/unified-report-rendering'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
       - name: Remove helper
         run: |
           python - <<'PY'

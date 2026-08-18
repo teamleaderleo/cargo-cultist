@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install stable Rust
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
@@ -22,3 +24,15 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+      - name: Dogfood repository scan
+        run: cargo run -- .
+      - name: Dogfood pull request diff
+        if: github.event_name == 'pull_request'
+        env:
+          CULTIST_BASE: ${{ github.event.pull_request.base.sha }}
+        run: cargo run -- diff --base "$CULTIST_BASE" .
+      - name: Dogfood push diff
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          CULTIST_BASE: ${{ github.event.before }}
+        run: cargo run -- diff --base "$CULTIST_BASE" .

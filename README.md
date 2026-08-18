@@ -76,6 +76,41 @@ QUESTION
 
 That distinction is the point: the primitive is a **finding**, not a lint error.
 
+### Historical companions (experimental)
+
+`cargo cultist history FILE` is research instrumentation for temporal precedent (#4) and negative-space associations (#7). It looks at recent non-merge commits touching one current file path and reports which other paths changed in the same considered commits.
+
+```bash
+cargo cultist history src/protocol.rs
+cargo cultist history --max-commits 200 src/protocol.rs
+cargo cultist history --format json src/protocol.rs
+```
+
+The first cohort filter removes revert commits and commits changing more than 100 paths. Output keeps support counts, representative examples, absence counterexamples, exclusions, and current limitations visible:
+
+```text
+HISTORICAL COMPANIONS
+  anchor: src/protocol.rs
+  cohort: 34 considered commit(s) from 37 discovered non-merge commit(s)
+
+COMPANIONS
+  generated/schema.json                                     31/34   91.2%
+    example abc12345  2026-07-03T10:20:00Z  regenerate protocol clients
+    example def45678  2026-06-12T08:05:00Z  add protocol field
+
+COUNTEREXAMPLE SAMPLE
+  generated/schema.json
+    absent 789abcde  2026-05-01T14:10:00Z  refactor protocol comments
+
+OBSERVATION
+  These are historical co-change associations for the current path, before semantic cohort selection or finding thresholds.
+
+QUESTION
+  Which of these companions represent a repository custom worth comparing against a future diff?
+```
+
+This command intentionally reports association evidence before deciding which associations deserve findings. The next research step is to run it against real repositories where Fieldwork already recovered source/generated, implementation/test, and other companion relationships.
+
 ## Usage
 
 From this repository while developing:
@@ -83,6 +118,7 @@ From this repository while developing:
 ```bash
 cargo run -- /path/to/a/rust/repository
 cargo run -- diff --base origin/main /path/to/a/rust/repository
+cargo run -- history /path/to/a/rust/repository/src/file.rs
 ```
 
 After installing locally:
@@ -92,6 +128,7 @@ cargo install --path .
 cd /path/to/a/rust/repository
 cargo cultist
 cargo cultist diff
+cargo cultist history src/file.rs
 ```
 
 You can also invoke the binary directly:
@@ -99,6 +136,7 @@ You can also invoke the binary directly:
 ```bash
 cargo-cultist /path/to/a/rust/repository
 cargo-cultist diff --base origin/main /path/to/a/rust/repository
+cargo-cultist history /path/to/a/rust/repository/src/file.rs
 ```
 
 ## Dogfooding

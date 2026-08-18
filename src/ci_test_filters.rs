@@ -309,10 +309,11 @@ fn workflow_shell_line(line: &str) -> Option<&str> {
         return None;
     }
 
-    let candidate = trimmed
-        .strip_prefix("run:")
+    let step = trimmed
+        .strip_prefix("- ")
         .map(str::trim)
         .unwrap_or(trimmed);
+    let candidate = step.strip_prefix("run:").map(str::trim).unwrap_or(step);
     if candidate.starts_with("cargo test ") {
         Some(candidate)
     } else {
@@ -488,6 +489,10 @@ mod tests {
     fn extracts_inline_and_block_workflow_commands() {
         assert_eq!(
             workflow_shell_line("      run: cargo test --lib test_rollback"),
+            Some("cargo test --lib test_rollback")
+        );
+        assert_eq!(
+            workflow_shell_line("      - run: cargo test --lib test_rollback"),
             Some("cargo test --lib test_rollback")
         );
         assert_eq!(

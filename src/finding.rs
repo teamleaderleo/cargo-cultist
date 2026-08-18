@@ -2,6 +2,10 @@ use serde::Serialize;
 
 pub const REPORT_SCHEMA_VERSION: u32 = 1;
 
+// Keep the full provenance vocabulary stable even while early analyzers only
+// emit a subset of it. Future checks can add richer claims without changing
+// the machine-readable taxonomy.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClaimKind {

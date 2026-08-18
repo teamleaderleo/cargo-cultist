@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "cloud-hypervisor-8734-precedent-tension",
+      "description": "Repository-wide test-module precedent favors unit_tests while vfio.rs already uses tests.",
+      "repository": "https://github.com/cloud-hypervisor/cloud-hypervisor.git",
+      "checkout": "439ff52249e819f41570a5f3f3bf535d4bfb3e6e",
+      "extra_refs": [
+        "1b004a7459ac752e1d7ad5a48237a1cb8608003b"
+      ],
+      "command": [
+        "diff",
+        "--base",
+        "1b004a7459ac752e1d7ad5a48237a1cb8608003b",
+        "--format",
+        "json",
+        "."
+      ],
+      "expect": {
+        "analysis": "diff-precedent",
+        "finding_kinds": [
+          "test-module-precedent-tension"
+        ],
+        "contains": [
+          "`unit_tests` appears 88 time(s) across 127 existing test-gated modules, excluding the changed declaration.",
+          "Repository-wide precedent favors `unit_tests`, while existing file-local precedent favors `tests`."
+        ]
+      }
+    },
+    {
+      "id": "oxc-rules-generated-companions",
+      "description": "Oxc source rule registry changes almost always travel with the two generated Rust registries.",
+      "repository": "https://github.com/oxc-project/oxc.git",
+      "checkout": "8783524015b1e6ff1c39ccf426df0bb07cbbc588",
+      "command": [
+        "history",
+        "--max-commits",
+        "100",
+        "--format",
+        "json",
+        "crates/oxc_linter/src/rules.rs"
+      ],
+      "expect": {
+        "analysis": "historical_companions",
+        "companions": [
+          {
+            "path": "crates/oxc_linter/src/generated/rule_runner_impls.rs",
+            "min_support": 99,
+            "opportunities": 100
+          },
+          {
+            "path": "crates/oxc_linter/src/generated/rules_enum.rs",
+            "min_support": 99,
+            "opportunities": 100
+          }
+        ]
+      }
+    },
+    {
+      "id": "oxc-generated-registry-reverse-direction",
+      "description": "The reverse generated-to-source relation is weaker, preserving the directional 94/100 result.",
+      "repository": "https://github.com/oxc-project/oxc.git",
+      "checkout": "8783524015b1e6ff1c39ccf426df0bb07cbbc588",
+      "command": [
+        "history",
+        "--max-commits",
+        "100",
+        "--format",
+        "json",
+        "crates/oxc_linter/src/generated/rules_enum.rs"
+      ],
+      "expect": {
+        "analysis": "historical_companions",
+        "companions": [
+          {
+            "path": "crates/oxc_linter/src/rules.rs",
+            "min_support": 94,
+            "max_support": 94,
+            "opportunities": 100
+          },
+          {
+            "path": "crates/oxc_linter/src/generated/rule_runner_impls.rs",
+            "min_support": 94,
+            "opportunities": 100
+          }
+        ]
+      }
+    }
+  ]
+}

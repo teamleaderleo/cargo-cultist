@@ -42,6 +42,19 @@
       "reason": "The exact case is pinned, but today's Rust/local analyzers do not recover the TypeScript/provider/PR lineage needed to evaluate the lesson-promotion claim."
     },
     {
+      "id": "stensibly-1575-pre-guard-jei",
+      "status": "replayable",
+      "repository": "teamleaderleo/stensibly",
+      "ref": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+      "fetch_depth": 256,
+      "history_file": "convex/schema.ts",
+      "history_max": 20,
+      "base": null,
+      "repeat_scan": false,
+      "source": "stensibly#1575 pre-guard / cultist#180",
+      "question": "Before the generalized guard existed, does a budgeted JEI packet preserve the two prior same-class Convex index deployability repairs?"
+    },
+    {
       "id": "linux-fieldwork-bestiary-675",
       "status": "adapter_gap",
       "repository": "teamleaderleo/linux-fieldwork",

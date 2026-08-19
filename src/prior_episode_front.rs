@@ -8,6 +8,20 @@ use crate::closure_episode::{
     ClosureEpisodeDisposition, IssueClosureEpisode, IssueClosureEvaluation,
     evaluate_closure_episode,
 };
+use crate::lesson_promotion::{
+    LessonPromotionClaim, LessonPromotionEvaluation, PromotionStatus, evaluate_lesson_promotion,
+};
+use crate::observation_reconciliation::{
+    ObservationReconciliationClaim, ObservationReconciliationEvaluation,
+    ObservationReconciliationStatus, evaluate_observation_reconciliation,
+};
+use crate::project_memory::ProjectMemoryPacket;
+use crate::proof_surface::{
+    ProofSurfaceClaim, ProofSurfaceEvaluation, ProofSurfaceStatus, evaluate_proof_surface,
+};
+use crate::proxy_revision::{
+    ProxyRevisionClaim, ProxyRevisionEvaluation, ProxyRevisionStatus, evaluate_proxy_revision,
+};
 use crate::review_memory::{
     ReviewMemoryEvaluation, ReviewMemoryQuery, ReviewThreadDisposition, evaluate_review_memory,
 };
@@ -36,6 +50,26 @@ pub enum PriorEpisodeInput {
         id: String,
         episode: Box<IssueClosureEpisode>,
     },
+    LessonPromotion {
+        id: String,
+        memory: Box<ProjectMemoryPacket>,
+        claim: Box<LessonPromotionClaim>,
+    },
+    ProxyRevision {
+        id: String,
+        memory: Box<ProjectMemoryPacket>,
+        claim: Box<ProxyRevisionClaim>,
+    },
+    ObservationReconciliation {
+        id: String,
+        memory: Box<ProjectMemoryPacket>,
+        claim: Box<ObservationReconciliationClaim>,
+    },
+    ProofSurface {
+        id: String,
+        memory: Box<ProjectMemoryPacket>,
+        claim: Box<ProofSurfaceClaim>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
@@ -45,6 +79,10 @@ pub enum PriorEpisodeNextAction {
     RecomputeAndRefreshReviewThread,
     AcquireMissingReviewCoordinate,
     InspectPriorFailureAndRereport,
+    UseAcceptedGuard,
+    UseCorrectedPredicate,
+    AwaitBoundedConvergence,
+    ProduceRequiredProofArtifact,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -60,6 +98,26 @@ pub enum PriorEpisodeFrontItem {
         next: PriorEpisodeNextAction,
         evaluation: IssueClosureEvaluation,
         source_refs: Vec<String>,
+    },
+    LessonPromotion {
+        id: String,
+        next: PriorEpisodeNextAction,
+        evaluation: LessonPromotionEvaluation,
+    },
+    ProxyRevision {
+        id: String,
+        next: PriorEpisodeNextAction,
+        evaluation: ProxyRevisionEvaluation,
+    },
+    ObservationReconciliation {
+        id: String,
+        next: PriorEpisodeNextAction,
+        evaluation: ObservationReconciliationEvaluation,
+    },
+    ProofSurface {
+        id: String,
+        next: PriorEpisodeNextAction,
+        evaluation: ProofSurfaceEvaluation,
     },
 }
 
@@ -156,6 +214,79 @@ pub fn evaluate_prior_episode_front(
                     next: PriorEpisodeNextAction::InspectPriorFailureAndRereport,
                     evaluation,
                     source_refs: closure_source_refs(episode),
+                });
+            }
+            PriorEpisodeInput::LessonPromotion { id, memory, claim } => {
+                let evaluation = evaluate_lesson_promotion(memory, claim).map_err(|error| {
+                    PriorEpisodeFrontError::new(format!(
+                        "prior-episode input `{id}` has invalid lesson-promotion evidence: {error}"
+                    ))
+                })?;
+                if evaluation.status != PromotionStatus::ObservedPromotion {
+                    return Err(PriorEpisodeFrontError::new(format!(
+                        "prior-episode input `{id}` returned unsupported lesson-promotion status {:?}",
+                        evaluation.status
+                    )));
+                }
+                items.push(PriorEpisodeFrontItem::LessonPromotion {
+                    id: id.clone(),
+                    next: PriorEpisodeNextAction::UseAcceptedGuard,
+                    evaluation,
+                });
+            }
+            PriorEpisodeInput::ProxyRevision { id, memory, claim } => {
+                let evaluation = evaluate_proxy_revision(memory, claim).map_err(|error| {
+                    PriorEpisodeFrontError::new(format!(
+                        "prior-episode input `{id}` has invalid proxy-revision evidence: {error}"
+                    ))
+                })?;
+                if evaluation.status != ProxyRevisionStatus::ObservedProxyRevision {
+                    return Err(PriorEpisodeFrontError::new(format!(
+                        "prior-episode input `{id}` returned unsupported proxy-revision status {:?}",
+                        evaluation.status
+                    )));
+                }
+                items.push(PriorEpisodeFrontItem::ProxyRevision {
+                    id: id.clone(),
+                    next: PriorEpisodeNextAction::UseCorrectedPredicate,
+                    evaluation,
+                });
+            }
+            PriorEpisodeInput::ObservationReconciliation { id, memory, claim } => {
+                let evaluation =
+                    evaluate_observation_reconciliation(memory, claim).map_err(|error| {
+                        PriorEpisodeFrontError::new(format!(
+                            "prior-episode input `{id}` has invalid observation-reconciliation evidence: {error}"
+                        ))
+                    })?;
+                if evaluation.status != ObservationReconciliationStatus::ObservedReconciliation {
+                    return Err(PriorEpisodeFrontError::new(format!(
+                        "prior-episode input `{id}` returned unsupported observation-reconciliation status {:?}",
+                        evaluation.status
+                    )));
+                }
+                items.push(PriorEpisodeFrontItem::ObservationReconciliation {
+                    id: id.clone(),
+                    next: PriorEpisodeNextAction::AwaitBoundedConvergence,
+                    evaluation,
+                });
+            }
+            PriorEpisodeInput::ProofSurface { id, memory, claim } => {
+                let evaluation = evaluate_proof_surface(memory, claim).map_err(|error| {
+                    PriorEpisodeFrontError::new(format!(
+                        "prior-episode input `{id}` has invalid proof-surface evidence: {error}"
+                    ))
+                })?;
+                if evaluation.status != ProofSurfaceStatus::ObservedProofSurfaceMismatch {
+                    return Err(PriorEpisodeFrontError::new(format!(
+                        "prior-episode input `{id}` returned unsupported proof-surface status {:?}",
+                        evaluation.status
+                    )));
+                }
+                items.push(PriorEpisodeFrontItem::ProofSurface {
+                    id: id.clone(),
+                    next: PriorEpisodeNextAction::ProduceRequiredProofArtifact,
+                    evaluation,
                 });
             }
         }
@@ -265,7 +396,12 @@ fn validate_query(query: &PriorEpisodeFrontQuery) -> Result<(), PriorEpisodeFron
 impl PriorEpisodeInput {
     fn id(&self) -> &str {
         match self {
-            Self::ReviewMemory { id, .. } | Self::IssueClosure { id, .. } => id,
+            Self::ReviewMemory { id, .. }
+            | Self::IssueClosure { id, .. }
+            | Self::LessonPromotion { id, .. }
+            | Self::ProxyRevision { id, .. }
+            | Self::ObservationReconciliation { id, .. }
+            | Self::ProofSurface { id, .. } => id,
         }
     }
 }

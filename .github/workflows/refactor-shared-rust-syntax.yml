@@ -1,3 +1,4 @@
+# One-shot refactor workflow; retire after the source commit lands.
 name: Refactor shared Rust syntax fingerprint
 
 on:
@@ -143,10 +144,6 @@ fn is_doc_group(token: &TokenTree) -> bool {
           start = text.index('fn rust_syntax_fingerprint(source: &str) -> Result<String, Box<dyn Error>> {')
           end = text.index('fn companion_counts(', start)
           text = text[:start] + text[end:]
-          # Shared helper returns Option rather than Result; adapt the four existing test sites.
-          text = text.replace('rust_syntax_fingerprint(before).unwrap()', 'rust_syntax_fingerprint(before).unwrap()')
-          text = text.replace('rust_syntax_fingerprint(after).unwrap()', 'rust_syntax_fingerprint(after).unwrap()')
-          # classify_rust_edit already destructures Ok; convert that pair to Some.
           text = text.replace(
               '    let (Ok(before), Ok(after)) = (\n        rust_syntax_fingerprint(&before),\n        rust_syntax_fingerprint(&after),\n    ) else {\n',
               '    let (Some(before), Some(after)) = (\n        rust_syntax_fingerprint(&before),\n        rust_syntax_fingerprint(&after),\n    ) else {\n',

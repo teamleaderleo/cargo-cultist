@@ -1,0 +1,73 @@
+name: Repair active-work prefilter identity
+
+on:
+  push:
+    branches:
+      - fix/active-work-prefilter-identity
+    paths:
+      - '.github/workflows/fix-active-work-prefilter-identity.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/active-work-prefilter-identity
+          fetch-depth: 0
+      - name: Apply reviewed prefilter identity repair and self-delete
+        shell: bash
+        env:
+          SOURCE: scripts/active_work_heads_up_ci.py
+          EXPECTED_BLOB: 6b7049b568c18122419cc0f40324799ebd562d96
+          SELF: .github/workflows/fix-active-work-prefilter-identity.yml
+        run: |
+          set -euo pipefail
+          test "$(git hash-object "$SOURCE")" = "$EXPECTED_BLOB"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/active_work_heads_up_ci.py')
+          text = path.read_text()
+          old = '''    current_id = str(current["id"])
+              current_sha = str(current["head_sha"])
+              for work in active_work:
+                  if not isinstance(work, dict):
+                      continue
+                  if str(work["id"]) == current_id or str(work["head_sha"]) == current_sha:
+                      continue
+          '''
+          new = '''    current_id = str(current["id"])
+              for work in active_work:
+                  if not isinstance(work, dict):
+                      continue
+                  if str(work["id"]) == current_id:
+                      continue
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one prefilter identity block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, 'scripts')
+          from active_work_heads_up_ci import potential_direct_overlap
+          current = {"id": "#1", "head_sha": "shared", "changed_paths": ["src/a.rs"]}
+          other = {"id": "#2", "head_sha": "shared", "changed_paths": ["src/a.rs"]}
+          inventory = {"current": current, "active_work": [current, other]}
+          assert potential_direct_overlap(inventory), inventory
+          PY
+          python3 -m py_compile "$SOURCE"
+          git diff --check -- "$SOURCE"
+          test "$(git diff --name-only)" = "$SOURCE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$SOURCE"
+          git rm "$SELF"
+          staged="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n%s\n' "$SELF" "$SOURCE" | sort)"
+          test "$staged" = "$expected"
+          git commit -m "fix: keep CI active-work identities distinct"
+          git push origin HEAD:fix/active-work-prefilter-identity

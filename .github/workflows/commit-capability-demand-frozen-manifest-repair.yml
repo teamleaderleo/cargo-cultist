@@ -1,0 +1,47 @@
+name: Commit frozen-manifest semantic repair
+
+on:
+  push:
+    branches:
+      - fix/capability-demand-frozen-manifest-binding
+    paths:
+      - scripts/apply_capability_demand_frozen_manifest_repair.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/capability-demand-frozen-manifest-binding
+          fetch-depth: 0
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+      - name: Apply verified semantic repair
+        run: python scripts/apply_capability_demand_frozen_manifest_repair.py
+      - name: Verify semantic repair
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --test capability_demand_retirement_receipts
+          cargo test
+          git diff --check
+      - name: Commit non-workflow repair
+        run: |
+          git config user.name "Cultist repair carrier"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            src/capability_demand_retirement.rs \
+            tests/capability_demand_retirement_receipts.rs \
+            research/capability-demand-retirement/stensibly-convex-index-review-v1-input-manifest-32264661913.json \
+            research/capability-demand-retirement/run-receipts.md
+          git rm scripts/apply_capability_demand_frozen_manifest_repair.py
+          git commit -m "fix: bind retirement receipts to frozen trial inputs"
+          git push origin HEAD:fix/capability-demand-frozen-manifest-binding

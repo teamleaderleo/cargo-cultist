@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 PR_PAGE_QUERY = r"""
 query($owner: String!, $name: String!, $after: String) {
@@ -184,6 +185,40 @@ def build_inventory(repo: str, current_number: int) -> dict[str, object]:
     }
 
 
+def potential_direct_overlap(inventory: dict[str, object]) -> bool:
+    current = inventory["current"]
+    active_work = inventory["active_work"]
+    if not isinstance(current, dict) or not isinstance(active_work, list):
+        raise RuntimeError("inventory work fields have unexpected types")
+
+    current_paths = {str(path) for path in current["changed_paths"]}
+    current_id = str(current["id"])
+    current_sha = str(current["head_sha"])
+    for work in active_work:
+        if not isinstance(work, dict):
+            continue
+        if str(work["id"]) == current_id or str(work["head_sha"]) == current_sha:
+            continue
+        if current_paths.intersection(str(path) for path in work["changed_paths"]):
+            return True
+    return False
+
+
+def quiet_summary(inventory: dict[str, object]) -> str:
+    return "\n".join(
+        [
+            "## Cargo Cultist active-work heads-up",
+            "",
+            f"Observed `{inventory['observed_at']}` from `{inventory['source']}`.",
+            "",
+            "No direct active-work path overlap worth surfacing.",
+            "",
+            "> Advisory only. No semantic independence is inferred from disjoint paths.",
+            "",
+        ]
+    )
+
+
 def render_summary(report: dict[str, object]) -> str:
     heads_up = report["heads_up"]
     if not isinstance(heads_up, list):
@@ -239,7 +274,10 @@ def main() -> None:
     repo = os.environ["GITHUB_REPOSITORY"]
     current_number = int(os.environ["CURRENT_PR"])
 
+    inventory_started = time.monotonic()
     inventory = build_inventory(repo, current_number)
+    inventory_seconds = time.monotonic() - inventory_started
+
     current = inventory["current"]
     if not isinstance(current, dict):
         raise RuntimeError("current work item must be an object")
@@ -247,6 +285,24 @@ def main() -> None:
     if not isinstance(active_work, list):
         raise RuntimeError("active_work must be a list")
 
+    print(
+        f"inventory: {len(active_work)} open PR(s), current #{current_number}, "
+        f"{len(current['changed_paths'])} current path(s)"
+    )
+
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not potential_direct_overlap(inventory):
+        print(
+            "No direct active-work path overlap worth surfacing. "
+            "Rust analyzer skipped after exact provider-path prefilter."
+        )
+        print(f"timing: inventory {inventory_seconds:.2f}s; analyzer 0.00s")
+        if summary_path:
+            with Path(summary_path).open("a") as summary:
+                summary.write(quiet_summary(inventory))
+        return
+
+    analyzer_started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="cultist-active-work-") as temporary:
         inventory_path = Path(temporary, "inventory.json")
         inventory_path.write_text(json.dumps(inventory, indent=2) + "\n")
@@ -262,6 +318,7 @@ def main() -> None:
             ],
             text=True,
         )
+    analyzer_seconds = time.monotonic() - analyzer_started
 
     report = json.loads(output)
     heads_up = report["heads_up"]
@@ -269,28 +326,24 @@ def main() -> None:
         raise RuntimeError("heads_up report field must be a list")
 
     print(
-        f"inventory: {len(active_work)} open PR(s), current #{current_number}, "
-        f"{len(current['changed_paths'])} current path(s)"
-    )
-    print(
         f"examined: {report['candidates_examined']} active candidate(s); "
         f"self excluded: {report['self_candidates_excluded']}"
     )
-    if not heads_up:
-        print("No direct active-work path overlap worth surfacing.")
-    else:
-        print(f"HEADS UP: {len(heads_up)} active overlap(s)")
-        for item in heads_up:
-            work = item["work"]
-            print(
-                f"  {work['id']} {work['title']} "
-                f"[{str(work['head_sha'])[:8]} updated {work['updated_at']}]"
-            )
-            for path in item["overlap_paths"]:
-                print(f"    overlaps {path}")
-            print("    No duplicate intent or incompatibility inferred.")
+    print(f"HEADS UP: {len(heads_up)} active overlap(s)")
+    for item in heads_up:
+        work = item["work"]
+        print(
+            f"  {work['id']} {work['title']} "
+            f"[{str(work['head_sha'])[:8]} updated {work['updated_at']}]"
+        )
+        for path in item["overlap_paths"]:
+            print(f"    overlaps {path}")
+        print("    No duplicate intent or incompatibility inferred.")
+    print(
+        f"timing: inventory {inventory_seconds:.2f}s; "
+        f"analyzer {analyzer_seconds:.2f}s"
+    )
 
-    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with Path(summary_path).open("a") as summary:
             summary.write(render_summary(report))

@@ -31,6 +31,13 @@ jobs:
             scripts/project_memory_github_lineage.py \
             scripts/project_memory_github_lineage_test.py
           python scripts/project_memory_github_lineage_test.py
+      - name: GitHub review-memory adapter controls
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/review_memory_github.py \
+            scripts/review_memory_github_test.py
+          python scripts/review_memory_github_test.py
       - name: Active work heads-up
         if: github.event_name == 'pull_request'
         continue-on-error: true

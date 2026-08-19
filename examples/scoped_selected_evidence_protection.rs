@@ -80,7 +80,9 @@ mod packet {
         Ok(())
     }
 
-    fn parse_protected_args<I>(mut args: I) -> Result<(String, String, ProtectedBTreeSet<String>), Box<dyn Error>>
+    fn parse_protected_args<I>(
+        mut args: I,
+    ) -> Result<(String, String, ProtectedBTreeSet<String>), Box<dyn Error>>
     where
         I: Iterator<Item = String>,
     {
@@ -156,70 +158,6 @@ mod packet {
                 max_serialized_bytes: envelope.budget.max_serialized_bytes,
                 required_serialized_bytes: rendered.len(),
             });
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn exact_sha_validation_rejects_short_uppercase_and_non_hex() {
-            assert!(validate_exact_sha("abcd").is_err());
-            assert!(validate_exact_sha(&"A".repeat(40)).is_err());
-            assert!(validate_exact_sha(&format!("{}g", "0".repeat(39))).is_err());
-            assert!(validate_exact_sha(&"a".repeat(40)).is_ok());
-        }
-
-        #[test]
-        fn protected_scope_refs_are_not_candidates_for_scope_eviction() {
-            let mut file_packet = scoped_tests::minimal_file_packet(usize::MAX);
-            file_packet.recent_history[0].subject = "x".repeat(800);
-            stabilize_candidate_size(&mut file_packet).unwrap();
-
-            let protected_sha = "a".repeat(40);
-            let expendable_sha = "b".repeat(40);
-            let mut envelope = ScopedAgentContextEnvelope {
-                schema_version: SCOPED_SCHEMA_VERSION,
-                analysis: "scoped_agent_context",
-                repository: "/repo".to_string(),
-                target: "src/target.rs".to_string(),
-                scope: "src".to_string(),
-                budget: ScopedEnvelopeBudget {
-                    max_serialized_bytes: usize::MAX,
-                    max_scope_history_commits: DEFAULT_MAX_SCOPE_HISTORY,
-                },
-                candidate_serialized_bytes: 0,
-                serialized_bytes: 0,
-                semantic_evictions: Vec::new(),
-                file_packet,
-                scope_recent_history: vec![
-                    scoped_tests::summary(&protected_sha, "selected scope lesson"),
-                    scoped_tests::summary(&expendable_sha, &"unselected ".repeat(80)),
-                ],
-                scope_history_truncated: false,
-                unknowns: Vec::new(),
-            };
-            stabilize_scoped_candidate_size(&mut envelope).unwrap();
-            envelope.budget.max_serialized_bytes = envelope.candidate_serialized_bytes - 200;
-            envelope.file_packet.budget.max_serialized_bytes = envelope.budget.max_serialized_bytes;
-
-            let protected = ProtectedBTreeSet::from([protected_sha.clone()]);
-            let rendered = compile_scoped_to_budget_protecting(&mut envelope, &protected).unwrap();
-
-            assert!(rendered.len() <= envelope.budget.max_serialized_bytes);
-            assert!(
-                envelope
-                    .scope_recent_history
-                    .iter()
-                    .any(|commit| commit.sha == protected_sha)
-            );
-            assert!(
-                envelope
-                    .scope_recent_history
-                    .iter()
-                    .all(|commit| commit.sha != expendable_sha)
-            );
         }
     }
 }

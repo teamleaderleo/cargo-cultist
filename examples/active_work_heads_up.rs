@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 
 const SCHEMA_VERSION: u32 = 1;
 const MAX_HEADS_UP: usize = 12;
-const USAGE: &str =
-    "usage: cargo run --example active_work_heads_up -- ACTIVE_WORK_INVENTORY.json [FOCUS_PATH ...]";
+const USAGE: &str = "usage: cargo run --example active_work_heads_up -- ACTIVE_WORK_INVENTORY.json [FOCUS_PATH ...]";
 
 #[derive(Debug, Clone, Deserialize)]
 struct ActiveWorkInventory {

@@ -1,13 +1,17 @@
 # Roadmap
 
-`cargo-cultist` explores repository reasoning between two familiar extremes:
+Cultist explores repository reasoning between two familiar extremes:
 
 - deterministic tools that enforce rules we already know; and
 - unconstrained AI review that is asked to infer everything from a codebase.
 
-The project goal is to make the middle useful.
+The project goal is to make the middle useful: recover bounded repository evidence, preserve what that evidence does and does not establish, and make the next human or agent less likely to repeat avoidable investigation.
 
-## Core loop
+Rust currently provides the deepest semantic adapter and the `cargo-cultist` distribution, but Cultist's evidence model is repository-oriented. Git history, provenance, active-change coordination, decision memory, and explicit project guidance can apply independently of source language.
+
+Umbrella tracking issue: #19.
+
+## Core evidence loop
 
 ```text
 deterministic facts
@@ -15,124 +19,257 @@ deterministic facts
   -> counterexample search
   -> questions worth asking
   -> optional explanation
-  -> human decision
+  -> human/project decision
   -> preserved rationale
   -> promote stable consensus into deterministic policy
 ```
 
-The primitive is a **finding**, not an error. A good finding says what the repository evidence shows, what it does not establish, and why a human may want to look.
+The primitive is a **finding**, not an error. A good finding says what the repository evidence shows, what it does not establish, and why a worker may want to look.
+
+## Agent work loop
+
+The newer agent-facing work composes those primitives across time:
+
+```text
+BEFORE CODE
+  brief / JEI
+  recover the evidence most likely to matter before the edit
+
+DURING CODE
+  diff / preflight / evidence queries
+  reconcile live work with repository precedent, guidance,
+  active changes, decisions, counterexamples, and unknowns
+
+AFTER CODE
+  teach / reviewed decision / promoted rule
+  preserve an earned lesson when there is one
+
+NEXT WORKER
+  retrieves the reviewed repository memory
+```
+
+Compact form:
+
+```text
+retrieve -> work -> reconcile -> preserve -> retrieve
+```
+
+Lifecycle composition is tracked in #74. Bounded pre-edit context work is tracked in #62.
+
+## Different views, shared evidence
+
+Several research directions answer different questions. They should compose rather than create parallel truth systems.
+
+### Lifecycle: when?
+
+`brief -> diff -> teach` asks **when** evidence should be recovered, reconciled, and preserved.
+
+Tracking: #74, #62, #10.
+
+### Just-enough information: what?
+
+JEI work asks **what** evidence is worth spending the worker's attention/context budget on for the current task.
+
+Selection should favor explicit authority/decisions, exact action facts, counterevidence, active/freshness information, local precedent, and useful unknowns before broad context volume.
+
+Tracking: #106.
+
+### Review intelligence: where?
+
+Review envelopes ask **where** scarce reviewer attention should go and what evidence would change the review decision. A review view should reuse the same facts rather than invent an opaque risk score.
+
+Tracking: #109.
+
+### Compact representation: how?
+
+C1 and compact-IR research ask **how** evidence should be transmitted efficiently and interoperably.
+
+Merged C1 work is a lossless structural encoding of the current `AnalysisReport`; it deliberately does not perform JEI selection or semantic abbreviation. The broader compact-IR work can add explicit validity, omission, transition, invalidation, supersession, and reopen semantics as those concepts earn a stable representation.
+
+Tracking: #113, #115.
+
+### Decision memory: what survives?
+
+Decision-memory work asks **what reviewed rationale should remain recoverable** after the original task and conversation are gone.
+
+Tracking: #10 plus decision-memory research under #75.
+
+A new projection should not invent a second provenance, authority, freshness, counterexample, unknown, or omission vocabulary merely because its layout differs.
 
 ## Principles
 
 ### Ask questions before inventing rules
 
-Repository statistics are evidence, not policy. If a repository uses `unit_tests` 89 times and `tests` 33 times, that does not automatically make `unit_tests` correct everywhere.
+Repository statistics are evidence, not policy. Popularity alone does not make a convention correct for every scope.
 
 ### Keep scope visible
 
-Precedent can differ at the same time across a file, crate, repository, and recent history. When those scopes disagree, Cultist should show the tension instead of hiding it in one score.
+Precedent can differ across a file, package/crate, repository, recent history, explicit project guidance, and current work. When those scopes disagree, Cultist should expose the tension rather than flatten it into one score.
 
-Tracking issue: #3.
+Tracking: #3.
 
 ### Search counterexamples first
 
-Before emitting a precedent-based finding, look for exceptions and ask whether those exceptions share a reason that applies to the changed code.
+Before promoting precedent or association into a stronger claim, look for exceptions and ask whether they reveal a narrower cohort, scope, or reason.
 
-Tracking issue: #6.
+Tracking: #6.
 
 ### Preserve provenance
 
-Cultist should distinguish:
+Cultist distinguishes:
 
 - **PROVEN** — exact machine facts or guarantees;
 - **DERIVED** — deterministic conclusions from explicit facts;
-- **OBSERVED** — empirical repository patterns;
+- **OBSERVED** — empirical or provider-supplied observations;
 - **INFERRED** — plausible interpretations;
-- **UNKNOWN** — evidence is insufficient to recover the reason.
+- **UNKNOWN** — evidence is insufficient to recover the answer.
 
-Tracking issue: #15.
+Tracking: #15.
+
+### Applicability is separate from source authority
+
+An explicit source can still be stale, copied, or attached to the wrong current work coordinate. Remote prose and metadata should remain bound to exact work identity/head/freshness evidence. Contradictory exact-head evidence can make the source's current applicability unknown without declaring the source itself untrustworthy.
+
+This boundary is especially important for project-memory and coordination adapters (#18, #105).
 
 ### `UNKNOWN` is useful
 
-If nobody can recover why an important-looking workaround, constant, suppression, or special case exists, that is useful knowledge debt. Cultist should say so instead of fabricating intent.
+If the repository cannot recover why an important-looking workaround, exception, stale branch, or metadata claim exists, say so instead of fabricating intent.
 
-### Keep the core local and deterministic
+### Keep the core deterministic and bounded
 
-Model-assisted explanations may eventually help interpret evidence, but the tool must remain useful without an LLM. A model should receive a bounded evidence packet and should not be responsible for discovering the underlying facts.
+Model-assisted explanation may help interpret selected evidence, but the deterministic evidence packet must remain useful without a model. Remote/provider integrations should produce explicit bounded artifacts that local analyzers can validate.
 
-Tracking issue: #17.
+Tracking: #17.
 
 ### Teach the project why
 
-When humans decide an exception is intentional, the reason should be preservable in version control so future analysis can distinguish a known exception from forgotten folklore.
+When maintainers accept an intentional exception or project decision, the reason should be preservable in version control so later work can distinguish reviewed rationale from forgotten folklore.
 
-Tracking issue: #10.
+Tracking: #10.
 
 ### Promote mature questions into rules
 
-If the same fuzzy review question repeatedly receives the same human answer, it may be ready to become a deterministic lint or project rule. Cultist should help incubate that transition while preserving the rationale.
+Repeated, stable human consensus can become deterministic policy, but promotion is an explicit project decision rather than automatic statistical enforcement.
 
-Tracking issue: #11.
+Tracking: #11.
+
+### Learn from the work itself
+
+Cultist development is part of the evaluation corpus. Duplicate work, stale evidence, failed experiments, noisy findings, metadata mismatch, and repeated manual archaeology are candidate product evidence.
+
+Workers should preserve the exact episode, test the generalization, and use the smallest appropriate durable follow-up. See `AGENTS.md`.
 
 ## Workstreams
 
-### 1. Precedent engine
+### 1. Precedent and repository relationships
 
-The first implementation already compares changed test-module declarations with repository-wide and same-file precedent. The next step is to make precedent richer without pretending popularity is correctness.
-
-- #3 — scope-aware precedent and precedent tension
+- #3 — scope-aware precedent and tension
 - #4 — temporal precedent and convention drift
-- #5 — convention entropy and first-exception risk
 - #6 — counterexample-first findings
-- #7 — negative-space associations
-- #20 — locally expanded idioms that duplicate helpers
-- #21 — package and dependency intent
+- #20 — locally expanded idioms and helper precedent
+- #21 — package/dependency intent
+- historical companion and generated-relationship work
 
-### 2. Archaeology
+Historical co-change remains association evidence until stronger repository evidence establishes a stronger relation.
 
-Repositories accumulate historical reasons that disappear from the final source code. Cultist should recover those reasons when possible and expose when they have been lost.
+### 2. Archaeology and project memory
 
 - #8 — exception archaeology
-- #9 — historical fossils and expired workarounds
+- #9 — historical fossils / expired workarounds
 - #12 — `why` mode and evidence packets
 - #18 — Git, PRs, issues, and reviews as project memory
+- #38 — explicit repository guidance as higher-authority precedent
+
+The question is not only “what changed?” but “what did the repository believe, what happened, and what lesson became durable?”
 
 ### 3. Institutional memory and policy
 
-Questions become more valuable when their human answers can persist and eventually become enforceable policy.
-
 - #10 — explicit decision records / `teach`
 - #11 — lint incubation and promotion
-- #15 — claim provenance model
+- #75 — decision-memory research
 
-### 4. Engine, interfaces, and evaluation
+A model may propose rationale; reviewed repository state is what makes rationale durable project evidence.
 
-The underlying engine should support more analyzers without turning into a pile of ad hoc scans or opaque scores.
+### 4. Concurrent work and coordination
+
+- #96 — preflight collision analysis
+- #101 — explicit coordination edges in active-change inventories
+- #105 — producer-side project metadata adapters
+
+Current product supports local ref comparison and bounded active-work inventories. Cultist dogfoods an always-on PR heads-up that stays quiet for disjoint exact paths. Unpublished branch awareness remains research-only until branch activity/intent has a better discriminator than mere divergence.
+
+### 5. Agent context, JEI, and review
+
+- #62 — bounded pre-edit agent context packets
+- #74 — before/during/after lifecycle
+- #106 — JEI work envelopes
+- #109 — review intelligence envelopes
+
+The goal is evidence selected for the current decision, not giant repository summaries.
+
+### 6. Machine protocols and interoperability
+
+- #22 — stable JSON findings
+- #113 — C1 compact evidence grammar
+- #115 — compact Cultist IR / context-relative protocol research
+
+Machine formats should preserve meaning, provenance, unknowns, and omissions. Unsupported future semantics should fail explicitly rather than disappear during down-conversion.
+
+### 7. Engine and performance
 
 - #13 — local evidence index
 - #14 — progressive semantic adapters
-- #16 — dogfood corpus and precision-focused evaluation
-- #17 — optional bounded LLM explanations
-- #22 — stable machine-readable findings / JSON
+- #48 / #49 — performance measurement and demand-driven execution
+- #50 — reusable repository snapshots / summaries
+
+Work should be proportional to the evidence actually needed. Cheap irrelevant paths should stay cheap; expensive semantic/history layers should activate on demand.
+
+### 8. Evaluation corpora
+
+- #16 — dogfood/evaluation corpus
+- #41 — Stensibly agentic organizational-history corpus
+- SmolRunner replay research
+
+Evaluation should include positive controls, quiet negatives, false assumptions, failed proofs, duplicate lanes, and second-order regressions—not only successful detections.
+
+## Current product evidence
+
+Cultist already has executable slices of several parts of this roadmap:
+
+- provenance-bearing shared text/JSON findings;
+- changed-first diff analysis;
+- historical companion evidence with examples/counterexamples;
+- CI test-selector analysis;
+- generated-companion evidence;
+- direct concurrent-change preflight;
+- bounded provider-supplied active-work preflight with explicit coordination edges;
+- an always-on, non-blocking PR active-work heads-up in Cultist's own CI;
+- research decision memory and pre-edit agent context packets;
+- lossless compact C1 report encoding;
+- performance work counters and demand-driven execution research.
+
+These are evidence primitives and experiments, not a claim that the full agent lifecycle is finished.
 
 ## Near-term sequence
 
-A useful order for the next few experiments is:
+The most useful next work is composition and discrimination rather than adding broad new feature families:
 
-1. **Claim provenance + machine-readable findings** (#15, #22)
-2. **Scoped precedent** (#3)
-3. **Counterexample-first output** (#6)
-4. **Dogfood corpus** (#16)
-5. **Temporal precedent** (#4)
-6. **Helper/dependency precedent** (#20, #21)
-7. **History and exception archaeology** (#8, #9, #12)
+1. make pre-edit JEI consume the strongest already-earned evidence without becoming a context dump;
+2. connect live diff/preflight evidence to the same task envelope during work;
+3. keep review-attention output a projection over shared evidence rather than a second analyzer universe;
+4. improve explicit project-memory applicability/freshness before trusting remote prose as current intent;
+5. continue decision-memory authority research from current main after failed/stale carrier experiments;
+6. evolve compact representation only when a new semantic primitive has earned a stable contract;
+7. measure interruption/context economics and retire noisy evidence families;
+8. keep performance work proportional to evidence demand.
 
-This is not a commitment to build everything in order. Small experiments that falsify an idea are valuable. The project should prefer evidence that a feature is useful over completing a grand architecture.
+This is not a commitment to build everything in order. Small experiments that falsify an assumption are valuable, and failed carriers should be retired instead of remaining fake active work.
 
-## Canonical dogfood case
+## Product test
 
-Cloud Hypervisor PR #8734 is currently the clearest example of the intended behavior.
+A useful recurring question is:
 
-The repository-wide evidence favored `unit_tests`, while the changed `vfio.rs` file already contained `tests`. Cultist surfaced both facts and asked which scope should govern the change. During that dogfood run, the tool also exposed a bug in its own diff semantics, leading to a merge-base-aware fix.
+> What did this worker have to discover manually that the repository could have surfaced, bounded, or preserved before the same mistake or investigation happens again?
 
-That is the standard to aim for: the tool should be willing to find ambiguity in the repository, ambiguity in its own conclusions, and bugs in itself.
+Cultist earns its place when the answer becomes progressively smaller without replacing project judgment with opaque automation.

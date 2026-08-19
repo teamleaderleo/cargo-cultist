@@ -1,41 +1,49 @@
-# cargo-cultist
+# Cultist
 
 **Find out why before you copy it.**
 
-`cargo-cultist` is an experiment in repository-aware analysis for Rust codebases.
+Cultist is an experiment in repository-aware evidence for software work: recover deterministic facts, keep provenance and counterexamples visible, and ask useful questions before inventing project rules.
 
-> Status: very early prototype. The public analyzer commands are deterministic, local, and read-only.
+> Status: early prototype. The current Rust distribution is named `cargo-cultist`; its public analyzer commands are deterministic, local, and read-only. Remote/project adapters that build evidence inventories live outside the core analyzer boundary.
 
-See [ROADMAP.md](ROADMAP.md) for the project thesis, design principles, and active research directions. The umbrella tracking issue is #19.
+Rust is the first deep semantic adapter, not the product boundary. Several useful primitives are repository-generic already: Git history, claim provenance, concurrent-change preflight, active-work inventories, and repo-local decision-memory research.
 
-Traditional linters are strongest when a rule is already known. `cargo-cultist` starts one step earlier: it gathers facts about what a repository actually does, identifies deviations or unexplained relationships, searches for counterexamples, and raises questions without pretending every observation is an error.
+See [ROADMAP.md](ROADMAP.md) for the thesis and current research map. Agents working on Cultist should also follow [AGENTS.md](AGENTS.md).
 
-The core evidence model distinguishes:
+Traditional linters are strongest after a rule is known. Cultist starts earlier. It gathers what a repository actually does, keeps contradictions and uncertainty visible, and helps a worker answer questions such as:
+
+- What evidence would I regret missing before I edit this target?
+- Does my live change disagree with local precedent or explicit project guidance?
+- Is another current change touching the same repository surface?
+- Why does this exception or guard exist?
+- What lesson from this completed work should be recoverable by the next worker?
+
+The core claim vocabulary is:
 
 - **PROVEN** — exact machine facts or guarantees;
 - **DERIVED** — deterministic conclusions from explicit facts;
-- **OBSERVED** — empirical repository patterns and correlations;
+- **OBSERVED** — empirical repository patterns or supplied observations;
 - **INFERRED** — plausible interpretations;
-- **UNKNOWN** — repository evidence is insufficient to recover the answer.
+- **UNKNOWN** — evidence is insufficient to recover the answer.
 
 Human-readable and JSON output are rendered from the same provenance-bearing finding model where the command produces findings.
 
-## Current commands
+## Current public commands
+
+The Rust package/binary remains `cargo-cultist`, so installed use is `cargo cultist ...`.
 
 ### Repository test-module conventions
 
-The default command inspects `#[cfg(test)]` modules and reports the names a repository actually uses. It calls out one-off names and files that mix multiple test-module names without turning the majority spelling into a universal rule.
+The default command inspects Rust `#[cfg(test)]` modules and reports the names a repository actually uses without promoting majority spelling into policy.
 
 ```bash
 cargo cultist
 cargo cultist --format json
 ```
 
-The interesting primitive is a **finding**, not a lint error: repository statistics are evidence, and a local exception can be intentional.
-
 ### Diff-aware precedent
 
-`cargo cultist diff` looks at test-module declarations added or renamed by the current change and compares them with existing repository-wide and file-local precedent.
+`cargo cultist diff` analyzes the current change and applies supported change-time evidence such as Rust test-module precedent and generated-companion evidence.
 
 ```bash
 cargo cultist diff
@@ -43,9 +51,29 @@ cargo cultist diff --base origin/main
 cargo cultist diff --base origin/main --format json
 ```
 
-With `--base REV`, Cargo Cultist finds the merge base between `REV` and `HEAD`, then analyzes the current working tree from that point so branch/PR semantics still include local staged or unstaged work.
+With `--base REV`, Cultist uses the merge base while still including local staged and unstaged work. Changed-file parse failures remain explicit uncertainty instead of becoming false absence claims.
 
-When repository-wide and file-local precedent disagree, the analyzer surfaces **precedent tension** instead of silently choosing a winner. Changed-file parse failures remain explicit uncertainty instead of being converted into an observed absence claim.
+### Concurrent-change preflight
+
+Local ref mode compares two concurrent Git change sets from their merge base:
+
+```bash
+cargo cultist preflight --against other-agent
+cargo cultist preflight --against origin/main --format json
+```
+
+Direct shared paths are deterministic collision evidence. Different paths remain semantically unknown until an independent evidence source establishes a generated, historical, policy, or explicit coordination relationship.
+
+Inventory mode accepts a bounded provider/orchestrator-supplied active-change snapshot:
+
+```bash
+cargo cultist preflight --inventory active-work.json
+cargo cultist preflight --inventory active-work.json --format json
+```
+
+The landed inventory contract can carry exact work identity/head/freshness/path observations plus explicit coordination edges such as `depends_on`, `blocks`, `hold_merge_while`, and `supersedes`. The core command does not fetch GitHub itself.
+
+Cultist's own PR CI dogfoods a GitHub adapter for this contract. Common disjoint runs use a cheap exact-path prefilter and stay quiet; possible overlaps pay for the fuller deterministic analyzer. Research adapters also explore unpublished branches, but bare-branch activity is not enabled by default because divergence alone does not prove somebody is still working there.
 
 ### Historical companions
 
@@ -57,63 +85,95 @@ cargo cultist history --max-commits 200 src/protocol.rs
 cargo cultist history --format json src/protocol.rs
 ```
 
-The explorer:
-
-- excludes revert commits and broad commits from its first comparison cohort;
-- reports directional support/opportunity counts;
-- preserves representative examples and absence counterexamples;
-- annotates current companion files that explicitly identify themselves as generated;
-- keeps limitations visible, including rename-history and semantic-cohort gaps.
-
-Historical co-change remains correlation evidence. Real-repository replays have already shown why direction and cohort selection matter: in Oxc, Rust-syntax-changing edits to the source rule registry moved with two generated registries in 99/99 sampled commits, while the reverse generated-to-source relation was 94/100. See `research/history-companion-replay.md` and `research/rust-syntax-cohort-replay.md` for the retained receipts.
+The explorer preserves directional support/opportunity counts, examples, absence counterexamples, exclusions, and known cohort limitations. Historical co-change remains association evidence rather than required-update policy.
 
 ### CI test-filter inventory
 
-`cargo cultist ci-tests` looks for a deliberately narrow GitHub Actions command family:
-
-```text
-cargo [ +TOOLCHAIN ] test --lib FILTER
-```
-
-and compares the literal selector with explicit Rust `#[test]` function names plus declared module names used as conservative qualifier hints.
+`cargo cultist ci-tests` analyzes a deliberately narrow GitHub Actions Cargo/libtest selector family and compares literal selectors with conservative source inventories.
 
 ```bash
 cargo cultist ci-tests
 cargo cultist ci-tests --format json
 ```
 
-A zero syntax match is reported with separate claims:
+Unsupported shell forms, ambiguous targets, unknown flags, generated tests, and parse gaps are skipped or surfaced conservatively rather than guessed through.
+
+## Agent-facing research views
+
+Several current ideas are intentionally **different projections over shared repository evidence**, not competing sources of truth:
 
 ```text
-PROVEN
-  The supported workflow command and filter exist.
+edit lifecycle (#74)
+  -> WHEN should evidence be recovered, reconciled, or preserved?
 
-OBSERVED
-  The explicit source inventory has no matching test/module name.
+just-enough information / JEI (#106)
+  -> WHAT evidence is worth selecting for this task now?
 
-UNKNOWN
-  Macro-generated or build-time tests may exist outside the syntax inventory.
+review intelligence (#109)
+  -> WHERE should scarce reviewer attention go?
+
+C1 / compact IR (#113, #115)
+  -> HOW should evidence be represented and transmitted efficiently?
+
+decision memory (#10 and research)
+  -> WHAT reviewed rationale should survive for later workers?
 ```
 
-Unsupported shell forms, ambiguous package/integration/bin targets, unknown flags, and parse failures are skipped or surfaced conservatively instead of guessed through.
+A new view should reuse authority, provenance, freshness, counterexample, unknown, and omission semantics rather than inventing a parallel vocabulary merely because its output layout is different.
 
-This check has a retained real-world witness: a pinned Tantivy workflow stayed green while `cargo test --lib test_rollback` selected zero tests, and Cargo Cultist identified that exact selector/location. The full acceptance receipt lives in `research/ci-test-filter-replay.md`.
+### Bounded context packets
 
-## Research layer
+Research under #62 asks the pre-edit question:
 
-The repository also contains standalone research examples and receipts that deliberately sit outside the public read-only command surface.
+> What repository evidence would I regret missing before I modify this target?
 
-Current research includes:
+The packet work emphasizes bounded defaults, truncation receipts, explicit guidance, history, companions/counterexamples, decisions, and useful `UNKNOWN`s rather than giant repository summaries.
 
-- Rust-syntax cohorts for refining historical comparison sets;
-- explicit generated-file and Rust generator-ownership evidence;
-- execution-aware libtest `--list` verification of CI selectors;
-- agentic-history corpora from Stensibly and SmolRunner;
-- bounded repository-evidence packets for coding agents.
+### Compact C1 evidence grammar
 
-Some research examples intentionally execute repository tooling. In particular, Cargo/libtest listing can compile code and run build scripts. Those experiments carry an explicit effect boundary and are not silently invoked by the ordinary analyzer commands.
+Merged research provides a lossless C1 encoding of the current `AnalysisReport` model. The converter remains an example rather than a second product binary:
 
-The research lifecycle is intentional:
+```bash
+cargo run --example cultist_c1 < report.json
+cargo run --example cultist_c1 -- --decode < report.c1
+```
+
+C1 is structural compression only. It does not select JEI, rank evidence, change authority, or abbreviate meaning. Current machine-report deserialization fails on unknown fields so unsupported future semantics cannot be silently erased during down-conversion.
+
+### Decision memory
+
+Repo-local decision-memory research explores how intentional exceptions and earned project rationale can become version-controlled evidence for future work. Decision records are evidence, not implicit suppressions, and a model-generated sentence does not become project truth merely because it was written down.
+
+## The work loop
+
+The larger agent lifecycle being explored is:
+
+```text
+BEFORE
+  recover bounded evidence for the target
+
+DURING
+  reconcile the live diff with precedent, guidance, active work,
+  counterexamples, decisions, trust boundaries, and unknowns
+
+AFTER
+  preserve an intentional decision or earned lesson when appropriate
+
+NEXT WORKER
+  retrieves that repository memory before repeating the same investigation
+```
+
+Or more compactly:
+
+```text
+retrieve -> work -> reconcile -> preserve -> retrieve
+```
+
+The product goal is not to make an agent understand Cultist as a separate ceremony. A worker should be able to ask for the evidence it needs, do the work, and leave useful reviewed knowledge behind.
+
+## Research discipline
+
+The repository contains standalone examples and durable receipts for experiments that are not public product features. The preferred research lifecycle is:
 
 ```text
 hypothesis
@@ -124,16 +184,18 @@ hypothesis
 -> keep, weaken, split, reject, or promote
 ```
 
-A successful experiment does not automatically become a lint or public feature.
+Some research examples intentionally execute repository tooling. Those effectful experiments carry explicit boundaries and are not silently invoked by ordinary analyzer commands.
 
-## Usage
+A successful experiment does not automatically become a lint or public feature. Failed experiments are retained when they expose a useful boundary.
 
-From this repository while developing:
+## Usage while developing
 
 ```bash
 cargo run -- /path/to/a/rust/repository
 cargo run -- diff --base origin/main /path/to/a/rust/repository
-cargo run -- history /path/to/a/rust/repository/src/file.rs
+cargo run -- preflight --against some-ref /path/to/a/repository
+cargo run -- preflight --inventory /path/to/active-work.json /path/to/a/repository
+cargo run -- history /path/to/a/repository/src/file.rs
 cargo run -- ci-tests /path/to/a/rust/repository
 ```
 
@@ -141,40 +203,36 @@ After installing locally:
 
 ```bash
 cargo install --path .
-cd /path/to/a/rust/repository
+cd /path/to/a/repository
 cargo cultist
 cargo cultist diff
+cargo cultist preflight --against other-ref
 cargo cultist history src/file.rs
 cargo cultist ci-tests
 ```
 
-The binary can also be invoked directly:
-
-```bash
-cargo-cultist .
-cargo-cultist diff --base origin/main .
-cargo-cultist history src/file.rs
-cargo-cultist ci-tests .
-```
+The binary can also be invoked directly as `cargo-cultist`.
 
 ## Dogfooding
 
-CI runs formatting, Clippy, and tests, then dogfoods the public analyzers and their JSON output against Cargo Cultist itself. Pull-request and push CI run diff analysis against the relevant base/current change.
+CI runs formatting, Clippy, tests, and the public analyzers against Cultist itself. Pull-request CI also runs the non-blocking active-work heads-up.
 
-The tool is expected to inspect its own changes without special treatment. Disposable fixtures and pinned external replays are used when a detector needs a stronger discriminator; temporary network-heavy research workflows are retired after their evidence is recorded.
+Dogfood is product input. When work exposes duplicate effort, a missed repository fact, stale evidence, misleading metadata, a false assumption, a useful counterexample, or repeated manual investigation, preserve the exact evidence and ask whether the smallest useful Cultist improvement can surface it earlier next time.
 
-## Active research directions
+Do not turn task friction into a universal rule without a discriminator and negative control.
 
-Near-term work is increasingly about composing independent evidence instead of adding broad heuristics:
+## Current direction
 
-- richer scoped and temporal precedent with explicit counterexamples;
-- generated-artifact ownership and missing-companion questions;
-- exception archaeology and expired-workaround evidence packets;
-- helper/dependency intent and locally expanded idioms;
-- explicit repository-guidance freshness and instruction lifecycle;
-- bounded agent context packets that optimize selected evidence per byte instead of context volume;
-- promotion of repeated, well-understood human consensus into deterministic policy.
+Near-term work is increasingly about composing independent evidence instead of adding broad opaque heuristics:
 
-Optional model-assisted explanation can sit on top of bounded evidence later. The deterministic finding must remain useful without a model.
+- bounded pre-edit JEI and lifecycle integration;
+- review-attention projections over the same evidence;
+- active-change coordination with explicit identity/freshness boundaries;
+- decision-memory authority/applicability research;
+- richer scoped and temporal precedent with counterexamples;
+- explicit repository guidance and instruction freshness;
+- compact interoperable machine representations;
+- performance work proportional to the evidence actually needed;
+- promotion of repeated, well-understood consensus into deterministic policy.
 
-The goal is to explore the space between a known lint rule and handing an entire repository to an AI and asking it to figure everything out.
+Optional model-assisted explanation can sit on top of bounded evidence later. The deterministic evidence packet must remain useful without a model.

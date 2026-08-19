@@ -1,0 +1,70 @@
+name: Generated provenance review dogfood
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  derived-root:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build canonical ownership research view
+        run: cargo build --example rust_generator_ownership
+      - name: Reject derived subdirectory promoted to repository root
+        run: |
+          set -euo pipefail
+          fixture="$(mktemp -d)"
+          mkdir -p "$fixture/.cargo" "$fixture/generator/src"
+
+          cat > "$fixture/Cargo.toml" <<'EOF'
+          [workspace]
+          members = ["generator"]
+          resolver = "2"
+          EOF
+
+          cat > "$fixture/.cargo/config.toml" <<'EOF'
+          [alias]
+          gen = "run -p generator_task"
+          EOF
+
+          cat > "$fixture/generator/Cargo.toml" <<'EOF'
+          [package]
+          name = "generator_task"
+          version = "0.0.0"
+          edition = "2024"
+          EOF
+
+          cat > "$fixture/generator/src/main.rs" <<'EOF'
+          fn generate() -> std::io::Result<()> {
+              let tasks = project_root::get_project_root()?.join("tasks");
+              let source = std::fs::read_to_string(tasks.join("src/rules.rs"))?;
+              let target = tasks.join("generated/rules.rs");
+              std::fs::write(&target, source)?;
+              Ok(())
+          }
+          EOF
+
+          target/debug/examples/rust_generator_ownership \
+            "$fixture" generator/src/main.rs > /tmp/derived-root.txt
+          cat /tmp/derived-root.txt
+
+          if grep -Fq 'reads  src/rules.rs' /tmp/derived-root.txt; then
+            echo 'derived subdirectory was incorrectly promoted to repository root' >&2
+            exit 1
+          fi
+          if grep -Fq 'writes generated/rules.rs' /tmp/derived-root.txt; then
+            echo 'derived subdirectory lost its tasks/ prefix' >&2
+            exit 1
+          fi

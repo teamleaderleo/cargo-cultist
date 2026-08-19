@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - experiment/ci-test-selection-listing
+  pull_request:
+    paths:
+      - examples/ci_test_selection_listing.rs
+      - .github/workflows/ci-test-selection-listing-research.yml
   workflow_dispatch:
 
 permissions:

@@ -1,14 +1,16 @@
-# cargo-cultist
+# Cultist
 
 **Find out why before you copy it.**
 
-`cargo-cultist` is an experiment in repository-aware analysis for Rust codebases.
+Cultist is an experiment in repository-aware analysis: gather facts about what a repository actually does, recover relevant precedent and history, search for counterexamples, and raise useful questions without pretending every observation is an error.
 
 > Status: very early prototype. The public analyzer commands are deterministic, local, and read-only.
 
+The current implementation is distributed as the Rust package and Cargo subcommand `cargo-cultist`. Rust-specific analyzers are the first semantic adapter, not the product boundary. Repository-level primitives such as Git history and direct concurrent-change preflight are language-agnostic.
+
 See [ROADMAP.md](ROADMAP.md) for the project thesis, design principles, and active research directions. The umbrella tracking issue is #19.
 
-Traditional linters are strongest when a rule is already known. `cargo-cultist` starts one step earlier: it gathers facts about what a repository actually does, identifies deviations or unexplained relationships, searches for counterexamples, and raises questions without pretending every observation is an error.
+Traditional linters are strongest when a rule is already known. Cultist starts one step earlier: it gathers repository evidence, identifies deviations or unexplained relationships, and preserves uncertainty when the evidence is not strong enough to recover intent.
 
 The core evidence model distinguishes:
 
@@ -24,7 +26,7 @@ Human-readable and JSON output are rendered from the same provenance-bearing fin
 
 ### Repository test-module conventions
 
-The default command inspects `#[cfg(test)]` modules and reports the names a repository actually uses. It calls out one-off names and files that mix multiple test-module names without turning the majority spelling into a universal rule.
+The default Rust analyzer inspects `#[cfg(test)]` modules and reports the names a repository actually uses. It calls out one-off names and files that mix multiple test-module names without turning the majority spelling into a universal rule.
 
 ```bash
 cargo cultist
@@ -43,9 +45,20 @@ cargo cultist diff --base origin/main
 cargo cultist diff --base origin/main --format json
 ```
 
-With `--base REV`, Cargo Cultist finds the merge base between `REV` and `HEAD`, then analyzes the current working tree from that point so branch/PR semantics still include local staged or unstaged work.
+With `--base REV`, Cultist finds the merge base between `REV` and `HEAD`, then analyzes the current working tree from that point so branch/PR semantics still include local staged or unstaged work.
 
 When repository-wide and file-local precedent disagree, the analyzer surfaces **precedent tension** instead of silently choosing a winner. Changed-file parse failures remain explicit uncertainty instead of being converted into an observed absence claim.
+
+### Concurrent-change preflight
+
+`cargo cultist preflight` compares the current change set with another ref from their merge base and reports direct repository-path overlap as `PROVEN` collision evidence.
+
+```bash
+cargo cultist preflight --against other-agent
+cargo cultist preflight --against origin/main --format json
+```
+
+The first slice is deliberately language-agnostic: it uses Git path changes and does not parse Rust. When two changes touch different paths, Cultist says that deeper generated, historical, policy, or behavioral relationships remain `UNKNOWN` instead of claiming independence.
 
 ### Historical companions
 
@@ -97,7 +110,7 @@ UNKNOWN
 
 Unsupported shell forms, ambiguous package/integration/bin targets, unknown flags, and parse failures are skipped or surfaced conservatively instead of guessed through.
 
-This check has a retained real-world witness: a pinned Tantivy workflow stayed green while `cargo test --lib test_rollback` selected zero tests, and Cargo Cultist identified that exact selector/location. The full acceptance receipt lives in `research/ci-test-filter-replay.md`.
+This check has a retained real-world witness: a pinned Tantivy workflow stayed green while `cargo test --lib test_rollback` selected zero tests, and Cultist identified that exact selector/location. The full acceptance receipt lives in `research/ci-test-filter-replay.md`.
 
 ## Research layer
 
@@ -109,7 +122,8 @@ Current research includes:
 - explicit generated-file and Rust generator-ownership evidence;
 - execution-aware libtest `--list` verification of CI selectors;
 - agentic-history corpora from Stensibly and SmolRunner;
-- bounded repository-evidence packets for coding agents.
+- bounded repository-evidence packets for coding agents;
+- repo-local decision memory and concurrent-change coordination evidence.
 
 Some research examples intentionally execute repository tooling. In particular, Cargo/libtest listing can compile code and run build scripts. Those experiments carry an explicit effect boundary and are not silently invoked by the ordinary analyzer commands.
 
@@ -126,14 +140,15 @@ hypothesis
 
 A successful experiment does not automatically become a lint or public feature.
 
-## Usage
+## Current Rust distribution
 
 From this repository while developing:
 
 ```bash
 cargo run -- /path/to/a/rust/repository
 cargo run -- diff --base origin/main /path/to/a/rust/repository
-cargo run -- history /path/to/a/rust/repository/src/file.rs
+cargo run -- preflight --against other-agent /path/to/a/repository
+cargo run -- history /path/to/a/repository/src/file.rs
 cargo run -- ci-tests /path/to/a/rust/repository
 ```
 
@@ -141,25 +156,29 @@ After installing locally:
 
 ```bash
 cargo install --path .
-cd /path/to/a/rust/repository
+cd /path/to/a/repository
 cargo cultist
 cargo cultist diff
+cargo cultist preflight --against origin/main
 cargo cultist history src/file.rs
 cargo cultist ci-tests
 ```
 
-The binary can also be invoked directly:
+The current Rust binary can also be invoked directly:
 
 ```bash
 cargo-cultist .
 cargo-cultist diff --base origin/main .
+cargo-cultist preflight --against origin/main .
 cargo-cultist history src/file.rs
 cargo-cultist ci-tests .
 ```
 
+The product/protocol name is **Cultist**. `cargo-cultist` is the Rust distribution name retained so `cargo cultist ...` works naturally.
+
 ## Dogfooding
 
-CI runs formatting, Clippy, and tests, then dogfoods the public analyzers and their JSON output against Cargo Cultist itself. Pull-request and push CI run diff analysis against the relevant base/current change.
+CI runs formatting, Clippy, and tests, then dogfoods the public analyzers and their JSON output against Cultist itself. Pull-request and push CI run diff analysis against the relevant base/current change.
 
 The tool is expected to inspect its own changes without special treatment. Disposable fixtures and pinned external replays are used when a detector needs a stronger discriminator; temporary network-heavy research workflows are retired after their evidence is recorded.
 
@@ -173,6 +192,8 @@ Near-term work is increasingly about composing independent evidence instead of a
 - helper/dependency intent and locally expanded idioms;
 - explicit repository-guidance freshness and instruction lifecycle;
 - bounded agent context packets that optimize selected evidence per byte instead of context volume;
+- concurrent-work preflight using independently earned repository relationships;
+- language-neutral evidence contracts with language-specific semantic adapters;
 - promotion of repeated, well-understood human consensus into deterministic policy.
 
 Optional model-assisted explanation can sit on top of bounded evidence later. The deterministic finding must remain useful without a model.

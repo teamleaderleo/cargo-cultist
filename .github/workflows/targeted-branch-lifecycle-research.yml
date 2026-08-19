@@ -1,0 +1,143 @@
+name: Targeted branch lifecycle research
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  targeted-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CURRENT_PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Load unpublished targeted lifecycle adapter
+        run: |
+          git show origin/experiment/targeted-branch-lifecycle:scripts/divergent_branch_inventory.py \
+            > /tmp/divergent_branch_inventory.py
+          python -m py_compile /tmp/divergent_branch_inventory.py
+
+      - name: Build targeted branch lifecycle inventory
+        run: |
+          PYTHONPATH=scripts python /tmp/divergent_branch_inventory.py /tmp/targeted-active-work.json
+          python -m json.tool /tmp/targeted-active-work.json >/dev/null
+
+      - name: Verify targeted lifecycle receipts
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          inventory = json.loads(Path('/tmp/targeted-active-work.json').read_text())
+          receipt = inventory['adapter_receipts']
+          assert 'recent_closed_pr_heads_seen' not in receipt, receipt
+          assert 'recent_closed_pr_head_limit' not in receipt, receipt
+          assert receipt['lifecycle_candidates_selected'] <= receipt['max_branch_candidates'], receipt
+          assert receipt['branch_name_similarity_used'] is False, receipt
+          assert 'provider-current branch-ref' in receipt['provider_lifecycle'], receipt
+          print('targeted lifecycle receipt:', receipt)
+          PY
+
+      - name: Retire exact squash-merged branch head without global closed-PR scan
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          inventory = json.loads(Path('/tmp/targeted-active-work.json').read_text())
+          ids = {work['id'] for work in inventory['active_work']}
+          assert 'branch:feature/preflight-active-inventory' not in ids, ids
+          receipt = inventory['adapter_receipts']
+          assert receipt['retired_exact_branch_heads_excluded'] >= 1, receipt
+          print('exact squash-merged head retired through targeted associated-PR evidence')
+          PY
+
+      - name: Natural carrier remains quiet
+        run: |
+          cargo run --quiet --example active_work_heads_up -- \
+            /tmp/targeted-active-work.json > /tmp/targeted-natural.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/targeted-natural.json').read_text())
+          assert report['heads_up'] == [], report
+          print('natural targeted-lifecycle advisory: quiet')
+          PY
+
+      - name: Product inventory compatibility
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          inventory = json.loads(Path('/tmp/targeted-active-work.json').read_text())
+          inventory.pop('adapter_receipts', None)
+          Path('/tmp/targeted-product.json').write_text(json.dumps(inventory, indent=2) + '\n')
+          PY
+          cargo run --quiet -- preflight \
+            --inventory /tmp/targeted-product.json \
+            --format json . > /tmp/targeted-product-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/targeted-product-report.json').read_text())
+          assert report['analysis'] == 'preflight-active-inventory', report
+          assert report['findings'] == [], report
+          print('product preflight admitted targeted branch inventory and stayed quiet')
+          PY
+
+      - name: Pre-edit focus discovers unpublished targeted adapter branch
+        run: |
+          cargo run --quiet --example active_work_heads_up -- \
+            /tmp/targeted-active-work.json \
+            scripts/divergent_branch_inventory.py > /tmp/targeted-focus.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/targeted-focus.json').read_text())
+          target = 'branch:experiment/targeted-branch-lifecycle'
+          matches = [
+              item for item in report['heads_up']
+              if item['work']['id'] == target
+              and 'scripts/divergent_branch_inventory.py' in item['focus_overlap_paths']
+          ]
+          assert len(matches) == 1, report
+          match = matches[0]
+          print(
+              'focus heads-up:',
+              match['work']['id'],
+              match['work']['head_sha'][:8],
+              match['work']['updated_at'],
+              match['focus_overlap_paths'],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: targeted-branch-lifecycle-research
+          path: |
+            /tmp/targeted-active-work.json
+            /tmp/targeted-natural.json
+            /tmp/targeted-product.json
+            /tmp/targeted-product-report.json
+            /tmp/targeted-focus.json
+          if-no-files-found: error

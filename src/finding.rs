@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const REPORT_SCHEMA_VERSION: u32 = 1;
 
@@ -6,7 +6,7 @@ pub const REPORT_SCHEMA_VERSION: u32 = 1;
 // emit a subset of it. Future checks can add richer claims without changing
 // the machine-readable taxonomy.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClaimKind {
     Proven,
@@ -16,7 +16,7 @@ pub enum ClaimKind {
     Unknown,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Location {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,7 +32,7 @@ impl Location {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Evidence {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,7 +55,7 @@ impl Evidence {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Claim {
     pub kind: ClaimKind,
     pub message: String,
@@ -78,7 +78,7 @@ impl Claim {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct Finding {
     pub kind: String,
     pub title: String,
@@ -116,7 +116,7 @@ impl Finding {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AnalysisReport {
     pub schema_version: u32,
     pub analysis: String,
@@ -155,5 +155,23 @@ mod tests {
         let json = serde_json::to_value(report).unwrap();
         assert_eq!(json["claims"][0]["kind"], "observed");
         assert_eq!(json["schema_version"], REPORT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn round_trips_machine_readable_report() {
+        let report = AnalysisReport {
+            schema_version: REPORT_SCHEMA_VERSION,
+            analysis: "example".to_string(),
+            repository: "/repo".to_string(),
+            claims: vec![Claim::new(ClaimKind::Unknown, "missing evidence")],
+            findings: vec![
+                Finding::new("example", "Example")
+                    .with_claim(Claim::new(ClaimKind::Proven, "exact fact")),
+            ],
+        };
+
+        let json = serde_json::to_string(&report).unwrap();
+        let decoded: AnalysisReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, report);
     }
 }

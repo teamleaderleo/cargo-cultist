@@ -2,9 +2,7 @@
 #[path = "../src/behavioral_receipt.rs"]
 mod behavioral_receipt;
 
-use behavioral_receipt::{
-    BehavioralOutcome, BehavioralReceipt, Delivery, validate_receipt,
-};
+use behavioral_receipt::{BehavioralOutcome, BehavioralReceipt, Delivery, validate_receipt};
 
 #[test]
 fn retained_prior_episode_front_receipt_records_observed_plan_change() {
@@ -15,10 +13,7 @@ fn retained_prior_episode_front_receipt_records_observed_plan_change() {
     validate_receipt(&receipt).unwrap();
 
     assert_eq!(receipt.repository, "teamleaderleo/cultist");
-    assert_eq!(
-        receipt.revision,
-        "b3e80cfa7e0e238bb6f4aae9fd241d9d3ea4fef9"
-    );
+    assert_eq!(receipt.revision, "b3e80cfa7e0e238bb6f4aae9fd241d9d3ea4fef9");
     assert_eq!(
         receipt.task,
         "issue-41-temporal-precedent-behavioral-followup"

@@ -92,6 +92,12 @@ Normal CI should validate that the harness and case file are syntactically healt
 
 A separate manually triggered workflow can run the pinned corpus when we change analyzer semantics or want an explicit release/research check.
 
+## Active upstream PRs are evidence, not scratch branches
+
+When a Fieldwork case comes from an active upstream pull request whose head lives in an owned fork, treat the live PR head as a publication branch. Every push can update the upstream PR and trigger its CI.
+
+Fieldwork should consume an exact pinned commit from that PR. If investigation needs experimental edits, repair commits, or remote-only tooling, use a local checkout or a separate scratch branch and pin only the finished revision. Do not use the live PR head as a workspace merely because the branch is in an owned fork.
+
 ## Adding a case
 
 Prefer a real case with a known review/research outcome. Assertions should describe durable semantic evidence:

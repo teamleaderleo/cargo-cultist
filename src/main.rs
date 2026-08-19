@@ -95,8 +95,7 @@ fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     let requested_root = path.unwrap_or(env::current_dir()?);
     let requested_root = requested_root.canonicalize()?;
     let root = git_repo_root(&requested_root)?;
-    let report = analyze_test_modules(&root)?;
-    let analysis = build_diff_analysis_report(&root, base.as_deref(), &report)?;
+    let analysis = build_diff_analysis_report(&root, base.as_deref())?;
     emit_analysis(&analysis, format)
 }
 

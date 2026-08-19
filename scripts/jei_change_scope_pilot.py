@@ -15,7 +15,12 @@ MAX_BUDGET = 16 * 1024 * 1024
 MAX_TASK_PATHS = 64
 MAX_REQUIRED_SUBJECTS = 16
 MAX_SUBJECT_BYTES = 1024
-EXPECTATIONS = {"expand_adds_missing", "single_path_file_local"}
+EXPECTATIONS = {
+    "expand_adds_missing",
+    "multi_path_redundant",
+    "single_path_file_local",
+    "unsupported_common_root",
+}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -193,8 +198,20 @@ def main() -> int:
                 and not any(target_presence.values())
                 and all(novel_presence.values())
             )
-        else:
+        elif args.expectation == "multi_path_redundant":
+            expectation_passed = (
+                decision == "explicit_common_scope"
+                and all(target_presence.values())
+                and not any(novel_presence.values())
+            )
+        elif args.expectation == "single_path_file_local":
             expectation_passed = decision == "file_local" and all(target_presence.values())
+        else:
+            expectation_passed = (
+                decision == "unsupported"
+                and scope is None
+                and all(target_presence.values())
+            )
 
         scoped_bytes = scoped_packet.get("serialized_bytes") if scoped_packet else None
         file_bytes = file_packet.get("serialized_bytes")
@@ -202,7 +219,7 @@ def main() -> int:
             raise ValueError("packet byte measurement missing")
 
         receipt = {
-            "schema_version": 2,
+            "schema_version": 3,
             "repository": args.repository_label,
             "revision": git_head(repo),
             "primary_target": primary,

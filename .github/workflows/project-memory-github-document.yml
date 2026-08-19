@@ -1,0 +1,123 @@
+name: GitHub project-document packet
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Public GitHub owner/repository
+        required: true
+        default: teamleaderleo/linux-fieldwork
+        type: string
+      revision:
+        description: Exact 40-hex Git revision containing the document
+        required: true
+        default: b835ed842299f7654afc00f4988f7586e0be63bc
+        type: string
+      source_issue:
+        description: Issue number whose retained text explicitly names the document path
+        required: true
+        default: "609"
+        type: string
+      path:
+        description: Canonical repository-relative UTF-8 document path
+        required: true
+        default: investigations/cloud-hypervisor-qcow-r609-review/README.md
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Check collector syntax and evidence selection
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/project_memory_github_document.py
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "scripts")
+          import project_memory_github_document as document_memory
+
+          path = "investigations/example/README.md"
+          evidence = document_memory.evidence_for_path(
+              "Detailed investigation:\n\n`investigations/example/README.md`",
+              path,
+          )
+          assert path in evidence, evidence
+          try:
+              document_memory.evidence_for_path("No explicit document here.", path)
+          except Exception as error:
+              assert "does not explicitly name" in str(error), error
+          else:
+              raise AssertionError("unnamed document path was admitted")
+          PY
+
+      - name: Collect selected document
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ inputs.repository }}
+          TARGET_REVISION: ${{ inputs.revision }}
+          SOURCE_ISSUE: ${{ inputs.source_issue }}
+          TARGET_PATH: ${{ inputs.path }}
+        run: |
+          set -euo pipefail
+          python scripts/project_memory_github_document.py \
+            --repository "$TARGET_REPOSITORY" \
+            --revision "$TARGET_REVISION" \
+            --source-issue "$SOURCE_ISSUE" \
+            --path "$TARGET_PATH" \
+            --output project-document.json \
+            > /tmp/project-document-collector.stdout
+
+      - name: Validate with offline document reader
+        run: |
+          cargo run --quiet --example project_document_packet \
+            < project-document.json \
+            > project-document-summary.json
+
+      - name: Write job summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary = json.loads(Path("project-document-summary.json").read_text())
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## GitHub project document\n\n")
+              out.write(f"Repository: `{summary['repository']}`\n\n")
+              out.write(f"Revision: `{summary['revision']}`\n\n")
+              out.write("| path | blob | bytes | source | complete |\n")
+              out.write("|---|---|---:|---|---|\n")
+              for document in summary["documents"]:
+                  source = document["source"]
+                  out.write(
+                      f"| `{document['path']}` | `{document['blob_sha']}` | "
+                      f"{document['text_bytes']} | {source['kind']} #{source['number']} | "
+                      f"{document['text_complete']} |\n"
+                  )
+              out.write(
+                  "\nCollection requires the selected source artifact to name every path. "
+                  "No repository directory or text search is performed.\n"
+              )
+          PY
+
+      - name: Upload document receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-document-${{ github.run_id }}
+          path: |
+            project-document.json
+            project-document-summary.json
+          if-no-files-found: error

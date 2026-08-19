@@ -1,0 +1,200 @@
+name: Stensibly selected evidence protection
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/scoped-selected-evidence-protection.yml"
+      - "examples/scoped_selected_evidence_protection.rs"
+      - "examples/agent_context_packet.rs"
+      - "examples/scoped_agent_context_packet.rs"
+      - "examples/support/scoped_agent_context_packet_impl.rs"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: github.head_ref == 'research/scoped-selected-evidence-protection'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          fetch-depth: 1
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build current and protected scoped examples
+        run: |
+          cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
+          cargo build --release --example scoped_selected_evidence_protection --manifest-path cultist/Cargo.toml
+
+      - name: Checkout exact pre-guard Stensibly state
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/stensibly
+          ref: 85cecf2608ad9e734a67518577fa85b9a08a550c
+          fetch-depth: 256
+          persist-credentials: false
+          path: target
+
+      - name: Compare budget policies
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          current="$PWD/cultist/target/release/examples/scoped_agent_context_packet"
+          protected="$PWD/cultist/target/release/examples/scoped_selected_evidence_protection"
+          target="$PWD/target/convex/schema.ts"
+
+          python - "$current" "$protected" "$target" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          current, protected, target = sys.argv[1:]
+          budgets = [32768, 16000, 15750, 15500, 15000, 14000, 12000, 10000, 8000, 6000, 4096]
+          selected_shas = [
+              "85cecf2608ad9e734a67518577fa85b9a08a550c",
+              "ca5d2c7fdf89666e523972ab6e81610d17b9611b",
+          ]
+          required_subjects = [
+              "Keep Gmail mailbox-disposition indexes deployable (#1573)",
+              "Keep Gmail semantic-admission indexes deployable (#1571)",
+          ]
+
+          def run(exe, budget, protect=False):
+              env = os.environ.copy()
+              env["CARGO_CULTIST_PACKET_MAX_BYTES"] = str(budget)
+              args = [exe, target, "--scope", "convex"]
+              if protect:
+                  for sha in selected_shas:
+                      args.extend(["--protect-scope-sha", sha])
+              completed = subprocess.run(args, env=env, capture_output=True, text=True)
+              if completed.returncode != 0:
+                  stderr = completed.stderr.strip()
+                  if "protected scoped packet evidence requires" not in stderr:
+                      raise SystemExit(f"unexpected failure at {budget}: {stderr}")
+                  return {"status": "protected_core_too_large", "stderr": stderr}
+
+              envelope = json.loads(completed.stdout)
+              scope_subjects = [row["subject"] for row in envelope["scope_recent_history"]]
+              presence = {
+                  subject: any(subject in observed for observed in scope_subjects)
+                  for subject in required_subjects
+              }
+              return {
+                  "status": "selected",
+                  "candidate_serialized_bytes": envelope["candidate_serialized_bytes"],
+                  "serialized_bytes": envelope["serialized_bytes"],
+                  "scope_history_count": len(envelope["scope_recent_history"]),
+                  "scope_semantic_evictions": envelope["semantic_evictions"],
+                  "file_packet_semantic_evictions": envelope["file_packet"]["semantic_evictions"],
+                  "target_recent_history_count": len(envelope["file_packet"]["recent_history"]),
+                  "lesson_presence": presence,
+                  "preserves_all_required": all(presence.values()),
+              }
+
+          rows = []
+          for budget in budgets:
+              rows.append({
+                  "budget": budget,
+                  "current": run(current, budget),
+                  "protected": run(protected, budget, protect=True),
+              })
+
+          baseline_16000 = next(row for row in rows if row["budget"] == 16000)["current"]
+          baseline_15750 = next(row for row in rows if row["budget"] == 15750)["current"]
+          if not baseline_16000.get("preserves_all_required"):
+              raise SystemExit("landed 16,000-byte baseline no longer preserves both lessons")
+          if baseline_15750.get("preserves_all_required"):
+              raise SystemExit("landed 15,750-byte baseline no longer reproduces lesson loss")
+
+          protected_selected = [
+              row for row in rows
+              if row["protected"]["status"] == "selected"
+          ]
+          protected_preserving = [
+              row["budget"] for row in protected_selected
+              if row["protected"]["preserves_all_required"]
+          ]
+          protected_failures = [
+              row["budget"] for row in rows
+              if row["protected"]["status"] != "selected"
+          ]
+
+          receipt = {
+              "schema_version": 1,
+              "repository": "teamleaderleo/stensibly",
+              "revision": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+              "target": "convex/schema.ts",
+              "scope": "convex",
+              "selected_scope_shas": selected_shas,
+              "required_history_subjects": required_subjects,
+              "rows": rows,
+              "summary": {
+                  "protected_15750_preserves_all_required": next(row for row in rows if row["budget"] == 15750)["protected"].get("preserves_all_required", False),
+                  "minimum_tested_protected_budget_preserving_all_required": min(protected_preserving) if protected_preserving else None,
+                  "first_protected_failure_descending": next((row["budget"] for row in rows if row["protected"]["status"] != "selected"), None),
+                  "tested_protected_failure": bool(protected_failures),
+              },
+          }
+          Path("artifacts/stensibly-selected-evidence-protection.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(receipt["summary"], indent=2, sort_keys=True))
+          PY
+
+      - name: Write comparison summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("artifacts/stensibly-selected-evidence-protection.json")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Selected-evidence protection comparison\n\n")
+              if not path.is_file():
+                  out.write("Comparison receipt unavailable.\n")
+                  raise SystemExit(0)
+              receipt = json.loads(path.read_text(encoding="utf-8"))
+              summary = receipt["summary"]
+              out.write(f"Protected policy keeps both lessons at 15,750: `{summary['protected_15750_preserves_all_required']}`  \n")
+              out.write(f"Minimum tested protected budget preserving both: `{summary['minimum_tested_protected_budget_preserving_all_required']}`  \n")
+              out.write(f"First protected-core failure descending: `{summary['first_protected_failure_descending']}`\n\n")
+              out.write("| budget | current lessons | protected lessons | current scope rows | protected scope rows | protected file evictions |\n")
+              out.write("|---:|---|---|---:|---:|---|\n")
+              for row in receipt["rows"]:
+                  current = row["current"]
+                  protected = row["protected"]
+                  current_lessons = "both" if current.get("preserves_all_required") else "lost"
+                  if protected["status"] != "selected":
+                      protected_lessons = "protected-core fail"
+                      protected_rows = "—"
+                      protected_file = "—"
+                  else:
+                      protected_lessons = "both" if protected["preserves_all_required"] else "lost"
+                      protected_rows = protected["scope_history_count"]
+                      protected_file = f"`{protected['file_packet_semantic_evictions']}`"
+                  out.write(
+                      f"| {row['budget']} | {current_lessons} | {protected_lessons} | "
+                      f"{current.get('scope_history_count', '—')} | {protected_rows} | {protected_file} |\n"
+                  )
+          PY
+
+      - name: Upload comparison receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stensibly-selected-evidence-protection-${{ github.run_id }}
+          path: artifacts/stensibly-selected-evidence-protection.json
+          if-no-files-found: error

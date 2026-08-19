@@ -110,6 +110,25 @@ pub fn build_diff_analysis_report(
     // Parse only changed Rust files first. Most diffs can stop here without
     // walking or parsing the rest of the repository.
     let changed_report = analyze_test_module_files(&changed_rust_paths)?;
+    if !changed_report.parse_failures.is_empty() {
+        for (path, error) in &changed_report.parse_failures {
+            analysis.claims.push(
+                Claim::new(
+                    ClaimKind::Unknown,
+                    "A changed Rust file could not be parsed, so diff relevance could not be determined.",
+                )
+                .with_evidence(Evidence::at(
+                    error.clone(),
+                    Location::new(
+                        relative_path(root, path).to_string_lossy().into_owned(),
+                        None,
+                    ),
+                )),
+            );
+        }
+        return Ok(analysis);
+    }
+
     if changed_test_modules(root, &changed_report, &changed).is_empty() {
         analysis.claims.push(Claim::new(
             ClaimKind::Observed,
@@ -633,6 +652,29 @@ mod tests {
             claim
                 .message
                 .contains("No added or renamed test-gated module declarations")
+        }));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn changed_rust_parse_failure_stays_unknown_without_repository_scan() {
+        let root = init_repo("changed-parse-failure");
+        fs::write(root.join("changed.rs"), "fn changed( {\n").unwrap();
+
+        let analysis = build_diff_analysis_report(&root, None).unwrap();
+
+        assert!(analysis.findings.is_empty());
+        assert!(analysis.claims.iter().any(|claim| {
+            claim.kind == ClaimKind::Unknown
+                && claim
+                    .message
+                    .contains("diff relevance could not be determined")
+        }));
+        assert!(!analysis.claims.iter().any(|claim| {
+            claim.kind == ClaimKind::Observed
+                && claim
+                    .message
+                    .contains("No added or renamed test-gated module declarations")
         }));
         fs::remove_dir_all(root).unwrap();
     }

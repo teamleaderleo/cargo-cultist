@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 #[path = "../src/capability_demand_retirement.rs"]
 mod capability_demand_retirement;
 

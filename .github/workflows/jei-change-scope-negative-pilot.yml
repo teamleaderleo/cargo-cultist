@@ -1,0 +1,160 @@
+name: JEI change-scope negative controls
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/jei-change-scope-negative-pilot.yml"
+      - "scripts/jei_change_scope_pilot.py"
+
+permissions:
+  contents: read
+
+jobs:
+  smolrunner-negative-controls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build packet examples
+        run: |
+          cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
+          cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
+
+      - name: Checkout SmolRunner #530 base
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/smolrunner
+          ref: 8d4838af571b890b678e37090d46f671e6fc89e6
+          fetch-depth: 256
+          persist-credentials: false
+          path: target-530
+
+      - name: Verify #530 redundant-control history
+        run: |
+          set -euo pipefail
+          test "$(git -C target-530 rev-parse HEAD)" = "8d4838af571b890b678e37090d46f671e6fc89e6"
+          test -f target-530/src/disposable_clone_runtime.rs
+          test -f target-530/src/unix_personal_worker_store/disposable_clone_transaction.rs
+
+          history="$(git -C target-530 log --no-merges --format='%s' -n 20 -- src/disposable_clone_runtime.rs)"
+          printf '%s\n' "$history"
+          grep -F "M3: separate workflow result from runner process exit (#520)" <<<"$history"
+          grep -F "Gate workers on host free space (#485)" <<<"$history"
+          if grep -F "fix: keep clone preflight before durable checkpoint (#530)" <<<"$history"; then
+            echo "unexpected: future #530 repair appears in its base history" >&2
+            exit 1
+          fi
+
+      - name: Replay #530 multi-path redundant scope
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python cultist/scripts/jei_change_scope_pilot.py \
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet" \
+            --scoped-exe "$PWD/cultist/target/release/examples/scoped_agent_context_packet" \
+            --repo "$PWD/target-530" \
+            --primary-target src/disposable_clone_runtime.rs \
+            --task-path src/disposable_clone_runtime.rs \
+            --task-path src/unix_personal_worker_store/disposable_clone_transaction.rs \
+            --budget 32768 \
+            --expectation multi_path_redundant \
+            --repository-label teamleaderleo/smolrunner \
+            --source "smolrunner#530 review base redundant control" \
+            --required-subject "M3: separate workflow result from runner process exit (#520)" \
+            --required-subject "Gate workers on host free space (#485)" \
+            --output "$PWD/artifacts/smolrunner-530-redundant-scope.json"
+
+      - name: Checkout SmolRunner #539 base
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/smolrunner
+          ref: d23135a1daa69b70e02bc10fb5a55f8db82197f4
+          fetch-depth: 256
+          persist-credentials: false
+          path: target-539
+
+      - name: Verify #539 root-span history
+        run: |
+          set -euo pipefail
+          test "$(git -C target-539 rev-parse HEAD)" = "d23135a1daa69b70e02bc10fb5a55f8db82197f4"
+          history="$(git -C target-539 log --no-merges --format='%s' -n 20 -- src/disposable_clone_runtime.rs)"
+          printf '%s\n' "$history"
+          grep -F "Reduce live admission latency before JIT" <<<"$history"
+          grep -F "fix: collapse redundant clone admission polls (#533)" <<<"$history"
+          grep -F "fix: keep clone preflight before durable checkpoint (#530)" <<<"$history"
+          if grep -F "Fix private checkout in disposable workers (#539)" <<<"$history"; then
+            echo "unexpected: future #539 repair appears in its base history" >&2
+            exit 1
+          fi
+
+      - name: Replay #539 common-root refusal
+        run: |
+          set -euo pipefail
+          python cultist/scripts/jei_change_scope_pilot.py \
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet" \
+            --scoped-exe "$PWD/cultist/target/release/examples/scoped_agent_context_packet" \
+            --repo "$PWD/target-539" \
+            --primary-target src/disposable_clone_runtime.rs \
+            --task-path examples/lima/smolrunner-prepared-template.json \
+            --task-path examples/lima/smolrunner-prepared-template.yaml \
+            --task-path examples/lima/smolrunner-runner-integrity \
+            --task-path src/disposable_clone_runtime.rs \
+            --task-path src/disposable_lima_worker.rs \
+            --task-path src/disposable_prepared_template.rs \
+            --task-path src/disposable_template_runtime.rs \
+            --budget 32768 \
+            --expectation unsupported_common_root \
+            --repository-label teamleaderleo/smolrunner \
+            --source "smolrunner#539 review base root-span control" \
+            --required-subject "Reduce live admission latency before JIT" \
+            --required-subject "fix: collapse redundant clone admission polls (#533)" \
+            --required-subject "fix: keep clone preflight before durable checkpoint (#530)" \
+            --output "$PWD/artifacts/smolrunner-539-root-span.json"
+
+      - name: Write negative-control summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          cases = [
+              ("SmolRunner #530 redundant src scope", Path("artifacts/smolrunner-530-redundant-scope.json")),
+              ("SmolRunner #539 common-root span", Path("artifacts/smolrunner-539-root-span.json")),
+          ]
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Change-set scope negative controls\n\n")
+              out.write("| case | decision | common scope | file bytes | scoped bytes | overhead | scope rows | novel required | result |\n")
+              out.write("|---|---|---|---:|---:|---:|---:|---:|---|\n")
+              for title, path in cases:
+                  if not path.is_file():
+                      out.write(f"| {title} | — | — | — | — | — | — | — | missing receipt |\n")
+                      continue
+                  receipt = json.loads(path.read_text(encoding="utf-8"))
+                  out.write(
+                      f"| {title} | `{receipt['decision']}` | `{receipt.get('common_scope')}` | "
+                      f"{receipt['file_packet_serialized_bytes']} | {receipt.get('scoped_packet_serialized_bytes') or '—'} | "
+                      f"{receipt['selected_byte_overhead']} | {receipt['scope_history_count']} | "
+                      f"{receipt['novel_required_count']} | {'PASS' if receipt['acceptance']['passed'] else 'FAIL'} |\n"
+                  )
+          PY
+
+      - name: Upload negative-control receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jei-change-scope-negative-${{ github.run_id }}
+          path: |
+            artifacts/smolrunner-530-redundant-scope.json
+            artifacts/smolrunner-539-root-span.json
+          if-no-files-found: error

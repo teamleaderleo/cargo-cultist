@@ -20,12 +20,9 @@ const BASELINE_PACKET_SHA: &str =
     "e4549a10f86448779a21307d97ea75f2ae1acfd15b43099cbca6f600f0781bdf";
 const TREATMENT_PACKET_SHA: &str =
     "2e6acd81e324f3b290b9f93c5bf0ec3d9a66004bd44a855069cc65802f94af46";
-const SAMPLING_SHA: &str =
-    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const RESET_SHA: &str =
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const OUTPUT_SHA: &str =
-    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const SAMPLING_SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const RESET_SHA: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const OUTPUT_SHA: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn trial_and_manifest() -> (
     capability_demand_retirement::TrialSpec,
@@ -105,7 +102,10 @@ fn failed_baseline_then_successful_treatment_is_a_paired_signal() {
     let result = evaluate_pair(&trial, &manifest, &baseline, &treatment).unwrap();
 
     assert_eq!(result.verdict, RetirementVerdict::PairedRetirementSignal);
-    assert_eq!(result.baseline_condition_id.as_deref(), Some("file_local_jei"));
+    assert_eq!(
+        result.baseline_condition_id.as_deref(),
+        Some("file_local_jei")
+    );
     assert_eq!(result.treatment_condition_id.as_deref(), Some("scoped_jei"));
     assert!(result.frozen_identity_match);
     assert!(result.fresh_uncontaminated_sessions);
@@ -122,7 +122,10 @@ fn pair_order_does_not_define_baseline_and_treatment_roles() {
     let result = evaluate_pair(&trial, &manifest, &treatment, &baseline).unwrap();
 
     assert_eq!(result.verdict, RetirementVerdict::PairedRetirementSignal);
-    assert_eq!(result.baseline_condition_id.as_deref(), Some("file_local_jei"));
+    assert_eq!(
+        result.baseline_condition_id.as_deref(),
+        Some("file_local_jei")
+    );
     assert_eq!(result.treatment_condition_id.as_deref(), Some("scoped_jei"));
 }
 

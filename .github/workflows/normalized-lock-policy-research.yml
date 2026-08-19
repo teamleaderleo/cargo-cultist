@@ -1,0 +1,81 @@
+name: Normalized lock policy research
+
+on:
+  pull_request:
+    paths:
+      - examples/normalized_lock_policy.rs
+      - .github/workflows/normalized-lock-policy-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Quality gates
+        working-directory: cultist
+        run: |
+          cargo fmt --check
+          cargo clippy --example normalized_lock_policy -- -D warnings
+          cargo test --example normalized_lock_policy
+
+      - name: Checkout pinned WGPU
+        uses: actions/checkout@v4
+        with:
+          repository: gfx-rs/wgpu
+          ref: 95c30b29528b23564290b42c197335394f03642d
+          path: corpus/wgpu
+          persist-credentials: false
+
+      - name: Check WGPU successor-DAG decisions
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example normalized_lock_policy -- \
+            dag corpus/wgpu/wgpu-core/src/lock/rank.rs \
+            DEVICE_COMMAND_INDICES QUEUE_PENDING_WRITES \
+            | tee /tmp/wgpu-allow.txt
+          grep -F 'encoding: successor-dag' /tmp/wgpu-allow.txt
+          grep -F 'decision: ALLOW' /tmp/wgpu-allow.txt
+
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example normalized_lock_policy -- \
+            dag corpus/wgpu/wgpu-core/src/lock/rank.rs \
+            QUEUE_PENDING_WRITES DEVICE_COMMAND_INDICES \
+            | tee /tmp/wgpu-deny.txt
+          grep -F 'decision: DENY' /tmp/wgpu-deny.txt
+
+      - name: Checkout pinned asupersync
+        uses: actions/checkout@v4
+        with:
+          repository: Dicklesworthstone/asupersync
+          ref: c059250ddbe775e78cf8edde57ac78a2a3e4c618
+          path: corpus/asupersync
+          persist-credentials: false
+
+      - name: Check numeric-rank decisions
+        run: |
+          set -euo pipefail
+          inventory=corpus/asupersync/artifacts/lock_order_inventory_v1.json
+
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example normalized_lock_policy -- \
+            numeric "$inventory" config_cache tasks_queue \
+            | tee /tmp/numeric-allow.txt
+          grep -F 'encoding: numeric-nondecreasing' /tmp/numeric-allow.txt
+          grep -F 'decision: ALLOW' /tmp/numeric-allow.txt
+
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example normalized_lock_policy -- \
+            numeric "$inventory" tasks_queue config_cache \
+            | tee /tmp/numeric-deny.txt
+          grep -F 'decision: DENY' /tmp/numeric-deny.txt

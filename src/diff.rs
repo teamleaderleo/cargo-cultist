@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
+use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
 use crate::test_modules::{
@@ -80,8 +81,7 @@ pub fn build_diff_analysis_report(
     root: &Path,
     base: Option<&str>,
 ) -> Result<AnalysisReport, Box<dyn Error>> {
-    let patch = git_diff(root, base)?;
-    let changed = parse_changed_lines(&patch);
+    let changed = git_diff_changed_lines(root, base)?;
 
     let mut analysis = AnalysisReport::new("diff-precedent", root.to_string_lossy().into_owned());
     analysis.claims.push(Claim::new(
@@ -254,13 +254,16 @@ fn add_diff_findings(
     }
 }
 
-fn git_diff(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
+fn git_diff_changed_lines(
+    root: &Path,
+    base: Option<&str>,
+) -> Result<ChangedLines, Box<dyn Error>> {
     let anchor = match base {
         Some(base) => merge_base(root, base)?,
         None => "HEAD".to_string(),
     };
 
-    let output = Command::new("git")
+    let mut child = Command::new("git")
         .arg("-C")
         .arg(root)
         .args([
@@ -275,14 +278,21 @@ fn git_diff(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
         .arg(anchor)
         .arg("--")
         .arg("*.rs")
-        .output()?;
+        .stdout(Stdio::piped())
+        .spawn()?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git diff failed: {stderr}").into());
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("git diff did not provide a stdout pipe")?;
+    let changed = parse_changed_lines(BufReader::new(stdout))?;
+    let status = child.wait()?;
+
+    if !status.success() {
+        return Err(format!("git diff failed with status {status}").into());
     }
 
-    Ok(String::from_utf8(output.stdout)?)
+    Ok(changed)
 }
 
 fn merge_base(root: &Path, base: &str) -> Result<String, Box<dyn Error>> {
@@ -300,24 +310,30 @@ fn merge_base(root: &Path, base: &str) -> Result<String, Box<dyn Error>> {
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
-fn parse_changed_lines(patch: &str) -> ChangedLines {
+fn parse_changed_lines<R: BufRead>(mut reader: R) -> io::Result<ChangedLines> {
     let mut changed = ChangedLines::default();
     let mut current_path: Option<PathBuf> = None;
     let mut current_new_line: Option<usize> = None;
+    let mut buffer = String::new();
 
-    for line in patch.lines() {
+    while reader.read_line(&mut buffer)? != 0 {
+        let line = buffer.trim_end_matches(['\n', '\r']);
+
         if let Some(path) = line.strip_prefix("+++ ") {
             current_path = (path != "/dev/null").then(|| PathBuf::from(path));
             current_new_line = None;
+            buffer.clear();
             continue;
         }
 
         if line.starts_with("@@") {
             current_new_line = hunk_new_start(line);
+            buffer.clear();
             continue;
         }
 
         let Some(new_line) = current_new_line else {
+            buffer.clear();
             continue;
         };
 
@@ -331,9 +347,11 @@ fn parse_changed_lines(patch: &str) -> ChangedLines {
         } else if !line.starts_with('\\') {
             current_new_line = Some(new_line + 1);
         }
+
+        buffer.clear();
     }
 
-    changed
+    Ok(changed)
 }
 
 fn hunk_new_start(header: &str) -> Option<usize> {
@@ -533,7 +551,7 @@ mod tests {
 +new
 "#;
 
-        let changed = parse_changed_lines(patch);
+        let changed = parse_changed_lines(patch.as_bytes()).unwrap();
         assert!(changed.contains(Path::new("src/a.rs"), 11));
         assert!(changed.contains(Path::new("src/a.rs"), 12));
         assert!(changed.contains(Path::new("src/a.rs"), 32));
@@ -553,7 +571,7 @@ mod tests {
 +four
 "#;
 
-        let changed = parse_changed_lines(patch);
+        let changed = parse_changed_lines(patch.as_bytes()).unwrap();
         assert_eq!(changed.range_count(Path::new("src/a.rs")), 1);
         assert!(changed.contains(Path::new("src/a.rs"), 11));
         assert!(changed.contains(Path::new("src/a.rs"), 14));

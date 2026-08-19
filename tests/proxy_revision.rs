@@ -1,7 +1,7 @@
-#[path = "../src/proxy_revision.rs"]
-mod proxy_revision;
 #[path = "../src/project_memory.rs"]
 mod project_memory;
+#[path = "../src/proxy_revision.rs"]
+mod proxy_revision;
 
 use project_memory::{ArtifactKind, ArtifactRef, parse_project_memory_packet};
 use proxy_revision::{
@@ -34,7 +34,10 @@ fn retained_stensibly_episode_is_an_observed_proxy_revision() {
     let (memory, claim) = inputs();
     let evaluation = evaluate_proxy_revision(&memory, &claim).unwrap();
 
-    assert_eq!(evaluation.status, ProxyRevisionStatus::ObservedProxyRevision);
+    assert_eq!(
+        evaluation.status,
+        ProxyRevisionStatus::ObservedProxyRevision
+    );
     assert_eq!(evaluation.predecessor, pr(1604));
     assert_eq!(evaluation.successor, pr(1605));
     assert_eq!(evaluation.shared_path, "convex/items.ts");
@@ -117,7 +120,10 @@ fn predecessor_must_state_the_proxy_rule() {
     claim.proxy_rule_marker = "claim generation always proves responsibility".to_string();
 
     let evaluation = evaluate_proxy_revision(&memory, &claim).unwrap();
-    assert_eq!(evaluation.status, ProxyRevisionStatus::PriorProxyRuleMissing);
+    assert_eq!(
+        evaluation.status,
+        ProxyRevisionStatus::PriorProxyRuleMissing
+    );
 }
 
 #[test]
@@ -126,7 +132,10 @@ fn successor_must_state_the_counterexample() {
     claim.counterexample_marker = "counterexample missing from retained source".to_string();
 
     let evaluation = evaluate_proxy_revision(&memory, &claim).unwrap();
-    assert_eq!(evaluation.status, ProxyRevisionStatus::CounterexampleMissing);
+    assert_eq!(
+        evaluation.status,
+        ProxyRevisionStatus::CounterexampleMissing
+    );
 }
 
 #[test]
@@ -135,7 +144,10 @@ fn successor_must_state_the_replacement_rule() {
     claim.replacement_rule_marker = "replacement rule missing from retained source".to_string();
 
     let evaluation = evaluate_proxy_revision(&memory, &claim).unwrap();
-    assert_eq!(evaluation.status, ProxyRevisionStatus::ReplacementRuleMissing);
+    assert_eq!(
+        evaluation.status,
+        ProxyRevisionStatus::ReplacementRuleMissing
+    );
 }
 
 #[test]

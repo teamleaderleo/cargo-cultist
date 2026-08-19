@@ -1,0 +1,53 @@
+name: Dogfood #80 pre-edit context
+
+on:
+  push:
+    branches:
+      - dogfood/80-proven-root
+
+permissions:
+  contents: read
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Generate pre-edit packet
+        run: |
+          cargo run --quiet --example agent_context_packet -- src/generated_diff.rs > /tmp/generated-diff-context.json
+          python -m json.tool /tmp/generated-diff-context.json >/dev/null
+      - name: Print selected evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path('/tmp/generated-diff-context.json').read_text())
+          print('target:', p['target']['path'])
+          print('serialized_bytes:', p['serialized_bytes'])
+          print('guidance:', [g['path'] for g in p['guidance']])
+          print('recent_history:')
+          for c in p['recent_history']:
+              print(' ', c['sha'][:8], c['subject'])
+          print('companions:')
+          for c in p['historical_companions']:
+              print(' ', c['support'], '/', c['opportunities'], c['path'])
+          print('unknowns:')
+          for u in p['unknowns']:
+              print(' ', u)
+          print('truncation:')
+          for t in p['truncation']:
+              print(' ', t)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dogfood-80-pre-edit-context
+          path: /tmp/generated-diff-context.json
+          if-no-files-found: error

@@ -25,7 +25,7 @@ def assert_violation(text: str) -> None:
 
 
 def test_direct_external_url_fails() -> None:
-    assert_violation(f"See [{EXTERNAL}]({EXTERNAL}).")
+    assert_violation(f"See [external]({EXTERNAL}).")
 
 
 def test_redirect_and_same_repo_pass() -> None:

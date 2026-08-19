@@ -10,7 +10,8 @@ mod observation_frontier;
 mod refinement_episode;
 
 use discriminator_observation::{
-    DiscriminatorObservationBatch, DiscriminatorValueState, parse_discriminator_observation_batch,
+    DiscriminatorObservationBatch, DiscriminatorValueState, ObservationApplicabilityStatus,
+    parse_discriminator_observation_batch,
 };
 use observation_frontier::{
     MAX_OBSERVATION_FRONTIER_REQUEST_BYTES, OBSERVATION_FRONTIER_SCHEMA_VERSION,
@@ -68,12 +69,14 @@ fn retained_selected_refinement_discriminators_resolve_current() {
                             &observation.value_state,
                             DiscriminatorValueState::Known { .. }
                         )
+                        && observation.applicability.status
+                            == ObservationApplicabilityStatus::Applies
                 })
                 .collect::<Vec<_>>();
             assert_eq!(
                 matches.len(),
                 1,
-                "retained fixture requires one current subject for {discriminator_id}"
+                "retained fixture requires one current KNOWN+APPLIES subject for {discriminator_id}"
             );
             requirements.push(requirement(discriminator_id, &matches[0].subject_ref));
         }
@@ -127,12 +130,12 @@ fn same_discriminator_on_wrong_subject_does_not_satisfy_requirement() {
 }
 
 #[test]
-fn unknown_matching_observation_produces_unknown_frontier() {
+fn unknown_value_with_applicable_source_produces_unknown_frontier() {
     let mut observations = observation_batch();
     let discriminator_id = observations.observations[0].discriminator_id.clone();
     let subject_ref = observations.observations[0].subject_ref.clone();
     observations.observations[0].value_state = DiscriminatorValueState::Unknown {
-        reason_ref: "applicability:missing-current-revision".to_string(),
+        reason_ref: "classifier:missing-value".to_string(),
     };
 
     let evaluation = evaluate_observation_frontiers(&request(
@@ -143,17 +146,42 @@ fn unknown_matching_observation_produces_unknown_frontier() {
     let frontier = &evaluation.frontiers[0];
     assert_eq!(frontier.status, ObservationFrontierStatus::Unknown);
     assert_eq!(frontier.unknown.len(), 1);
-    assert!(frontier.current.is_empty());
+    assert_eq!(
+        frontier.unknown[0].value_unknown_reason_ref.as_deref(),
+        Some("classifier:missing-value")
+    );
 }
 
 #[test]
-fn invalid_matching_observation_produces_invalid_frontier() {
+fn known_value_with_unknown_applicability_produces_unknown_frontier() {
+    let mut observations = observation_batch();
+    let discriminator_id = observations.observations[0].discriminator_id.clone();
+    let subject_ref = observations.observations[0].subject_ref.clone();
+    observations.observations[0].applicability.status = ObservationApplicabilityStatus::Unknown;
+    observations.observations[0].applicability.receipt_ref =
+        "applicability:missing-current-revision".to_string();
+
+    let evaluation = evaluate_observation_frontiers(&request(
+        vec![requirement(&discriminator_id, &subject_ref)],
+        observations,
+    ))
+    .unwrap();
+    let frontier = &evaluation.frontiers[0];
+    assert_eq!(frontier.status, ObservationFrontierStatus::Unknown);
+    assert_eq!(
+        frontier.unknown[0].known_value_ref.as_deref(),
+        Some("absent")
+    );
+}
+
+#[test]
+fn known_value_with_invalid_applicability_produces_invalid_frontier() {
     let mut observations = observation_batch();
     let discriminator_id = observations.observations[1].discriminator_id.clone();
     let subject_ref = observations.observations[1].subject_ref.clone();
-    observations.observations[1].value_state = DiscriminatorValueState::Invalid {
-        reason_ref: "applicability:revision-moved".to_string(),
-    };
+    observations.observations[1].applicability.status = ObservationApplicabilityStatus::Invalid;
+    observations.observations[1].applicability.receipt_ref =
+        "applicability:revision-moved".to_string();
 
     let evaluation = evaluate_observation_frontiers(&request(
         vec![requirement(&discriminator_id, &subject_ref)],
@@ -162,8 +190,10 @@ fn invalid_matching_observation_produces_invalid_frontier() {
     .unwrap();
     let frontier = &evaluation.frontiers[0];
     assert_eq!(frontier.status, ObservationFrontierStatus::Invalid);
-    assert_eq!(frontier.invalid.len(), 1);
-    assert!(frontier.current.is_empty());
+    assert_eq!(
+        frontier.invalid[0].known_value_ref.as_deref(),
+        Some("syntax_changed")
+    );
 }
 
 #[test]
@@ -172,9 +202,8 @@ fn current_precedes_unknown_while_preserving_both_receipts() {
     let mut unknown = observations.observations[1].clone();
     unknown.observation_id = "history/oxc-edit-class-v1:unknown-second-source".to_string();
     unknown.source_receipt = "research:cohort-refinement.md#unknown-edit-class".to_string();
-    unknown.value_state = DiscriminatorValueState::Unknown {
-        reason_ref: "classifier:missing-source-version".to_string(),
-    };
+    unknown.applicability.status = ObservationApplicabilityStatus::Unknown;
+    unknown.applicability.receipt_ref = "applicability:missing-source-version".to_string();
     let discriminator_id = unknown.discriminator_id.clone();
     let subject_ref = unknown.subject_ref.clone();
     observations.observations.push(unknown);
@@ -196,14 +225,13 @@ fn unknown_precedes_invalid_when_no_current_observation_exists() {
     let mut invalid = observations.observations[0].clone();
     invalid.observation_id = "justification/open-obligation-v1:invalid-second-source".to_string();
     invalid.source_receipt = "research:durable-unknown-obligation.md#stale".to_string();
-    invalid.value_state = DiscriminatorValueState::Invalid {
-        reason_ref: "applicability:head-moved".to_string(),
-    };
+    invalid.applicability.status = ObservationApplicabilityStatus::Invalid;
+    invalid.applicability.receipt_ref = "applicability:head-moved".to_string();
     let discriminator_id = invalid.discriminator_id.clone();
     let subject_ref = invalid.subject_ref.clone();
-    observations.observations[0].value_state = DiscriminatorValueState::Unknown {
-        reason_ref: "applicability:missing-head".to_string(),
-    };
+    observations.observations[0].applicability.status = ObservationApplicabilityStatus::Unknown;
+    observations.observations[0].applicability.receipt_ref =
+        "applicability:missing-head".to_string();
     observations.observations.push(invalid);
 
     let evaluation = evaluate_observation_frontiers(&request(

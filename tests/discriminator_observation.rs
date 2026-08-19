@@ -9,8 +9,9 @@ mod refinement_episode;
 
 use discriminator_observation::{
     DISCRIMINATOR_OBSERVATION_SCHEMA_VERSION, DiscriminatorObservation, DiscriminatorValueState,
-    MAX_DISCRIMINATOR_OBSERVATION_BATCH_BYTES, enumerate_discriminator_partitions,
-    parse_discriminator_observation_batch, validate_discriminator_observation_batch,
+    MAX_DISCRIMINATOR_OBSERVATION_BATCH_BYTES, ObservationApplicabilityStatus,
+    enumerate_discriminator_partitions, parse_discriminator_observation_batch,
+    validate_discriminator_observation_batch,
 };
 use refinement_episode::parse_refinement_episode_batch;
 
@@ -49,14 +50,14 @@ fn retained_observations_cover_every_selected_refinement_discriminator() {
             assert_eq!(
                 current.get(discriminator.as_str()),
                 Some(&true),
-                "selected discriminator {discriminator} lacks a current KNOWN observation"
+                "selected discriminator {discriminator} lacks a current KNOWN+APPLIES observation"
             );
         }
     }
 }
 
 #[test]
-fn known_observations_enumerate_by_discriminator_and_value() {
+fn known_applicable_observations_enumerate_by_discriminator_and_value() {
     let batch = parse_discriminator_observation_batch(OBSERVATIONS).unwrap();
     let enumeration = enumerate_discriminator_partitions(&batch).unwrap();
     assert_eq!(
@@ -72,10 +73,10 @@ fn known_observations_enumerate_by_discriminator_and_value() {
 }
 
 #[test]
-fn unknown_observation_stays_visible_and_out_of_current_partitions() {
+fn unknown_value_with_applicable_source_stays_unknown() {
     let mut batch = parse_discriminator_observation_batch(OBSERVATIONS).unwrap();
     batch.observations[0].value_state = DiscriminatorValueState::Unknown {
-        reason_ref: "applicability:missing-current-revision".to_string(),
+        reason_ref: "classifier:missing-value".to_string(),
     };
 
     let enumeration = enumerate_discriminator_partitions(&batch).unwrap();
@@ -86,15 +87,38 @@ fn unknown_observation_stays_visible_and_out_of_current_partitions() {
         .unwrap();
     assert!(discriminator.known_partitions.is_empty());
     assert_eq!(discriminator.unknown.len(), 1);
-    assert!(discriminator.invalid.is_empty());
+    assert_eq!(
+        discriminator.unknown[0].value_unknown_reason_ref.as_deref(),
+        Some("classifier:missing-value")
+    );
 }
 
 #[test]
-fn invalid_observation_stays_visible_and_out_of_current_partitions() {
+fn known_value_with_unknown_applicability_stays_unknown_and_preserves_value() {
     let mut batch = parse_discriminator_observation_batch(OBSERVATIONS).unwrap();
-    batch.observations[1].value_state = DiscriminatorValueState::Invalid {
-        reason_ref: "applicability:revision-moved".to_string(),
-    };
+    batch.observations[0].applicability.status = ObservationApplicabilityStatus::Unknown;
+    batch.observations[0].applicability.receipt_ref =
+        "applicability:missing-current-revision".to_string();
+
+    let enumeration = enumerate_discriminator_partitions(&batch).unwrap();
+    let discriminator = enumeration
+        .discriminators
+        .iter()
+        .find(|item| item.discriminator_id == "clearing_evidence_presence")
+        .unwrap();
+    assert!(discriminator.known_partitions.is_empty());
+    assert_eq!(discriminator.unknown.len(), 1);
+    assert_eq!(
+        discriminator.unknown[0].known_value_ref.as_deref(),
+        Some("absent")
+    );
+}
+
+#[test]
+fn known_value_with_invalid_applicability_stays_invalid_and_preserves_value() {
+    let mut batch = parse_discriminator_observation_batch(OBSERVATIONS).unwrap();
+    batch.observations[1].applicability.status = ObservationApplicabilityStatus::Invalid;
+    batch.observations[1].applicability.receipt_ref = "applicability:revision-moved".to_string();
 
     let enumeration = enumerate_discriminator_partitions(&batch).unwrap();
     let discriminator = enumeration
@@ -103,8 +127,11 @@ fn invalid_observation_stays_visible_and_out_of_current_partitions() {
         .find(|item| item.discriminator_id == "edit_class")
         .unwrap();
     assert!(discriminator.known_partitions.is_empty());
-    assert!(discriminator.unknown.is_empty());
     assert_eq!(discriminator.invalid.len(), 1);
+    assert_eq!(
+        discriminator.invalid[0].known_value_ref.as_deref(),
+        Some("syntax_changed")
+    );
 }
 
 #[test]
@@ -141,6 +168,14 @@ fn missing_source_receipt_rejects() {
     batch.observations[0].source_receipt.clear();
     let error = validate_discriminator_observation_batch(&batch).unwrap_err();
     assert!(error.to_string().contains("source_receipt"));
+}
+
+#[test]
+fn missing_applicability_receipt_rejects() {
+    let mut batch = parse_discriminator_observation_batch(OBSERVATIONS).unwrap();
+    batch.observations[0].applicability.receipt_ref.clear();
+    let error = validate_discriminator_observation_batch(&batch).unwrap_err();
+    assert!(error.to_string().contains("applicability receipt_ref"));
 }
 
 #[test]

@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-pub const DISCRIMINATOR_OBSERVATION_SCHEMA_VERSION: u32 = 1;
+pub const DISCRIMINATOR_OBSERVATION_SCHEMA_VERSION: u32 = 2;
 pub const MAX_DISCRIMINATOR_OBSERVATION_BATCH_BYTES: usize = 256 * 1024;
 const MAX_OBSERVATIONS: usize = 1024;
 const MAX_ID_BYTES: usize = 512;
@@ -25,8 +25,7 @@ pub struct DiscriminatorObservation {
     pub subject_ref: String,
     pub source_receipt: String,
     pub value_state: DiscriminatorValueState,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub applicability_ref: Option<String>,
+    pub applicability: ObservationApplicability,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -34,7 +33,21 @@ pub struct DiscriminatorObservation {
 pub enum DiscriminatorValueState {
     Known { value_ref: String },
     Unknown { reason_ref: String },
-    Invalid { reason_ref: String },
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationApplicability {
+    pub status: ObservationApplicabilityStatus,
+    pub receipt_ref: String,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservationApplicabilityStatus {
+    Applies,
+    Unknown,
+    Invalid,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -66,8 +79,7 @@ pub struct CurrentObservationReceipt {
     pub observation_id: String,
     pub subject_ref: String,
     pub source_receipt: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub applicability_ref: Option<String>,
+    pub applicability_ref: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -76,9 +88,29 @@ pub struct NonCurrentObservationReceipt {
     pub observation_id: String,
     pub subject_ref: String,
     pub source_receipt: String,
-    pub reason_ref: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub applicability_ref: Option<String>,
+    pub known_value_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_unknown_reason_ref: Option<String>,
+    pub applicability_ref: String,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ObservationCurrentness<'a> {
+    Current {
+        value_ref: &'a str,
+        applicability_ref: &'a str,
+    },
+    Unknown {
+        known_value_ref: Option<&'a str>,
+        value_unknown_reason_ref: Option<&'a str>,
+        applicability_ref: &'a str,
+    },
+    Invalid {
+        known_value_ref: Option<&'a str>,
+        value_unknown_reason_ref: Option<&'a str>,
+        applicability_ref: &'a str,
+    },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -156,6 +188,39 @@ pub fn validate_discriminator_observation_batch(
     Ok(())
 }
 
+pub fn classify_observation_currentness(
+    observation: &DiscriminatorObservation,
+) -> ObservationCurrentness<'_> {
+    let (known_value_ref, value_unknown_reason_ref) = match &observation.value_state {
+        DiscriminatorValueState::Known { value_ref } => (Some(value_ref.as_str()), None),
+        DiscriminatorValueState::Unknown { reason_ref } => (None, Some(reason_ref.as_str())),
+    };
+
+    match observation.applicability.status {
+        ObservationApplicabilityStatus::Invalid => ObservationCurrentness::Invalid {
+            known_value_ref,
+            value_unknown_reason_ref,
+            applicability_ref: &observation.applicability.receipt_ref,
+        },
+        ObservationApplicabilityStatus::Unknown => ObservationCurrentness::Unknown {
+            known_value_ref,
+            value_unknown_reason_ref,
+            applicability_ref: &observation.applicability.receipt_ref,
+        },
+        ObservationApplicabilityStatus::Applies => match known_value_ref {
+            Some(value_ref) => ObservationCurrentness::Current {
+                value_ref,
+                applicability_ref: &observation.applicability.receipt_ref,
+            },
+            None => ObservationCurrentness::Unknown {
+                known_value_ref: None,
+                value_unknown_reason_ref,
+                applicability_ref: &observation.applicability.receipt_ref,
+            },
+        },
+    }
+}
+
 pub fn enumerate_discriminator_partitions(
     batch: &DiscriminatorObservationBatch,
 ) -> Result<DiscriminatorEnumeration, DiscriminatorObservationError> {
@@ -173,24 +238,42 @@ pub fn enumerate_discriminator_partitions(
         let builder = builders
             .entry(observation.discriminator_id.clone())
             .or_default();
-        match &observation.value_state {
-            DiscriminatorValueState::Known { value_ref } => {
+        match classify_observation_currentness(observation) {
+            ObservationCurrentness::Current {
+                value_ref,
+                applicability_ref,
+            } => {
                 builder
                     .known
-                    .entry(value_ref.clone())
+                    .entry(value_ref.to_string())
                     .or_default()
-                    .push(current_receipt(observation));
+                    .push(CurrentObservationReceipt {
+                        observation_id: observation.observation_id.clone(),
+                        subject_ref: observation.subject_ref.clone(),
+                        source_receipt: observation.source_receipt.clone(),
+                        applicability_ref: applicability_ref.to_string(),
+                    });
             }
-            DiscriminatorValueState::Unknown { reason_ref } => {
-                builder
-                    .unknown
-                    .push(non_current_receipt(observation, reason_ref));
-            }
-            DiscriminatorValueState::Invalid { reason_ref } => {
-                builder
-                    .invalid
-                    .push(non_current_receipt(observation, reason_ref));
-            }
+            ObservationCurrentness::Unknown {
+                known_value_ref,
+                value_unknown_reason_ref,
+                applicability_ref,
+            } => builder.unknown.push(non_current_receipt(
+                observation,
+                known_value_ref,
+                value_unknown_reason_ref,
+                applicability_ref,
+            )),
+            ObservationCurrentness::Invalid {
+                known_value_ref,
+                value_unknown_reason_ref,
+                applicability_ref,
+            } => builder.invalid.push(non_current_receipt(
+                observation,
+                known_value_ref,
+                value_unknown_reason_ref,
+                applicability_ref,
+            )),
         }
     }
 
@@ -230,25 +313,19 @@ pub fn enumerate_discriminator_partitions(
     })
 }
 
-fn current_receipt(observation: &DiscriminatorObservation) -> CurrentObservationReceipt {
-    CurrentObservationReceipt {
-        observation_id: observation.observation_id.clone(),
-        subject_ref: observation.subject_ref.clone(),
-        source_receipt: observation.source_receipt.clone(),
-        applicability_ref: observation.applicability_ref.clone(),
-    }
-}
-
 fn non_current_receipt(
     observation: &DiscriminatorObservation,
-    reason_ref: &str,
+    known_value_ref: Option<&str>,
+    value_unknown_reason_ref: Option<&str>,
+    applicability_ref: &str,
 ) -> NonCurrentObservationReceipt {
     NonCurrentObservationReceipt {
         observation_id: observation.observation_id.clone(),
         subject_ref: observation.subject_ref.clone(),
         source_receipt: observation.source_receipt.clone(),
-        reason_ref: reason_ref.to_string(),
-        applicability_ref: observation.applicability_ref.clone(),
+        known_value_ref: known_value_ref.map(str::to_string),
+        value_unknown_reason_ref: value_unknown_reason_ref.map(str::to_string),
+        applicability_ref: applicability_ref.to_string(),
     }
 }
 
@@ -267,18 +344,19 @@ fn validate_observation(
         "source_receipt",
         MAX_REFERENCE_BYTES,
     )?;
-    if let Some(applicability_ref) = &observation.applicability_ref {
-        validate_atom(applicability_ref, "applicability_ref", MAX_REFERENCE_BYTES)?;
-    }
     match &observation.value_state {
         DiscriminatorValueState::Known { value_ref } => {
-            validate_atom(value_ref, "value_ref", MAX_REFERENCE_BYTES)
+            validate_atom(value_ref, "value_ref", MAX_REFERENCE_BYTES)?;
         }
-        DiscriminatorValueState::Unknown { reason_ref }
-        | DiscriminatorValueState::Invalid { reason_ref } => {
-            validate_atom(reason_ref, "reason_ref", MAX_REFERENCE_BYTES)
+        DiscriminatorValueState::Unknown { reason_ref } => {
+            validate_atom(reason_ref, "value reason_ref", MAX_REFERENCE_BYTES)?;
         }
     }
+    validate_atom(
+        &observation.applicability.receipt_ref,
+        "applicability receipt_ref",
+        MAX_REFERENCE_BYTES,
+    )
 }
 
 fn validate_atom(

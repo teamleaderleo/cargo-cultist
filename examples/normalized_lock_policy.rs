@@ -3,9 +3,16 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum PolicyDecision {
+    Allow,
+    Deny,
+    Unknown,
+}
+
 trait LockOrderingPolicy {
     fn encoding(&self) -> &'static str;
-    fn allows(&self, held: &str, acquired: &str) -> Option<bool>;
+    fn allows(&self, held: &str, acquired: &str) -> PolicyDecision;
 }
 
 #[allow(dead_code, unused_imports)]
@@ -73,8 +80,12 @@ impl LockOrderingPolicy for successor_dag::normalized::Policy {
         "successor-dag"
     }
 
-    fn allows(&self, held: &str, acquired: &str) -> Option<bool> {
-        successor_dag::normalized::Policy::allows(self, held, acquired)
+    fn allows(&self, held: &str, acquired: &str) -> PolicyDecision {
+        match successor_dag::normalized::Policy::allows(self, held, acquired) {
+            Some(true) => PolicyDecision::Allow,
+            Some(false) => PolicyDecision::Deny,
+            None => PolicyDecision::Unknown,
+        }
     }
 }
 
@@ -83,8 +94,12 @@ impl LockOrderingPolicy for numeric_rank::normalized::Policy {
         "numeric-nondecreasing"
     }
 
-    fn allows(&self, held: &str, acquired: &str) -> Option<bool> {
-        numeric_rank::normalized::Policy::allows(self, held, acquired)
+    fn allows(&self, held: &str, acquired: &str) -> PolicyDecision {
+        match numeric_rank::normalized::Policy::allows(self, held, acquired) {
+            Some(true) => PolicyDecision::Allow,
+            Some(false) => PolicyDecision::Deny,
+            None => PolicyDecision::Unknown,
+        }
     }
 }
 
@@ -128,9 +143,9 @@ fn report(policy: &impl LockOrderingPolicy, held: &str, acquired: &str) {
     println!("  held: {held}");
     println!("  acquired: {acquired}");
     match policy.allows(held, acquired) {
-        Some(true) => println!("  decision: ALLOW"),
-        Some(false) => println!("  decision: DENY"),
-        None => println!("  decision: UNKNOWN"),
+        PolicyDecision::Allow => println!("  decision: ALLOW"),
+        PolicyDecision::Deny => println!("  decision: DENY"),
+        PolicyDecision::Unknown => println!("  decision: UNKNOWN"),
     }
 }
 
@@ -153,9 +168,22 @@ mod tests {
             }
         "#;
         let policy = successor_dag::normalized::Policy::parse(source).unwrap();
-        assert_eq!(policy.allows("FIRST", "SECOND"), Some(true));
-        assert_eq!(policy.allows("SECOND", "FIRST"), Some(false));
-        assert_eq!(policy.allows("MISSING", "SECOND"), None);
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "FIRST", "SECOND"),
+            PolicyDecision::Allow
+        );
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "SECOND", "FIRST"),
+            PolicyDecision::Deny
+        );
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "MISSING", "SECOND"),
+            PolicyDecision::Unknown
+        );
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "FIRST", "MISSING"),
+            PolicyDecision::Unknown
+        );
     }
 
     #[test]
@@ -169,8 +197,25 @@ mod tests {
         }
         "#;
         let policy = numeric_rank::normalized::Policy::parse(source).unwrap();
-        assert_eq!(policy.allows("first", "second"), Some(true));
-        assert_eq!(policy.allows("second", "first"), Some(false));
-        assert_eq!(policy.allows("missing", "second"), None);
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "first", "second"),
+            PolicyDecision::Allow
+        );
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "second", "first"),
+            PolicyDecision::Deny
+        );
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "first", "first"),
+            PolicyDecision::Allow
+        );
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "missing", "second"),
+            PolicyDecision::Unknown
+        );
+        assert_eq!(
+            LockOrderingPolicy::allows(&policy, "first", "missing"),
+            PolicyDecision::Unknown
+        );
     }
 }

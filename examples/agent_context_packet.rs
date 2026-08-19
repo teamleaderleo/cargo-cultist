@@ -43,6 +43,7 @@ struct AgentContextPacket {
     guidance: Vec<GuidanceFile>,
     recent_history: Vec<CommitSummary>,
     historical_companions: Vec<HistoricalCompanion>,
+    companion_exclusions: Vec<ExcludedCommit>,
     unknowns: Vec<String>,
     truncation: Vec<String>,
 }
@@ -77,6 +78,13 @@ struct CommitSummary {
     sha: String,
     date: String,
     subject: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ExcludedCommit {
+    commit: CommitSummary,
+    reason: String,
+    changed_paths: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -131,7 +139,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let guidance = applicable_guidance(&root, &target)?;
     let (recent_history, history_truncated) =
         recent_commits(&root, &relative_target, budget.max_history_commits)?;
-    let (historical_companions, companion_truncated, excluded_companion_commits) =
+    let (historical_companions, companion_truncated, companion_exclusions) =
         historical_companions(&root, &relative_target, &recent_history, budget)?;
 
     let mut truncation = Vec::new();
@@ -145,12 +153,6 @@ fn run() -> Result<(), Box<dyn Error>> {
         truncation.push(format!(
             "{companion_truncated} additional historical companion path(s) were omitted by max_companions={}.",
             budget.max_companions
-        ));
-    }
-    if excluded_companion_commits > 0 {
-        truncation.push(format!(
-            "{excluded_companion_commits} recent target commit(s) were excluded from companion counts because they were reverts or changed more than {} paths.",
-            budget.max_paths_per_companion_commit
         ));
     }
 
@@ -173,6 +175,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         guidance,
         recent_history,
         historical_companions,
+        companion_exclusions,
         unknowns: vec![
             "Applicable guidance files are surfaced as source artifacts; this research example does not interpret their natural-language rules.".to_string(),
             "Remote pull request, issue, and review rationale is unavailable in this local-only packet.".to_string(),
@@ -293,16 +296,29 @@ fn historical_companions(
     target: &Path,
     recent: &[CommitSummary],
     budget: PacketBudget,
-) -> Result<(Vec<HistoricalCompanion>, usize, usize), Box<dyn Error>> {
+) -> Result<(Vec<HistoricalCompanion>, usize, Vec<ExcludedCommit>), Box<dyn Error>> {
     let mut considered = Vec::new();
-    let mut excluded = 0;
+    let mut excluded = Vec::new();
 
     for summary in recent {
         let commit = read_commit_paths(root, summary)?;
-        if is_revert_subject(&summary.subject)
-            || commit.paths.len() > budget.max_paths_per_companion_commit
-        {
-            excluded += 1;
+        if is_revert_subject(&summary.subject) {
+            excluded.push(ExcludedCommit {
+                commit: summary.clone(),
+                reason: "revert commit".to_string(),
+                changed_paths: commit.paths.len(),
+            });
+            continue;
+        }
+        if commit.paths.len() > budget.max_paths_per_companion_commit {
+            excluded.push(ExcludedCommit {
+                commit: summary.clone(),
+                reason: format!(
+                    "broad commit changed more than {} paths",
+                    budget.max_paths_per_companion_commit
+                ),
+                changed_paths: commit.paths.len(),
+            });
             continue;
         }
         considered.push(commit);

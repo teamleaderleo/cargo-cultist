@@ -267,9 +267,9 @@ fn resolve_join(call: &ExprMethodCall, bindings: &PathBindings) -> Option<Reposi
     let base = resolve_repository_path_value(&call.receiver, bindings)?;
     match base {
         RepositoryPathValue::Root => Some(RepositoryPathValue::Relative(suffix)),
-        RepositoryPathValue::Relative(prefix) => {
-            Some(RepositoryPathValue::Relative(join_repo_paths(&prefix, &suffix)))
-        }
+        RepositoryPathValue::Relative(prefix) => Some(RepositoryPathValue::Relative(
+            join_repo_paths(&prefix, &suffix),
+        )),
     }
 }
 

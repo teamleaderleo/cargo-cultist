@@ -13,14 +13,18 @@ use applicability::{
 };
 use discriminator_observation::{
     DISCRIMINATOR_OBSERVATION_SCHEMA_VERSION, DiscriminatorObservation,
-    DiscriminatorObservationBatch, DiscriminatorValueState,
+    DiscriminatorObservationBatch, DiscriminatorValueState, ObservationApplicability,
+    ObservationApplicabilityStatus,
 };
 use observation_frontier::{
     OBSERVATION_FRONTIER_SCHEMA_VERSION, ObservationFrontierRequest, ObservationFrontierStatus,
     ObservationRequirement, evaluate_observation_frontiers,
 };
 
-fn known_observation(applicability_ref: &str) -> DiscriminatorObservation {
+fn known_observation(
+    applicability_status: ObservationApplicabilityStatus,
+    applicability_ref: &str,
+) -> DiscriminatorObservation {
     DiscriminatorObservation {
         observation_id: "obs:edit-class:subject-a".to_string(),
         discriminator_id: "edit_class".to_string(),
@@ -29,11 +33,16 @@ fn known_observation(applicability_ref: &str) -> DiscriminatorObservation {
         value_state: DiscriminatorValueState::Known {
             value_ref: "syntax_changed".to_string(),
         },
-        applicability_ref: Some(applicability_ref.to_string()),
+        applicability: ObservationApplicability {
+            status: applicability_status,
+            receipt_ref: applicability_ref.to_string(),
+        },
     }
 }
 
-fn frontier_for(observation: DiscriminatorObservation) -> ObservationFrontierStatus {
+fn frontier_for(
+    observation: DiscriminatorObservation,
+) -> observation_frontier::ObservationFrontierReceipt {
     let request = ObservationFrontierRequest {
         schema_version: OBSERVATION_FRONTIER_SCHEMA_VERSION,
         requirements: vec![ObservationRequirement {
@@ -45,11 +54,14 @@ fn frontier_for(observation: DiscriminatorObservation) -> ObservationFrontierSta
             observations: vec![observation],
         },
     };
-    evaluate_observation_frontiers(&request).unwrap().frontiers[0].status
+    evaluate_observation_frontiers(&request)
+        .unwrap()
+        .frontiers
+        .remove(0)
 }
 
 #[test]
-fn known_value_can_be_called_current_while_shared_applicability_is_invalid() {
+fn known_value_with_invalid_shared_applicability_is_not_current() {
     let applicability = evaluate_query(&ApplicabilityQuery {
         schema_version: APPLICABILITY_SCHEMA_VERSION,
         requirements: EvidenceRequirements {
@@ -68,14 +80,21 @@ fn known_value_can_be_called_current_while_shared_applicability_is_invalid() {
     .unwrap();
     assert_eq!(applicability.status, ApplicabilityStatus::Invalid);
 
-    let status = frontier_for(known_observation(
+    let frontier = frontier_for(known_observation(
+        ObservationApplicabilityStatus::Invalid,
         "applicability:owner/repo:old-head->new-head:invalid",
     ));
-    assert_eq!(status, ObservationFrontierStatus::Current);
+    assert_eq!(frontier.status, ObservationFrontierStatus::Invalid);
+    assert!(frontier.current.is_empty());
+    assert_eq!(frontier.invalid.len(), 1);
+    assert_eq!(
+        frontier.invalid[0].known_value_ref.as_deref(),
+        Some("syntax_changed")
+    );
 }
 
 #[test]
-fn known_value_can_be_called_current_while_required_current_revision_is_missing() {
+fn known_value_with_unknown_shared_applicability_is_not_current() {
     let applicability = evaluate_query(&ApplicabilityQuery {
         schema_version: APPLICABILITY_SCHEMA_VERSION,
         requirements: EvidenceRequirements {
@@ -94,8 +113,15 @@ fn known_value_can_be_called_current_while_required_current_revision_is_missing(
     .unwrap();
     assert_eq!(applicability.status, ApplicabilityStatus::Unknown);
 
-    let status = frontier_for(known_observation(
+    let frontier = frontier_for(known_observation(
+        ObservationApplicabilityStatus::Unknown,
         "applicability:owner/repo:exact-head:current-revision-missing",
     ));
-    assert_eq!(status, ObservationFrontierStatus::Current);
+    assert_eq!(frontier.status, ObservationFrontierStatus::Unknown);
+    assert!(frontier.current.is_empty());
+    assert_eq!(frontier.unknown.len(), 1);
+    assert_eq!(
+        frontier.unknown[0].known_value_ref.as_deref(),
+        Some("syntax_changed")
+    );
 }

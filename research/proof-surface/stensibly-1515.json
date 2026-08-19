@@ -9,7 +9,7 @@
   "behavior_evidence": "The A→B stale-head refusal itself was clean, but this PR is intentionally excluded from the final exactly-one-conversation-comment evidence.",
   "requirement_evidence": "Aborted as a proof target after the verifier accidentally created a PR review COMMENT instead of the required ordinary conversation comment.",
   "behavior_marker": "stale-head refusal itself was clean",
-  "requirement_marker": "ordinary conversation comment",
+  "requirement_marker": "required ordinary conversation comment",
   "required_artifact_kind": "issue_conversation_comment",
   "provider_event": {
     "url": "https://github.com/teamleaderleo/stensibly/pull/1515#pullrequestreview-4943138474",

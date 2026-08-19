@@ -414,7 +414,6 @@ fn validate_graph(graph: &JustificationGraph) -> Result<(), JustificationError> 
 
     let mut edge_keys = BTreeSet::new();
     let mut supported_claims = BTreeSet::new();
-    let mut clearable_obligations = BTreeSet::new();
     for edge in &graph.edges {
         if !evidence_ids.contains(&edge.evidence_id) {
             return Err(JustificationError::new(format!(
@@ -445,7 +444,6 @@ fn validate_graph(graph: &JustificationGraph) -> Result<(), JustificationError> 
                         "edge references unknown obligation {id}"
                     )));
                 }
-                clearable_obligations.insert(id.clone());
             }
             (JustificationTarget::Obligation(id), relation) => {
                 return Err(JustificationError::new(format!(
@@ -454,11 +452,7 @@ fn validate_graph(graph: &JustificationGraph) -> Result<(), JustificationError> 
             }
         }
 
-        let key = (
-            edge.evidence_id.clone(),
-            edge.target.clone(),
-            edge.relation,
-        );
+        let key = (edge.evidence_id.clone(), edge.target.clone(), edge.relation);
         if !edge_keys.insert(key) {
             return Err(JustificationError::new("duplicate justification edge"));
         }
@@ -467,11 +461,6 @@ fn validate_graph(graph: &JustificationGraph) -> Result<(), JustificationError> 
     if let Some(id) = claim_ids.difference(&supported_claims).next() {
         return Err(JustificationError::new(format!(
             "claim {id} has no support edge"
-        )));
-    }
-    if let Some(id) = obligation_ids.difference(&clearable_obligations).next() {
-        return Err(JustificationError::new(format!(
-            "obligation {id} has no clearing edge"
         )));
     }
 
@@ -598,7 +587,10 @@ mod tests {
         };
 
         let evaluation = evaluate_graph(&graph, &context("owner/repo", Some("new-head"))).unwrap();
-        assert_eq!(evaluation.claims[0].status, ClaimJustificationStatus::Supported);
+        assert_eq!(
+            evaluation.claims[0].status,
+            ClaimJustificationStatus::Supported
+        );
         assert_eq!(evaluation.claims[0].support.applies, vec!["E2"]);
         assert_eq!(evaluation.claims[0].support.invalid, vec!["E1"]);
     }
@@ -614,7 +606,10 @@ mod tests {
         };
 
         let evaluation = evaluate_graph(&graph, &context("owner/repo", Some("new-head"))).unwrap();
-        assert_eq!(evaluation.claims[0].status, ClaimJustificationStatus::Unknown);
+        assert_eq!(
+            evaluation.claims[0].status,
+            ClaimJustificationStatus::Unknown
+        );
         assert_eq!(evaluation.claims[0].support.invalid, vec!["E1"]);
     }
 
@@ -649,6 +644,24 @@ mod tests {
         assert_eq!(claim.status, ClaimJustificationStatus::Supported);
         assert_eq!(claim.counterexamples.applies, vec!["E2"]);
         assert_eq!(claim.limits.applies, vec!["E3"]);
+    }
+
+    #[test]
+    fn open_obligation_can_exist_before_clearing_evidence_arrives() {
+        let graph = JustificationGraph {
+            schema_version: JUSTIFICATION_SCHEMA_VERSION,
+            evidence: Vec::new(),
+            claims: Vec::new(),
+            obligations: vec![ObligationNode {
+                id: "U0".to_string(),
+                question: "which exact evidence clears this?".to_string(),
+            }],
+            edges: Vec::new(),
+        };
+
+        let evaluation = evaluate_graph(&graph, &context("owner/repo", Some("head"))).unwrap();
+        assert_eq!(evaluation.obligations[0].status, ObligationStatus::Open);
+        assert!(evaluation.obligations[0].clearing.applies.is_empty());
     }
 
     #[test]
@@ -725,7 +738,10 @@ mod tests {
         };
 
         let evaluation = evaluate_graph(&graph, &context("owner/repo", None)).unwrap();
-        assert_eq!(evaluation.claims[0].status, ClaimJustificationStatus::Unknown);
+        assert_eq!(
+            evaluation.claims[0].status,
+            ClaimJustificationStatus::Unknown
+        );
         assert_eq!(evaluation.claims[0].dependencies.unknown, vec!["E2"]);
     }
 

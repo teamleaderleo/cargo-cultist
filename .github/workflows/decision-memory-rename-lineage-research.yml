@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - examples/decision_memory.rs
+      - examples/agent_context_packet.rs
       - research/decision-memory-fixtures/rename/**
       - .github/workflows/decision-memory-rename-lineage-research.yml
   workflow_dispatch:
@@ -33,6 +34,32 @@ jobs:
           cargo clippy --example decision_memory -- -D warnings
           cargo test --example decision_memory
           cargo build --example decision_memory
+          cargo clippy --example agent_context_packet -- -D warnings
+          cargo build --example agent_context_packet
+
+      - name: Prove direct match provenance reaches agent packet
+        run: |
+          set -euo pipefail
+          mkdir -p research-output
+          cultist/target/debug/examples/agent_context_packet \
+            cultist/src/history.rs \
+            | tee research-output/history-agent-packet.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packet = json.loads(Path('research-output/history-agent-packet.json').read_text())
+          assert packet['schema_version'] == 4, packet['schema_version']
+          decisions = [
+              item for item in packet['reviewed_decisions']
+              if item['record']['id'] == 'history-cochange-remains-association-v1'
+          ]
+          assert len(decisions) == 1, packet['reviewed_decisions']
+          decision = decisions[0]
+          assert decision['matched_via'] == 'direct', decision
+          assert decision['matched_path'] == 'src/history.rs', decision
+          assert any('git_file_lineage' in item for item in packet['unknowns']), packet['unknowns']
+          PY
 
       - name: Checkout direct pre-rename state
         uses: actions/checkout@v4
@@ -46,7 +73,6 @@ jobs:
       - name: Resolve original path directly
         run: |
           set -euo pipefail
-          mkdir -p research-output
           cultist/target/debug/examples/decision_memory \
             corpus/direct/research/decision-memory-fixtures/rename/records \
             corpus/direct/research/decision-memory-fixtures/rename/original.rs \

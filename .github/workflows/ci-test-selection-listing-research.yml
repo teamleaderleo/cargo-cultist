@@ -20,9 +20,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install stable Rust
+      - name: Install Rust toolchains
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup toolchain install 1.88.0 --profile minimal
           rustup default stable
       - name: Probe quality gates
         run: |
@@ -83,3 +84,24 @@ jobs:
           grep -q 'filter `existing_test`' /tmp/matching-listing.txt
           grep -q 'listed selections: 1' /tmp/matching-listing.txt
           grep -q 'tests::existing_test' /tmp/matching-listing.txt
+
+      - name: Checkout exact Tantivy zero-test carrier
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/tantivy
+          ref: b92909ef3d5ac5695d1c85b1b0cb52a03ee51e49
+          path: corpus/tantivy
+          persist-credentials: false
+
+      - name: Resolve Tantivy dependency graph under recorded toolchain
+        working-directory: corpus/tantivy
+        run: cargo +1.88.0 generate-lockfile
+
+      - name: Replay authoritative listing on Tantivy controls
+        run: |
+          set -euo pipefail
+          cargo run --quiet --example ci_test_selection_listing -- corpus/tantivy | tee /tmp/tantivy-listing.txt
+          grep -F 'filter `test_prepare_`' /tmp/tantivy-listing.txt
+          grep -F 'listed selections: 3' /tmp/tantivy-listing.txt
+          grep -F 'filter `test_rollback`' /tmp/tantivy-listing.txt
+          grep -F 'listed selections: 0' /tmp/tantivy-listing.txt

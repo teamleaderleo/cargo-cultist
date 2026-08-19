@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/stensibly",
+  "anchor": {
+    "kind": "pull_request",
+    "number": 1610
+  },
+  "artifacts": [
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1609
+      },
+      "title": "Mount Project Activity in the hosted API",
+      "state": "closed",
+      "created_at": "2026-08-16T10:38:24Z",
+      "closed_at": "2026-08-16T10:46:14Z",
+      "revision": {
+        "head_sha": "3b1f7ce1ca7b1adaf0cc4f8b21e18320b9d0cf62",
+        "base_sha": "5479fa574896863ff5d914ee7ba7d0c1b3a212b7",
+        "merged": true
+      },
+      "changed_paths": [
+        "src/api-v1.ts",
+        "test/api-v1-project-activity.test.ts"
+      ],
+      "evidence_text": "## Purpose\n\nActivate the read-only Project Activity route landed in #1608 on the same Convex-backed API surface that already serves project correspondence.\n\n## Change\n\n- mount `createProjectActivityApi()` inside `createApiV1()` only when the work ledger is `ConvexWorkLedger`;\n- build both live read sources from the ledger's existing Convex client, service secret, and workspace;\n- leave SQLite/local API behavior unchanged;\n- preserve the route's existing project/read auth fence, bounded limit, zero-authority projection, and source-completeness envelope.\n\n## Proof\n\nA focused API-v1 integration control proves that one authenticated `/projects/stensibly/activity?limit=12` request:\n\n- reaches exactly `mailCorrespondence:listProjectSources` and `orchestratorActivity:listRecentObservations`;\n- sends identical service-secret/workspace/project/limit scope to both reads;\n- produces `project-activity/v1` with zero authority/effects;\n- preserves correspondence degradation counts independently from orchestrator truncation;\n- performs no mutation.\n\nThe `api-v1.ts` diff is intentionally tiny: 19 additive lines (two imports + one Convex-only route mount). No existing route or error behavior is changed.\n\n## Validation note\n\nThe first head exposed a test-fixture typo: the mock expected `correspondence:listProject`, while the existing live source correctly calls `mailCorrespondence:listProjectSources`. Production mount code was unchanged; the control now names the real query and exact-head CI is rerunning.\n\n## Boundary\n\nHosted activation + one integration control only. No UI, no provider call, no new persistence, no causal inference, no activity mutation, no reply/action composer.\n\nRefs #1586, #1608, #1607, #1582.\n\n— Keel · Project Activity activation",
+      "evidence_complete": true
+    },
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1610
+      },
+      "title": "Allow bounded Worker origin convergence before deployment receipt",
+      "state": "closed",
+      "created_at": "2026-08-16T14:27:36Z",
+      "closed_at": "2026-08-16T14:32:59Z",
+      "revision": {
+        "head_sha": "2ebed23efb175b4c6937b78551dbd1fe31e74c68",
+        "base_sha": "3f6348c8c749625ef4fbea7cad3f3498d677f56a",
+        "merged": true
+      },
+      "changed_paths": [
+        "scripts/worker-production-receipt.ts",
+        "test/worker-production-receipt.test.ts"
+      ],
+      "evidence_text": "## Purpose\n\nRepair the production Worker receipt race exposed by the #1609 deployment: Cloudflare provider-current had already promoted the exact candidate to 100%, while the raw `workers.dev` hostname briefly served the previous Worker version. The release itself succeeded; the receipt failed on transient public-origin propagation.\n\n## Change\n\n- keep Cloudflare provider-current as the authoritative exact-version fence;\n- verify each public origin up to 8 times with 5-second bounded spacing;\n- emit no receipt until both public origins report the exact provider-current version;\n- preserve hard failure when an origin never converges;\n- inject the sleep dependency so tests prove convergence and exhaustion without wall-clock delay.\n\n## Evidence\n\nThe failed #1609 production job deployed Worker version `d5bf6ea5-621f-411a-9078-bd097d2e6f63` at 100%. Provider deployment inventory then reported that exact version current, while the raw `workers.dev` health endpoint still returned previous version `4c2ea61c-8f96-46c0-a3a7-7d08bf26206f`. `api.stensibly.com` subsequently returned the new version. This packet treats that bounded propagation interval as convergence rather than contradiction.\n\n## Boundary\n\nDeployment observation/receipt only. No release authority change, no rollback change, no Worker product behavior, no API/UI change, no provider mutation beyond the existing deployment workflow.\n\nRefs #1603, #1609, #1586.\n\n— Keel · Worker provider-current receipt",
+      "evidence_complete": true
+    }
+  ],
+  "edges": []
+}

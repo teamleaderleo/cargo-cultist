@@ -259,7 +259,10 @@ impl PathScope {
 }
 
 fn validate_requirements(requirements: &EvidenceRequirements) -> Result<(), ApplicabilityError> {
-    validate_coordinate(requirements.repository.as_deref(), "requirements.repository")?;
+    validate_coordinate(
+        requirements.repository.as_deref(),
+        "requirements.repository",
+    )?;
     validate_coordinate(requirements.revision.as_deref(), "requirements.revision")?;
     validate_coordinate(requirements.work.as_deref(), "requirements.work")?;
     if let Some(scope) = &requirements.scope {
@@ -317,10 +320,7 @@ fn validate_repo_path(path: &str, field: &str) -> Result<(), ApplicabilityError>
 mod tests {
     use super::*;
 
-    fn query(
-        requirements: EvidenceRequirements,
-        context: EvaluationContext,
-    ) -> ApplicabilityQuery {
+    fn query(requirements: EvidenceRequirements, context: EvaluationContext) -> ApplicabilityQuery {
         ApplicabilityQuery {
             schema_version: APPLICABILITY_SCHEMA_VERSION,
             requirements,
@@ -372,7 +372,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(evaluation.status, ApplicabilityStatus::Invalid);
-        assert_eq!(evaluation.dimensions[0].dimension, ApplicabilityDimension::Revision);
+        assert_eq!(
+            evaluation.dimensions[0].dimension,
+            ApplicabilityDimension::Revision
+        );
         assert_eq!(evaluation.dimensions[0].status, DimensionStatus::Mismatched);
     }
 
@@ -521,7 +524,13 @@ mod tests {
 
     #[test]
     fn rejects_noncanonical_paths() {
-        for path in ["/src/lib.rs", "src/../lib.rs", "src\\lib.rs", "src//lib.rs", "./src/lib.rs"] {
+        for path in [
+            "/src/lib.rs",
+            "src/../lib.rs",
+            "src\\lib.rs",
+            "src//lib.rs",
+            "./src/lib.rs",
+        ] {
             let error = evaluate_query(&query(
                 EvidenceRequirements {
                     scope: Some(PathScope {
@@ -533,13 +542,20 @@ mod tests {
                 EvaluationContext::default(),
             ))
             .unwrap_err();
-            assert!(error.to_string().contains("canonical repository-relative path"));
+            assert!(
+                error
+                    .to_string()
+                    .contains("canonical repository-relative path")
+            );
         }
     }
 
     #[test]
     fn rejects_unknown_schema_and_unknown_json_fields() {
-        let mut unsupported = query(EvidenceRequirements::default(), EvaluationContext::default());
+        let mut unsupported = query(
+            EvidenceRequirements::default(),
+            EvaluationContext::default(),
+        );
         unsupported.schema_version = 2;
         assert!(evaluate_query(&unsupported).is_err());
 

@@ -95,7 +95,10 @@ impl ProjectDocumentPacket {
         for document in &self.documents {
             document.validate()?;
             if !paths.insert(document.path.as_str()) {
-                return Err(format!("duplicate project-document path `{}`", document.path));
+                return Err(format!(
+                    "duplicate project-document path `{}`",
+                    document.path
+                ));
             }
         }
         Ok(())
@@ -138,7 +141,10 @@ impl ProjectDocument {
             ));
         }
         if self.source.number == 0 {
-            return Err(format!("document `{}` source number must be positive", self.path));
+            return Err(format!(
+                "document `{}` source number must be positive",
+                self.path
+            ));
         }
         if self.source_evidence.is_empty()
             || self.source_evidence.len() > MAX_SOURCE_EVIDENCE_BYTES

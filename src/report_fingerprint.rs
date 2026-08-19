@@ -31,11 +31,12 @@ impl FromStr for ReportFingerprint {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let expected_prefix = format!("{REPORT_FINGERPRINT_SCHEME}:");
-        let digest = value
-            .strip_prefix(&expected_prefix)
-            .ok_or(ReportFingerprintError::InvalidFormat(
-                "unsupported report fingerprint scheme",
-            ))?;
+        let digest =
+            value
+                .strip_prefix(&expected_prefix)
+                .ok_or(ReportFingerprintError::InvalidFormat(
+                    "unsupported report fingerprint scheme",
+                ))?;
 
         if digest.len() != SHA256_HEX_BYTES {
             return Err(ReportFingerprintError::InvalidFormat(
@@ -132,9 +133,7 @@ fn hex_digit(nibble: u8) -> char {
 mod tests {
     use super::*;
     use crate::compact_ir::decode_report;
-    use crate::finding::{
-        Claim, ClaimKind, Evidence, Finding, Location, REPORT_SCHEMA_VERSION,
-    };
+    use crate::finding::{Claim, ClaimKind, Evidence, Finding, Location, REPORT_SCHEMA_VERSION};
 
     fn small_report() -> AnalysisReport {
         AnalysisReport {
@@ -163,11 +162,9 @@ mod tests {
                             .with_evidence(Evidence::new("github:pull/10")),
                     )
                     .with_question("Coordinate ownership?"),
-                Finding::new("explicit-coordination", "Explicit coordination")
-                    .with_claim(Claim::new(
-                        ClaimKind::Observed,
-                        "hold_merge_while #10 > #11",
-                    )),
+                Finding::new("explicit-coordination", "Explicit coordination").with_claim(
+                    Claim::new(ClaimKind::Observed, "hold_merge_while #10 > #11"),
+                ),
             ],
         }
     }
@@ -235,9 +232,7 @@ mod tests {
         claim.findings[0].claims[0].message.push('!');
 
         let mut evidence = report.clone();
-        evidence.findings[0].claims[0].evidence[0]
-            .message
-            .push('!');
+        evidence.findings[0].claims[0].evidence[0].message.push('!');
 
         let mut question = report.clone();
         question.findings[0].question = Some("Different question?".to_string());

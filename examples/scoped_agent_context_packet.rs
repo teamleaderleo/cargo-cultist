@@ -1,6 +1,7 @@
+#[allow(dead_code)]
 mod packet {
     include!("agent_context_packet.rs");
-    include!("scoped_agent_context_packet_impl.rs");
+    include!("support/scoped_agent_context_packet_impl.rs");
 }
 
 fn main() {

@@ -34,8 +34,35 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Check collector syntax
-        run: python -m py_compile scripts/project_memory_github.py
+      - name: Check collector syntax and reference controls
+        run: |
+          python -m py_compile scripts/project_memory_github.py
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path("scripts/project_memory_github.py")
+          spec = importlib.util.spec_from_file_location("project_memory_github", path)
+          module = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(module)
+
+          anchor = {
+              "reference": {"kind": "pull_request", "number": 1},
+              "evidence_text": (
+                  "Follow-up to repairs #1569/#1571/#1573.\n"
+                  "Related: other/repo#123 and #456"
+              ),
+          }
+          edges = module.explicit_anchor_edges(anchor)
+          pairs = [(edge["relation"], edge["to"]["number"]) for edge in edges]
+          assert pairs == [
+              ("follow_up_to", 1569),
+              ("follow_up_to", 1571),
+              ("follow_up_to", 1573),
+              ("related", 456),
+          ], pairs
+          PY
 
       - name: Collect one-hop project memory
         env:

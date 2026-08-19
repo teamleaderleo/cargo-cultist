@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "trial_id": "prior-episode-front:stale-review",
+  "task_instruction": "Choose exactly one first justified action for the retained review concern before writing any review feedback.",
+  "allowed_first_actions": [
+    {
+      "id": "post_new_review_thread",
+      "label": "Post a new review thread for the concern"
+    },
+    {
+      "id": "reuse_existing_review_thread",
+      "label": "Reuse the existing review thread as current"
+    },
+    {
+      "id": "recompute_and_refresh_review_thread",
+      "label": "Recompute the concern on the current head and refresh the existing thread"
+    },
+    {
+      "id": "acquire_missing_review_coordinate",
+      "label": "Acquire a missing review coordinate before deciding"
+    },
+    {
+      "id": "inspect_more_history",
+      "label": "Inspect more review history before deciding"
+    }
+  ],
+  "control": {
+    "context_ref": "research/prior-episode-front/pr-agent-2424.json#raw",
+    "context": "Source identity: The-PR-Agent/pr-agent#2424\nCurrent PR head: f6070fb1a45516565bbb8deeb02a1f66cec13d91\nPrior review root: github:pull/2424/review-comment/3355870564\nPrior reviewed head: 8fb9e4e86b4794d39afba2d62413571cbc04a744\nPrior review outcome: patch_changed\nResolution reply: github:pull/2424/review-comment/3355925719\nPath: pr_agent/git_providers/github_provider.py\nTask: decide the first justified action for this concern on the current patch.",
+    "context_digest": "cultist-behavioral-context-sha256-v1:df7f52fa7bd85e71daccdf1d8432f7beefbf30df37bcdd56ece8505d72557023"
+  },
+  "treatment": {
+    "context_ref": "research/prior-episode-front/pr-agent-2424.json#front",
+    "context": "Source identity: The-PR-Agent/pr-agent#2424\nCurrent PR head: f6070fb1a45516565bbb8deeb02a1f66cec13d91\nPrior review root: github:pull/2424/review-comment/3355870564\nPrior reviewed head: 8fb9e4e86b4794d39afba2d62413571cbc04a744\nPrior review outcome: patch_changed\nResolution reply: github:pull/2424/review-comment/3355925719\nPath: pr_agent/git_providers/github_provider.py\nTask: decide the first justified action for this concern on the current patch.\n\nCultist prior-episode front:\nsource disposition: refresh_existing_thread\nold outcome applicability: INVALID\nnext: recompute_and_refresh_review_thread",
+    "context_digest": "cultist-behavioral-context-sha256-v1:a2be1b8687408f87c8a12c2c99188edfe18f22957bfaafb4a87e85c4d1345498"
+  }
+}

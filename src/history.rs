@@ -107,13 +107,12 @@ pub fn analyze_historical_companions(
         return Err("history broad-commit threshold must be greater than zero".into());
     }
 
-    let commit_shas = anchor_commit_shas(root, anchor, options.max_commits)?;
-    let discovered_commits = commit_shas.len();
+    let commits = read_anchor_history(root, anchor, options.max_commits)?;
+    let discovered_commits = commits.len();
     let mut considered = Vec::new();
     let mut excluded_commits = Vec::new();
 
-    for sha in commit_shas {
-        let commit = read_commit(root, &sha)?;
+    for commit in commits {
         if is_revert_subject(&commit.summary.subject) {
             excluded_commits.push(ExcludedCommit {
                 commit: commit.summary,
@@ -274,11 +273,14 @@ fn print_limitations(report: &HistoryReport) {
     }
 }
 
-fn anchor_commit_shas(
+fn read_anchor_history(
     root: &Path,
     anchor: &Path,
     max_commits: usize,
-) -> Result<Vec<String>, Box<dyn Error>> {
+) -> Result<Vec<HistoricalCommit>, Box<dyn Error>> {
+    // `--full-diff` keeps the pathspec as the commit selector while making
+    // `--name-only` report each selected commit's complete change set. This
+    // lets one Git process replace the previous log + one-show-per-commit loop.
     let output = Command::new("git")
         .arg("-C")
         .arg(root)
@@ -286,8 +288,14 @@ fn anchor_commit_shas(
             "-c",
             "core.quotepath=false",
             "log",
-            "--format=%H",
+            "--format=%x1e%H%x1f%cI%x1f%s",
+            "--name-only",
+            "--no-renames",
+            "--no-color",
+            "--no-ext-diff",
+            "--root",
             "--no-merges",
+            "--full-diff",
             "-n",
         ])
         .arg(max_commits.to_string())
@@ -300,52 +308,28 @@ fn anchor_commit_shas(
         return Err(format!("git log failed for {}: {stderr}", anchor.display()).into());
     }
 
-    let stdout = String::from_utf8(output.stdout)?;
-    Ok(stdout
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-        .collect())
+    parse_history_log(&String::from_utf8(output.stdout)?)
+        .ok_or_else(|| format!("could not parse git history for {}", anchor.display()).into())
 }
 
-fn read_commit(root: &Path, sha: &str) -> Result<HistoricalCommit, Box<dyn Error>> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args([
-            "-c",
-            "core.quotepath=false",
-            "show",
-            "--format=%H%x1f%cI%x1f%s%x1e",
-            "--name-only",
-            "--no-renames",
-            "--no-color",
-            "--no-ext-diff",
-            "--root",
-        ])
-        .arg(sha)
-        .arg("--")
-        .output()?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git show failed for {sha}: {stderr}").into());
-    }
-
-    parse_commit_show(&String::from_utf8(output.stdout)?)
-        .ok_or_else(|| format!("could not parse git show output for {sha}").into())
+fn parse_history_log(output: &str) -> Option<Vec<HistoricalCommit>> {
+    output
+        .split('\u{1e}')
+        .filter(|record| !record.trim().is_empty())
+        .map(parse_history_record)
+        .collect()
 }
 
-fn parse_commit_show(output: &str) -> Option<HistoricalCommit> {
-    let (metadata, paths) = output.split_once('\u{1e}')?;
-    let mut fields = metadata.trim().splitn(3, '\u{1f}');
+fn parse_history_record(record: &str) -> Option<HistoricalCommit> {
+    let record = record.trim_start_matches(['\n', '\r']);
+    let mut lines = record.lines();
+    let metadata = lines.next()?.trim();
+    let mut fields = metadata.splitn(3, '\u{1f}');
     let sha = fields.next()?.trim().to_string();
     let date = fields.next()?.trim().to_string();
     let subject = fields.next()?.trim().to_string();
 
-    let paths = paths
-        .lines()
+    let paths = lines
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(PathBuf::from)
@@ -462,6 +446,9 @@ fn short_sha(sha: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
 
     fn commit(sha: &str, subject: &str, paths: &[&str]) -> HistoricalCommit {
@@ -475,20 +462,75 @@ mod tests {
         }
     }
 
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "cargo-cultist-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    fn run_git(root: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git command failed: git {args:?}");
+    }
+
     #[test]
-    fn parses_git_show_record() {
+    fn parses_batched_git_log_records() {
         let output = concat!(
-            "abcdef\x1f2026-08-18T12:00:00Z\x1ffeat: example\x1e\n",
+            "\x1eabcdef\x1f2026-08-18T12:00:00Z\x1ffeat: example\n\n",
             "src/a.rs\n",
             "tests/a.rs\n",
+            "\x1e123456\x1f2026-08-17T12:00:00Z\x1ffix: another\n\n",
+            "src/a.rs\n",
         );
-        let parsed = parse_commit_show(output).unwrap();
-        assert_eq!(parsed.summary.sha, "abcdef");
-        assert_eq!(parsed.summary.subject, "feat: example");
+        let parsed = parse_history_log(output).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].summary.sha, "abcdef");
+        assert_eq!(parsed[0].summary.subject, "feat: example");
         assert_eq!(
-            parsed.paths,
+            parsed[0].paths,
             vec![PathBuf::from("src/a.rs"), PathBuf::from("tests/a.rs")]
         );
+        assert_eq!(parsed[1].summary.sha, "123456");
+        assert_eq!(parsed[1].paths, vec![PathBuf::from("src/a.rs")]);
+    }
+
+    #[test]
+    fn path_filtered_history_keeps_full_commit_change_sets() {
+        let root = unique_temp_dir("batched-history");
+        fs::create_dir_all(&root).unwrap();
+        run_git(&root, &["init", "-q"]);
+        run_git(&root, &["config", "user.email", "cultist@example.invalid"]);
+        run_git(&root, &["config", "user.name", "Cargo Cultist Tests"]);
+
+        fs::write(root.join("anchor.rs"), "fn anchor() {}\n").unwrap();
+        fs::write(root.join("companion.rs"), "fn companion() {}\n").unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-q", "-m", "baseline"]);
+
+        fs::write(root.join("anchor.rs"), "fn anchor_changed() {}\n").unwrap();
+        fs::write(root.join("companion.rs"), "fn companion_changed() {}\n").unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-q", "-m", "paired change"]);
+
+        let commits = read_anchor_history(&root, Path::new("anchor.rs"), 10).unwrap();
+        let paired = commits
+            .iter()
+            .find(|commit| commit.summary.subject == "paired change")
+            .unwrap();
+        assert!(paired.paths.contains(&PathBuf::from("anchor.rs")));
+        assert!(paired.paths.contains(&PathBuf::from("companion.rs")));
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

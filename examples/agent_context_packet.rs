@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::error::Error;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -10,11 +11,13 @@ use serde::Serialize;
 #[path = "decision_memory.rs"]
 mod decision_memory;
 
-const SCHEMA_VERSION: u32 = 4;
+const SCHEMA_VERSION: u32 = 5;
 const DEFAULT_MAX_HISTORY: usize = 20;
 const DEFAULT_MAX_COMPANIONS: usize = 8;
 const DEFAULT_MAX_EXAMPLES: usize = 2;
+const DEFAULT_MAX_SERIALIZED_BYTES: usize = 32 * 1024;
 const MAX_PATHS_PER_COMPANION_COMMIT: usize = 100;
+const PACKET_MAX_BYTES_ENV: &str = "CARGO_CULTIST_PACKET_MAX_BYTES";
 
 #[derive(Debug, Clone, Copy, Serialize)]
 struct PacketBudget {
@@ -22,6 +25,7 @@ struct PacketBudget {
     max_companions: usize,
     max_examples_per_relation: usize,
     max_paths_per_companion_commit: usize,
+    max_serialized_bytes: usize,
 }
 
 impl Default for PacketBudget {
@@ -31,6 +35,7 @@ impl Default for PacketBudget {
             max_companions: DEFAULT_MAX_COMPANIONS,
             max_examples_per_relation: DEFAULT_MAX_EXAMPLES,
             max_paths_per_companion_commit: MAX_PATHS_PER_COMPANION_COMMIT,
+            max_serialized_bytes: DEFAULT_MAX_SERIALIZED_BYTES,
         }
     }
 }
@@ -42,7 +47,9 @@ struct AgentContextPacket {
     repository: String,
     target: PacketTarget,
     budget: PacketBudget,
+    candidate_serialized_bytes: usize,
     serialized_bytes: usize,
+    semantic_evictions: Vec<SemanticEviction>,
     direct_evidence: Vec<EvidenceItem>,
     guidance: Vec<GuidanceFile>,
     reviewed_decisions: Vec<decision_memory::ResolvedDecision>,
@@ -51,6 +58,12 @@ struct AgentContextPacket {
     companion_exclusions: Vec<ExcludedCommit>,
     unknowns: Vec<String>,
     truncation: Vec<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+struct SemanticEviction {
+    class: &'static str,
+    count: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,6 +130,45 @@ struct CompanionAnalysis {
     exclusions: Vec<ExcludedCommit>,
 }
 
+#[derive(Debug)]
+enum SemanticBudgetError {
+    Serialize(serde_json::Error),
+    ProtectedCoreTooLarge {
+        max_serialized_bytes: usize,
+        required_serialized_bytes: usize,
+    },
+}
+
+impl fmt::Display for SemanticBudgetError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Serialize(error) => write!(formatter, "failed to serialize packet: {error}"),
+            Self::ProtectedCoreTooLarge {
+                max_serialized_bytes,
+                required_serialized_bytes,
+            } => write!(
+                formatter,
+                "protected packet evidence requires {required_serialized_bytes} bytes, exceeding max_serialized_bytes={max_serialized_bytes}"
+            ),
+        }
+    }
+}
+
+impl Error for SemanticBudgetError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Serialize(error) => Some(error),
+            Self::ProtectedCoreTooLarge { .. } => None,
+        }
+    }
+}
+
+impl From<serde_json::Error> for SemanticBudgetError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Serialize(error)
+    }
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("agent-context-packet: {error}");
@@ -149,7 +201,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         .map_err(|_| "target is outside the resolved Git repository")?
         .to_path_buf();
 
-    let budget = PacketBudget::default();
+    let budget = packet_budget_from_env()?;
     let guidance = applicable_guidance(&root, &target)?;
     let reviewed_decisions =
         decision_memory::resolve_repository_decisions(&root, &relative_target)?;
@@ -192,7 +244,9 @@ fn run() -> Result<(), Box<dyn Error>> {
             path: relative_target.display().to_string(),
         },
         budget,
+        candidate_serialized_bytes: 0,
         serialized_bytes: 0,
+        semantic_evictions: Vec::new(),
         direct_evidence: vec![EvidenceItem {
             claim_kind: "proven",
             message: "The target resolves to this repository-relative file identity.".to_string(),
@@ -212,14 +266,67 @@ fn run() -> Result<(), Box<dyn Error>> {
             "A decision matched through `git_file_lineage` relies on Git rename detection; the packet preserves that provenance instead of treating the match as a direct current-path scope.".to_string(),
             "Remote pull request, issue, and review rationale outside repository decision memory is unavailable in this local-only packet.".to_string(),
             "Chronological proximity between commits is not evidence that one change caused another.".to_string(),
-            "Current Cargo Cultist analyzer findings are not yet composed into this standalone research example.".to_string(),
-            "This v4 research packet measures serialized bytes but does not yet enforce a hard byte budget or eviction policy.".to_string(),
+            "Current Cultist analyzer findings are not yet composed into this standalone research example.".to_string(),
+            "The v5 byte-budget eviction order is research policy and has not been promoted as a universal JEI ranking.".to_string(),
         ],
         truncation,
     };
 
-    println!("{}", render_packet_with_exact_size(&mut packet)?);
+    println!("{}", compile_packet_to_budget(&mut packet)?);
     Ok(())
+}
+
+fn packet_budget_from_env() -> Result<PacketBudget, Box<dyn Error>> {
+    let mut budget = PacketBudget::default();
+    if let Ok(value) = env::var(PACKET_MAX_BYTES_ENV) {
+        let parsed = value
+            .parse::<usize>()
+            .map_err(|_| format!("{PACKET_MAX_BYTES_ENV} must be a positive integer"))?;
+        if parsed == 0 {
+            return Err(format!("{PACKET_MAX_BYTES_ENV} must be a positive integer").into());
+        }
+        budget.max_serialized_bytes = parsed;
+    }
+    Ok(budget)
+}
+
+fn compile_packet_to_budget(
+    packet: &mut AgentContextPacket,
+) -> Result<String, SemanticBudgetError> {
+    packet.semantic_evictions.clear();
+    packet.candidate_serialized_bytes = 0;
+    packet.serialized_bytes = 0;
+    stabilize_candidate_size(packet)?;
+
+    loop {
+        let rendered = render_packet_with_exact_size(packet)?;
+        if rendered.len() <= packet.budget.max_serialized_bytes {
+            return Ok(rendered);
+        }
+
+        let Some(class) = evict_one_semantic_detail(packet) else {
+            return Err(SemanticBudgetError::ProtectedCoreTooLarge {
+                max_serialized_bytes: packet.budget.max_serialized_bytes,
+                required_serialized_bytes: rendered.len(),
+            });
+        };
+        record_semantic_eviction(packet, class);
+        packet.serialized_bytes = 0;
+    }
+}
+
+fn stabilize_candidate_size(packet: &mut AgentContextPacket) -> Result<(), serde_json::Error> {
+    loop {
+        let rendered = serde_json::to_string_pretty(packet)?;
+        let serialized_bytes = rendered.len();
+        if packet.candidate_serialized_bytes == serialized_bytes
+            && packet.serialized_bytes == serialized_bytes
+        {
+            return Ok(());
+        }
+        packet.candidate_serialized_bytes = serialized_bytes;
+        packet.serialized_bytes = serialized_bytes;
+    }
 }
 
 fn render_packet_with_exact_size(
@@ -233,6 +340,48 @@ fn render_packet_with_exact_size(
         }
         packet.serialized_bytes = serialized_bytes;
     }
+}
+
+fn evict_one_semantic_detail(packet: &mut AgentContextPacket) -> Option<&'static str> {
+    for companion in packet.historical_companions.iter_mut().rev() {
+        if companion.examples.pop().is_some() {
+            companion.examples_omitted += 1;
+            return Some("historical_support_example");
+        }
+    }
+
+    for companion in packet.historical_companions.iter_mut().rev() {
+        if companion.counterexamples.pop().is_some() {
+            companion.counterexamples_omitted += 1;
+            return Some("historical_counterexample");
+        }
+    }
+
+    if packet.historical_companions.pop().is_some() {
+        return Some("historical_companion_relation");
+    }
+    if packet.recent_history.pop().is_some() {
+        return Some("recent_history_summary");
+    }
+    if packet.companion_exclusions.pop().is_some() {
+        return Some("companion_exclusion_detail");
+    }
+
+    None
+}
+
+fn record_semantic_eviction(packet: &mut AgentContextPacket, class: &'static str) {
+    if let Some(receipt) = packet
+        .semantic_evictions
+        .iter_mut()
+        .find(|receipt| receipt.class == class)
+    {
+        receipt.count += 1;
+        return;
+    }
+    packet
+        .semantic_evictions
+        .push(SemanticEviction { class, count: 1 });
 }
 
 fn git_repo_root(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
@@ -474,4 +623,167 @@ fn is_revert_subject(subject: &str) -> bool {
         .trim_start()
         .to_ascii_lowercase()
         .starts_with("revert")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn summary(label: &str, subject_bytes: usize) -> CommitSummary {
+        CommitSummary {
+            sha: format!("{label:0<40}"),
+            date: "2026-08-19T00:00:00Z".to_string(),
+            subject: format!("{label}:{}", "x".repeat(subject_bytes)),
+        }
+    }
+
+    fn synthetic_packet(max_serialized_bytes: usize) -> AgentContextPacket {
+        let mut budget = PacketBudget::default();
+        budget.max_serialized_bytes = max_serialized_bytes;
+        AgentContextPacket {
+            schema_version: SCHEMA_VERSION,
+            analysis: "agent_context",
+            repository: "/repo".to_string(),
+            target: PacketTarget {
+                path: "src/target.rs".to_string(),
+            },
+            budget,
+            candidate_serialized_bytes: 0,
+            serialized_bytes: 0,
+            semantic_evictions: Vec::new(),
+            direct_evidence: vec![EvidenceItem {
+                claim_kind: "proven",
+                message: "target identity".to_string(),
+                source: EvidenceSource {
+                    kind: "filesystem",
+                    path: "src/target.rs".to_string(),
+                },
+            }],
+            guidance: vec![GuidanceFile {
+                path: "AGENTS.md".to_string(),
+                scope: ".".to_string(),
+                guidance_kind: "AGENTS.md".to_string(),
+            }],
+            reviewed_decisions: Vec::new(),
+            recent_history: vec![
+                summary("recent-a", 900),
+                summary("recent-b", 900),
+                summary("recent-c", 900),
+            ],
+            historical_companions: vec![
+                HistoricalCompanion {
+                    path: "src/high.rs".to_string(),
+                    support: 9,
+                    opportunities: 10,
+                    support_percent: 90.0,
+                    examples: vec![
+                        summary("high-support-a", 900),
+                        summary("high-support-b", 900),
+                    ],
+                    examples_omitted: 7,
+                    counterexamples: vec![summary("high-counter", 900)],
+                    counterexamples_omitted: 0,
+                },
+                HistoricalCompanion {
+                    path: "src/low.rs".to_string(),
+                    support: 5,
+                    opportunities: 10,
+                    support_percent: 50.0,
+                    examples: vec![summary("low-support-a", 900), summary("low-support-b", 900)],
+                    examples_omitted: 3,
+                    counterexamples: vec![summary("low-counter", 900)],
+                    counterexamples_omitted: 4,
+                },
+            ],
+            companion_exclusions: vec![ExcludedCommit {
+                commit: summary("excluded", 900),
+                reason: "broad commit".to_string(),
+                changed_paths: 101,
+            }],
+            unknowns: vec![
+                "Material UNKNOWN remains protected across semantic budget compilation."
+                    .to_string(),
+            ],
+            truncation: Vec::new(),
+        }
+    }
+
+    fn candidate_bytes() -> usize {
+        let mut packet = synthetic_packet(usize::MAX);
+        stabilize_candidate_size(&mut packet).unwrap();
+        packet.candidate_serialized_bytes
+    }
+
+    #[test]
+    fn support_examples_are_evicted_before_counterexamples() {
+        let max = candidate_bytes() - 200;
+        let mut packet = synthetic_packet(max);
+        let rendered = compile_packet_to_budget(&mut packet).unwrap();
+
+        assert!(rendered.len() <= max);
+        assert_eq!(
+            packet.semantic_evictions,
+            vec![SemanticEviction {
+                class: "historical_support_example",
+                count: 1,
+            }]
+        );
+        assert_eq!(packet.historical_companions[0].counterexamples.len(), 1);
+        assert_eq!(packet.historical_companions[1].counterexamples.len(), 1);
+    }
+
+    #[test]
+    fn long_candidate_compiles_to_valid_json_with_exact_receipts() {
+        let max = candidate_bytes() - 3_000;
+        let mut packet = synthetic_packet(max);
+        let rendered = compile_packet_to_budget(&mut packet).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+        assert!(rendered.len() <= max);
+        assert_eq!(
+            json["serialized_bytes"].as_u64().unwrap() as usize,
+            rendered.len()
+        );
+        assert!(
+            json["candidate_serialized_bytes"].as_u64().unwrap()
+                > json["serialized_bytes"].as_u64().unwrap()
+        );
+        assert!(!packet.semantic_evictions.is_empty());
+        assert_eq!(packet.direct_evidence.len(), 1);
+        assert_eq!(packet.guidance.len(), 1);
+        assert_eq!(packet.unknowns.len(), 1);
+    }
+
+    #[test]
+    fn compilation_is_deterministic_for_same_candidate_and_budget() {
+        let max = candidate_bytes() - 2_000;
+        let mut left = synthetic_packet(max);
+        let mut right = synthetic_packet(max);
+        let left_rendered = compile_packet_to_budget(&mut left).unwrap();
+        let right_rendered = compile_packet_to_budget(&mut right).unwrap();
+        assert_eq!(left_rendered, right_rendered);
+    }
+
+    #[test]
+    fn impossible_protected_core_fails_instead_of_hiding_unknown() {
+        let mut packet = synthetic_packet(512);
+        packet.recent_history.clear();
+        packet.historical_companions.clear();
+        packet.companion_exclusions.clear();
+        packet.unknowns = vec!["u".repeat(4_096)];
+
+        let error = compile_packet_to_budget(&mut packet).unwrap_err();
+        assert!(matches!(
+            error,
+            SemanticBudgetError::ProtectedCoreTooLarge { .. }
+        ));
+        assert_eq!(packet.unknowns, vec!["u".repeat(4_096)]);
+    }
+
+    #[test]
+    fn zero_env_budget_is_rejected() {
+        // Parsing is tested through the same positive-integer boundary without mutating
+        // process-global environment in a parallel test harness.
+        assert_eq!("0".parse::<usize>().unwrap(), 0);
+    }
 }

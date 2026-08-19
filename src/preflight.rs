@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::process::Command;
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};

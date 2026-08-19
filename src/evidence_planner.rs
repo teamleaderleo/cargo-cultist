@@ -235,10 +235,7 @@ fn evaluate_candidate<'a>(
             context: context.clone(),
         })
         .map_err(|error| {
-            EvidencePlannerError::new(format!(
-                "probe {} applicability failed: {error}",
-                probe.id
-            ))
+            EvidencePlannerError::new(format!("probe {} applicability failed: {error}", probe.id))
         })?;
 
         match applicability.status {
@@ -388,7 +385,11 @@ fn require_coordinates(requirements: &EvidenceRequirements) -> Result<(), Eviden
 }
 
 fn validate_id(value: &str, field: &str) -> Result<(), EvidencePlannerError> {
-    if value.is_empty() || value.trim() != value || value.len() > MAX_ID_BYTES || value.contains('\0') {
+    if value.is_empty()
+        || value.trim() != value
+        || value.len() > MAX_ID_BYTES
+        || value.contains('\0')
+    {
         return Err(EvidencePlannerError::new(format!(
             "{field} must be a bounded canonical identifier"
         )));
@@ -663,8 +664,8 @@ mod tests {
             discriminator: selected.produces,
             requirements: selected.requirements,
         };
-        let evaluation = evaluate_obligation(&request.obligation, &[receipt], &request.context)
-            .unwrap();
+        let evaluation =
+            evaluate_obligation(&request.obligation, &[receipt], &request.context).unwrap();
         assert_eq!(evaluation.status, DurableObligationStatus::Cleared);
     }
 

@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+
+// This file is intentionally compiled by product and research consumers with
+// complementary entry points; each consumer leaves part of the shared API unused.
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;

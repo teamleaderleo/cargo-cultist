@@ -164,10 +164,10 @@ mod tests {
             analysis: "example".to_string(),
             repository: "/repo".to_string(),
             claims: vec![Claim::new(ClaimKind::Unknown, "missing evidence")],
-            findings: vec![Finding::new("example", "Example").with_claim(Claim::new(
-                ClaimKind::Proven,
-                "exact fact",
-            ))],
+            findings: vec![
+                Finding::new("example", "Example")
+                    .with_claim(Claim::new(ClaimKind::Proven, "exact fact")),
+            ],
         };
 
         let json = serde_json::to_string(&report).unwrap();

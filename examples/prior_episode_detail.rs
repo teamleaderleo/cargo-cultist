@@ -33,9 +33,7 @@ mod proxy_revision;
 mod review_memory;
 
 use prior_episode_detail::project_prior_episode_detail;
-use prior_episode_front::{
-    MAX_PRIOR_EPISODE_FRONT_QUERY_BYTES, parse_prior_episode_front_query,
-};
+use prior_episode_front::{MAX_PRIOR_EPISODE_FRONT_QUERY_BYTES, parse_prior_episode_front_query};
 
 fn main() {
     if let Err(error) = run() {

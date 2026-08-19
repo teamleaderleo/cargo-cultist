@@ -312,12 +312,21 @@ fn hold_merge_target(line: &str) -> Option<String> {
     Some(format!("#{digits}"))
 }
 
+fn fence_content(line: &str) -> Option<&str> {
+    let indent = line.bytes().take_while(|byte| *byte == b' ').count();
+    if indent > 3 {
+        return None;
+    }
+    Some(&line[indent..])
+}
+
 fn opens_fence(line: &str) -> Option<(char, usize)> {
-    let first = line.chars().next()?;
+    let content = fence_content(line)?;
+    let first = content.chars().next()?;
     if first != '`' && first != '~' {
         return None;
     }
-    let width = line
+    let width = content
         .chars()
         .take_while(|character| *character == first)
         .count();
@@ -325,11 +334,14 @@ fn opens_fence(line: &str) -> Option<(char, usize)> {
 }
 
 fn closes_fence(line: &str, marker: char, minimum_width: usize) -> bool {
-    let width = line
+    let Some(content) = fence_content(line) else {
+        return false;
+    };
+    let width = content
         .chars()
         .take_while(|character| *character == marker)
         .count();
-    width >= minimum_width && line[width..].trim().is_empty()
+    width >= minimum_width && content[width..].trim().is_empty()
 }
 
 #[cfg(test)]
@@ -396,7 +408,7 @@ mod tests {
         let input = snapshot(vec![
             work(
                 "#748",
-                "> Do not merge while #703 is active\n```text\nDo not merge while #703 is active\n```\n    Do not merge while #703 is active\n- Do not merge while #703 is active\n",
+                "> Do not merge while #703 is active\n```text\nDo not merge while #703 is active\n```\n   ~~~text\nDo not merge while #703 is active\n   ~~~\n    Do not merge while #703 is active\n- Do not merge while #703 is active\n",
             ),
             work("#703", ""),
         ]);

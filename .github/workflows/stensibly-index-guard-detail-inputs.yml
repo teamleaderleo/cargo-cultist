@@ -42,12 +42,26 @@ jobs:
           plan = json.loads(plan_raw)
           exe = Path("target/release/examples/behavioral_trial_materialize").resolve()
 
-          expected_plan = "cultist-behavioral-trial-plan-sha256-v1:6f3eddecf177271c0ad60f32fb17008841bdb81f34aa717f52be90c3bdd1f69b"
+          expected_plan = "cultist-behavioral-trial-plan-sha256-v1:1aca6332c77ed72b49cb20593f215c7eb2952121ad9bf3d5ae60bea0df5df024"
           expected_packets = {
-              "control": "cultist-behavioral-worker-packet-sha256-v1:9949665d13b162692ebd3f7d12b6f162881f18d2d381c7257100bbb89c317f01",
-              "treatment": "cultist-behavioral-worker-packet-sha256-v1:6d3d93c574e81800ef1829216356d258553cabc7d2bdce2d09c32f46659c738c",
+              "control": "cultist-behavioral-worker-packet-sha256-v1:5fa460fe007276013ed019830daaf9fc8d086cc5d3d5dfdfc5dd33a58052887d",
+              "treatment": "cultist-behavioral-worker-packet-sha256-v1:a80303b59b9a46c5f4e6adb446abb01fbaeb5d898911bf6ad1248b3b0cf38549",
           }
           expected_context_bytes = {"control": 1082, "treatment": 1775}
+          expected_action_ids = [
+              "block_patch",
+              "inspect_accepted_guard_detail",
+              "approve_patch",
+              "inspect_more_repository_context",
+          ]
+          worker_visible = plan["task_instruction"] + "\n" + "\n".join(
+              action["id"] + "\n" + action["label"] for action in plan["allowed_first_actions"]
+          )
+          lowered = worker_visible.lower()
+          for forbidden in ("shorten", "64", "identifier limit", "preserving field order"):
+              assert forbidden not in lowered, forbidden
+          assert [action["id"] for action in plan["allowed_first_actions"]] == expected_action_ids
+
           worker_keys = {
               "schema_version",
               "trial_id",

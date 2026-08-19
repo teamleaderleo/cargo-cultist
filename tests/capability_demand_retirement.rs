@@ -79,10 +79,7 @@ fn held_out_trial_is_exact_non_leaky_and_uses_a_new_failure_instance() {
     assert_eq!(spec.schema_version, 1);
     assert_eq!(spec.trial_id, "stensibly-convex-index-review-v1");
     assert_eq!(spec.repository, "teamleaderleo/stensibly");
-    assert_eq!(
-        spec.revision,
-        "85cecf2608ad9e734a67518577fa85b9a08a550c"
-    );
+    assert_eq!(spec.revision, "85cecf2608ad9e734a67518577fa85b9a08a550c");
     assert_eq!(spec.target_path, "convex/schema.ts");
     assert_eq!(
         spec.target_blob_sha,
@@ -92,10 +89,7 @@ fn held_out_trial_is_exact_non_leaky_and_uses_a_new_failure_instance() {
     assert!(is_sha(&spec.target_blob_sha));
 
     assert_eq!(spec.oracle.expected_disposition, "block");
-    assert_eq!(
-        spec.oracle.blocking_reason,
-        "convex_index_identifier_limit"
-    );
+    assert_eq!(spec.oracle.blocking_reason, "convex_index_identifier_limit");
     assert_eq!(spec.oracle.max_identifier_length, 64);
     assert_eq!(
         spec.oracle.proposed_identifier.chars().count(),
@@ -106,7 +100,11 @@ fn held_out_trial_is_exact_non_leaky_and_uses_a_new_failure_instance() {
         spec.oracle.corrective_action,
         "shorten_identifier_preserve_field_order"
     );
-    assert!(spec.worker_task.patch.contains(&spec.oracle.proposed_identifier));
+    assert!(
+        spec.worker_task
+            .patch
+            .contains(&spec.oracle.proposed_identifier)
+    );
 
     let historical_names = [
         "by_workspace_id_and_provider_and_mailbox_binding_id_and_provider_message_id",
@@ -124,7 +122,12 @@ fn held_out_trial_is_exact_non_leaky_and_uses_a_new_failure_instance() {
         "instructionSetSha256",
         "providerUpdatedAt",
     ]
-    .map(|field| spec.worker_task.patch.find(field).expect("field in proposed patch"));
+    .map(|field| {
+        spec.worker_task
+            .patch
+            .find(field)
+            .expect("field in proposed patch")
+    });
     assert!(field_positions.windows(2).all(|pair| pair[0] < pair[1]));
 
     assert!(!spec.oracle_leak_control.allowed_as_worker_prompt);
@@ -263,6 +266,15 @@ fn run(
     }
 }
 
+fn assert_confounded(changed: ReplayIdentity) {
+    let baseline = run(fixed_identity(), false, RunOutcome::Failed);
+    let treatment = run(changed, true, RunOutcome::Success);
+    assert_eq!(
+        evaluate_pair(&baseline, &treatment),
+        RetirementVerdict::Confounded
+    );
+}
+
 #[test]
 fn fixed_worker_failure_then_treatment_success_is_local_retirement_evidence() {
     let baseline = run(fixed_identity(), false, RunOutcome::Failed);
@@ -308,48 +320,38 @@ fn treatment_failure_preserves_residual_capability_demand() {
 }
 
 #[test]
-fn changing_worker_harness_task_or_affordance_confounds_retirement_claim() {
-    for mut changed in [
-        fixed_identity(),
-        fixed_identity(),
-        fixed_identity(),
-        fixed_identity(),
-    ] {
-        let baseline = run(fixed_identity(), false, RunOutcome::Failed);
-        match changed.worker_identity {
-            "worker-a@v1" if changed.harness_identity == "harness-a@v1" => {
-                if changed.task_fingerprint == "task-v1" {
-                    if changed.affordance_identity == "read-only-review-tools@v1" {
-                        changed.worker_identity = "worker-b@v1";
-                    }
-                }
-            }
-            _ => unreachable!(),
-        }
-        let treatment = run(changed, true, RunOutcome::Success);
-        assert_eq!(
-            evaluate_pair(&baseline, &treatment),
-            RetirementVerdict::Confounded
-        );
-    }
+fn every_frozen_identity_axis_can_confound_a_retirement_claim() {
+    let mut changed = fixed_identity();
+    changed.repository_revision = "repo@different";
+    assert_confounded(changed);
 
-    let mutations = [
-        ("harness-b@v1", "task-v1", "read-only-review-tools@v1"),
-        ("harness-a@v1", "task-v2", "read-only-review-tools@v1"),
-        ("harness-a@v1", "task-v1", "expanded-tools@v2"),
-    ];
-    for (harness, task, affordance) in mutations {
-        let baseline = run(fixed_identity(), false, RunOutcome::Failed);
-        let mut changed = fixed_identity();
-        changed.harness_identity = harness;
-        changed.task_fingerprint = task;
-        changed.affordance_identity = affordance;
-        let treatment = run(changed, true, RunOutcome::Success);
-        assert_eq!(
-            evaluate_pair(&baseline, &treatment),
-            RetirementVerdict::Confounded
-        );
-    }
+    let mut changed = fixed_identity();
+    changed.target_blob = "schema@different";
+    assert_confounded(changed);
+
+    let mut changed = fixed_identity();
+    changed.task_fingerprint = "task-v2";
+    assert_confounded(changed);
+
+    let mut changed = fixed_identity();
+    changed.patch_fingerprint = "patch-v2";
+    assert_confounded(changed);
+
+    let mut changed = fixed_identity();
+    changed.worker_identity = "worker-b@v1";
+    assert_confounded(changed);
+
+    let mut changed = fixed_identity();
+    changed.harness_identity = "harness-b@v1";
+    assert_confounded(changed);
+
+    let mut changed = fixed_identity();
+    changed.affordance_identity = "expanded-tools@v2";
+    assert_confounded(changed);
+
+    let mut changed = fixed_identity();
+    changed.completion_contract_fingerprint = "different-oracle@v2";
+    assert_confounded(changed);
 }
 
 #[test]

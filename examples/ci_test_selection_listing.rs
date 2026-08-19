@@ -5,6 +5,9 @@ mod ci_test_filters;
 #[path = "../src/finding.rs"]
 mod finding;
 #[allow(dead_code)]
+#[path = "../src/performance.rs"]
+mod performance;
+#[allow(dead_code)]
 #[path = "../src/rust_facts.rs"]
 mod rust_facts;
 

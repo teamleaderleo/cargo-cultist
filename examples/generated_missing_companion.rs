@@ -43,16 +43,19 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn Error>> {
     let mut args = env::args().skip(1);
-    let root = PathBuf::from(args.next().ok_or(
-        "usage: generated_missing_companion REPO GENERATOR_RS SOURCE_RS [MAX_COMMITS]",
-    )?)
-    .canonicalize()?;
-    let generator = PathBuf::from(args.next().ok_or(
-        "usage: generated_missing_companion REPO GENERATOR_RS SOURCE_RS [MAX_COMMITS]",
-    )?);
-    let source = PathBuf::from(args.next().ok_or(
-        "usage: generated_missing_companion REPO GENERATOR_RS SOURCE_RS [MAX_COMMITS]",
-    )?);
+    let root =
+        PathBuf::from(args.next().ok_or(
+            "usage: generated_missing_companion REPO GENERATOR_RS SOURCE_RS [MAX_COMMITS]",
+        )?)
+        .canonicalize()?;
+    let generator =
+        PathBuf::from(args.next().ok_or(
+            "usage: generated_missing_companion REPO GENERATOR_RS SOURCE_RS [MAX_COMMITS]",
+        )?);
+    let source =
+        PathBuf::from(args.next().ok_or(
+            "usage: generated_missing_companion REPO GENERATOR_RS SOURCE_RS [MAX_COMMITS]",
+        )?);
     let max_commits = args
         .next()
         .map(|value| value.parse::<usize>())
@@ -60,8 +63,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         .unwrap_or(DEFAULT_MAX_COMMITS);
     if args.next().is_some() {
         return Err(
-            "usage: generated_missing_companion REPO GENERATOR_RS SOURCE_RS [MAX_COMMITS]"
-                .into(),
+            "usage: generated_missing_companion REPO GENERATOR_RS SOURCE_RS [MAX_COMMITS]".into(),
         );
     }
     if generator.is_absolute() || source.is_absolute() {
@@ -78,7 +80,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     let output_owners = outputs_for_source(&functions, &source_key);
     if output_owners.is_empty() {
         println!("NO FINDING");
-        println!("  No recognized generator function reads `{source_key}` and writes repository paths.");
+        println!(
+            "  No recognized generator function reads `{source_key}` and writes repository paths."
+        );
         return Ok(());
     }
 
@@ -126,7 +130,9 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     if missing.is_empty() {
         println!("\nNO FINDING");
-        println!("  Every recognized generator output for this source is present in the current diff.");
+        println!(
+            "  Every recognized generator output for this source is present in the current diff."
+        );
         return Ok(());
     }
 
@@ -150,7 +156,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
     }
     for alias in &aliases {
-        println!("  Repository Cargo alias: `cargo {}` -> `{}`.", alias.0, alias.1);
+        println!(
+            "  Repository Cargo alias: `cargo {}` -> `{}`.",
+            alias.0, alias.1
+        );
     }
 
     println!("\nOBSERVED");
@@ -159,7 +168,11 @@ fn run() -> Result<(), Box<dyn Error>> {
         syntax_cohort.opportunities, syntax_cohort.comments_only, syntax_cohort.unclassified
     );
     for output in &outputs {
-        let support = syntax_cohort.support.get(output).copied().unwrap_or_default();
+        let support = syntax_cohort
+            .support
+            .get(output)
+            .copied()
+            .unwrap_or_default();
         println!(
             "  `{output}` changed in {support}/{} comparable Rust syntax-changing source commits ({:.1}%).",
             syntax_cohort.opportunities,
@@ -341,10 +354,21 @@ fn changed_paths(root: &Path) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(root)
-        .args(["-c", "core.quotepath=false", "diff", "--name-only", "HEAD", "--"])
+        .args([
+            "-c",
+            "core.quotepath=false",
+            "diff",
+            "--name-only",
+            "HEAD",
+            "--",
+        ])
         .output()?;
     if !output.status.success() {
-        return Err(format!("git diff failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+        return Err(format!(
+            "git diff failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
     Ok(String::from_utf8(output.stdout)?
         .lines()
@@ -421,8 +445,10 @@ fn classify_historical_rust_edit(root: &Path, sha: &str, source: &Path) -> Histo
     let (Some(before), Some(after)) = (before, after) else {
         return HistoricalEdit::Unclassified;
     };
-    let (Ok(before), Ok(after)) = (rust_syntax_fingerprint(&before), rust_syntax_fingerprint(&after))
-    else {
+    let (Ok(before), Ok(after)) = (
+        rust_syntax_fingerprint(&before),
+        rust_syntax_fingerprint(&after),
+    ) else {
         return HistoricalEdit::Unclassified;
     };
     if before == after {
@@ -432,7 +458,11 @@ fn classify_historical_rust_edit(root: &Path, sha: &str, source: &Path) -> Histo
     }
 }
 
-fn history_shas(root: &Path, source: &Path, max_commits: usize) -> Result<Vec<String>, Box<dyn Error>> {
+fn history_shas(
+    root: &Path,
+    source: &Path,
+    max_commits: usize,
+) -> Result<Vec<String>, Box<dyn Error>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(root)
@@ -442,7 +472,11 @@ fn history_shas(root: &Path, source: &Path, max_commits: usize) -> Result<Vec<St
         .arg(source)
         .output()?;
     if !output.status.success() {
-        return Err(format!("git log failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+        return Err(format!(
+            "git log failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
     Ok(String::from_utf8(output.stdout)?
         .lines()
@@ -471,7 +505,11 @@ fn commit_metadata(root: &Path, sha: &str) -> Result<(String, BTreeSet<PathBuf>)
         .arg("--")
         .output()?;
     if !output.status.success() {
-        return Err(format!("git show failed for {sha}: {}", String::from_utf8_lossy(&output.stderr)).into());
+        return Err(format!(
+            "git show failed for {sha}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
     let text = String::from_utf8(output.stdout)?;
     let (subject, paths) = text
@@ -489,10 +527,7 @@ fn commit_metadata(root: &Path, sha: &str) -> Result<(String, BTreeSet<PathBuf>)
 }
 
 fn source_at_revision(root: &Path, revision: &str, source: &Path) -> Option<String> {
-    let spec = format!(
-        "{revision}:{}",
-        source.to_string_lossy().replace('\\', "/")
-    );
+    let spec = format!("{revision}:{}", source.to_string_lossy().replace('\\', "/"));
     let output = Command::new("git")
         .arg("-C")
         .arg(root)
@@ -533,7 +568,8 @@ fn strip_doc_attributes(stream: TokenStream) -> TokenStream {
 
         let token = match tokens[index].clone() {
             TokenTree::Group(group) => {
-                let mut normalized = Group::new(group.delimiter(), strip_doc_attributes(group.stream()));
+                let mut normalized =
+                    Group::new(group.delimiter(), strip_doc_attributes(group.stream()));
                 normalized.set_span(group.span());
                 TokenTree::Group(normalized)
             }
@@ -693,7 +729,10 @@ fn normalize_repo_path(value: &str) -> String {
 }
 
 fn is_revert_subject(subject: &str) -> bool {
-    subject.trim_start().to_ascii_lowercase().starts_with("revert")
+    subject
+        .trim_start()
+        .to_ascii_lowercase()
+        .starts_with("revert")
 }
 
 fn percent(support: usize, opportunities: usize) -> f64 {

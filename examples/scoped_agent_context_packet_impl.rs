@@ -40,7 +40,9 @@ enum ScopedBudgetError {
 impl fmt::Display for ScopedBudgetError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Serialize(error) => write!(formatter, "failed to serialize scoped packet: {error}"),
+            Self::Serialize(error) => {
+                write!(formatter, "failed to serialize scoped packet: {error}")
+            }
             Self::ProtectedCoreTooLarge {
                 max_serialized_bytes,
                 required_serialized_bytes,
@@ -129,17 +131,17 @@ fn parse_scoped_args<I>(mut args: I) -> Result<(String, String), Box<dyn Error>>
 where
     I: Iterator<Item = String>,
 {
-    let target = args.next().ok_or(
-        "usage: cargo run --example scoped_agent_context_packet -- FILE --scope DIR",
-    )?;
+    let target = args
+        .next()
+        .ok_or("usage: cargo run --example scoped_agent_context_packet -- FILE --scope DIR")?;
     if args.next().as_deref() != Some("--scope") {
         return Err(
             "usage: cargo run --example scoped_agent_context_packet -- FILE --scope DIR".into(),
         );
     }
-    let scope = args.next().ok_or(
-        "usage: cargo run --example scoped_agent_context_packet -- FILE --scope DIR",
-    )?;
+    let scope = args
+        .next()
+        .ok_or("usage: cargo run --example scoped_agent_context_packet -- FILE --scope DIR")?;
     if args.next().is_some() {
         return Err(
             "usage: cargo run --example scoped_agent_context_packet -- FILE --scope DIR".into(),
@@ -165,7 +167,11 @@ fn validate_scope_text(scope: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn resolve_explicit_scope(root: &Path, target: &Path, scope: &str) -> Result<PathBuf, Box<dyn Error>> {
+fn resolve_explicit_scope(
+    root: &Path,
+    target: &Path,
+    scope: &str,
+) -> Result<PathBuf, Box<dyn Error>> {
     validate_scope_text(scope)?;
     let resolved = root.join(scope).canonicalize()?;
     if !resolved.is_dir() {
@@ -457,7 +463,15 @@ mod scoped_tests {
 
     #[test]
     fn scope_text_rejects_traversal_absolute_and_noncanonical_paths() {
-        for value in ["", ".", "../src", "/src", "src/", "src\\nested", "src/./nested"] {
+        for value in [
+            "",
+            ".",
+            "../src",
+            "/src",
+            "src/",
+            "src\\nested",
+            "src/./nested",
+        ] {
             assert!(validate_scope_text(value).is_err(), "accepted {value:?}");
         }
         assert!(validate_scope_text("src").is_ok());

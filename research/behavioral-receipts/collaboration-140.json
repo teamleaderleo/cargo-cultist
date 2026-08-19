@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/cultist",
+  "revision": "4f8f9fcd8ef1dab1881d07d063a034d9d5d7f136",
+  "task": "pull-140-product-decision-changing-evidence",
+  "evidence_kind": "concurrent-main-head-movement",
+  "evidence_ref": "github:main@4f8f9fcd8ef1dab1881d07d063a034d9d5d7f136",
+  "delivery": "surfaced",
+  "consulted": true,
+  "outcome": "changed_next_action",
+  "action": "rebuild the product lane on current main and recheck live PR file overlap before opening pull request 140"
+}

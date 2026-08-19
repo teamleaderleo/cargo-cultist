@@ -279,11 +279,7 @@ fn validate_facts(facts: &BTreeMap<String, String>, field: &str) -> Result<(), R
 }
 
 fn validate_atom(value: &str, field: &str, max_bytes: usize) -> Result<(), RefinementError> {
-    if value.is_empty()
-        || value.trim() != value
-        || value.len() > max_bytes
-        || value.contains('\0')
-    {
+    if value.is_empty() || value.trim() != value || value.len() > max_bytes || value.contains('\0') {
         return Err(RefinementError::new(format!(
             "{field} must be bounded canonical text"
         )));
@@ -302,7 +298,11 @@ mod tests {
             .collect()
     }
 
-    fn observation(id: String, outcome: ObservationOutcome, facts: BTreeMap<String, String>) -> CohortObservation {
+    fn observation(
+        id: String,
+        outcome: ObservationOutcome,
+        facts: BTreeMap<String, String>,
+    ) -> CohortObservation {
         CohortObservation { id, outcome, facts }
     }
 
@@ -344,9 +344,21 @@ mod tests {
         .unwrap();
 
         let candidate = &evaluation.discriminators[0];
-        assert_eq!(evaluation.baseline, CohortCounts { support: 99, counterexamples: 1 });
+        assert_eq!(
+            evaluation.baseline,
+            CohortCounts {
+                support: 99,
+                counterexamples: 1
+            }
+        );
         assert_eq!(candidate.status, RefinementStatus::Candidate);
-        assert_eq!(candidate.current_cohort, Some(CohortCounts { support: 99, counterexamples: 0 }));
+        assert_eq!(
+            candidate.current_cohort,
+            Some(CohortCounts {
+                support: 99,
+                counterexamples: 0
+            })
+        );
         assert_eq!(candidate.excluded_counterexamples, Some(1));
         assert_eq!(candidate.excluded_support, Some(0));
     }
@@ -376,8 +388,14 @@ mod tests {
         ))
         .unwrap();
 
-        assert_eq!(evaluation.discriminators[0].status, RefinementStatus::NoImprovement);
-        assert_eq!(evaluation.discriminators[0].current_cohort, Some(evaluation.baseline));
+        assert_eq!(
+            evaluation.discriminators[0].status,
+            RefinementStatus::NoImprovement
+        );
+        assert_eq!(
+            evaluation.discriminators[0].current_cohort,
+            Some(evaluation.baseline)
+        );
     }
 
     #[test]
@@ -412,8 +430,14 @@ mod tests {
         ))
         .unwrap();
 
-        assert_eq!(evaluation.discriminators[0].status, RefinementStatus::Overfit);
-        assert_eq!(evaluation.discriminators[0].current_cohort.unwrap().support, 1);
+        assert_eq!(
+            evaluation.discriminators[0].status,
+            RefinementStatus::Overfit
+        );
+        assert_eq!(
+            evaluation.discriminators[0].current_cohort.unwrap().support,
+            1
+        );
     }
 
     #[test]
@@ -431,14 +455,14 @@ mod tests {
             ),
         ];
 
-        let evaluation = evaluate_refinements(&request(
-            BTreeMap::new(),
-            vec!["edit_class"],
-            observations,
-        ))
-        .unwrap();
+        let evaluation =
+            evaluate_refinements(&request(BTreeMap::new(), vec!["edit_class"], observations))
+                .unwrap();
 
-        assert_eq!(evaluation.discriminators[0].status, RefinementStatus::UnknownCurrent);
+        assert_eq!(
+            evaluation.discriminators[0].status,
+            RefinementStatus::UnknownCurrent
+        );
         assert!(evaluation.discriminators[0].current_cohort.is_none());
     }
 
@@ -474,7 +498,10 @@ mod tests {
         ))
         .unwrap();
 
-        assert_eq!(evaluation.discriminators[0].status, RefinementStatus::IncompleteEvidence);
+        assert_eq!(
+            evaluation.discriminators[0].status,
+            RefinementStatus::IncompleteEvidence
+        );
     }
 
     #[test]

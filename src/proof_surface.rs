@@ -99,8 +99,13 @@ pub fn evaluate_proof_surface(
     validate_exact_source_excerpt(subject, &claim.requirement_evidence, claim.subject)?;
 
     let behavior_passed = claim.behavior_evidence.contains(&claim.behavior_marker);
-    let requirement_present = claim.requirement_evidence.contains(&claim.requirement_marker);
-    let provider_body_present = claim.provider_event.body.contains(&claim.provider_body_marker);
+    let requirement_present = claim
+        .requirement_evidence
+        .contains(&claim.requirement_marker);
+    let provider_body_present = claim
+        .provider_event
+        .body
+        .contains(&claim.provider_body_marker);
     let produced_artifact_kind = classify_provider_artifact(claim);
     let proof_valid = produced_artifact_kind == Some(claim.required_artifact_kind);
 
@@ -144,7 +149,9 @@ impl ProofSurfaceClaim {
         validate_repository(&self.repository)?;
         validate_single_line(&self.candidate_id, "candidate_id", MAX_ID_BYTES)?;
         if self.subject.kind != ArtifactKind::PullRequest || self.subject.number == 0 {
-            return Err("proof-surface subject must be a positive pull-request reference".to_string());
+            return Err(
+                "proof-surface subject must be a positive pull-request reference".to_string(),
+            );
         }
         validate_evidence(&self.behavior_evidence, "behavior_evidence")?;
         validate_evidence(&self.requirement_evidence, "requirement_evidence")?;
@@ -237,9 +244,7 @@ fn validate_provider_event(event: &ProviderProofArtifact) -> Result<(), String> 
     {
         return Err("provider event URL is empty, malformed, or too long".to_string());
     }
-    if event.body.is_empty()
-        || event.body.len() > MAX_EVENT_BODY_BYTES
-        || event.body.contains('\0')
+    if event.body.is_empty() || event.body.len() > MAX_EVENT_BODY_BYTES || event.body.contains('\0')
     {
         return Err("provider event body is empty, malformed, or too long".to_string());
     }

@@ -45,7 +45,7 @@ pub fn analyze_test_module_files(paths: &[PathBuf]) -> Result<TestModuleReport, 
 }
 
 fn test_module_report(scan: RustFactScan) -> TestModuleReport {
-    performance::record_rust_scan(scan.parsed_files, scan.cache_hits, 0);
+    performance::record_rust_scan(scan.parsed_files, scan.cache_hits);
     let mut report = TestModuleReport::default();
 
     for file in scan.files {
@@ -77,6 +77,7 @@ fn sort_report(report: &mut TestModuleReport) {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
@@ -90,6 +91,16 @@ mod tests {
             "cargo-cultist-{name}-{}-{nanos}",
             std::process::id()
         ))
+    }
+
+    fn run_git(root: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git command failed: git {args:?}");
     }
 
     fn names(source: &str) -> Vec<String> {
@@ -142,6 +153,23 @@ mod tests {
         assert_eq!(report.occurrences.len(), 1);
         assert_eq!(report.occurrences[0].name, "selected_tests");
         assert!(report.parse_failures.is_empty());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn repository_scan_budget_counts_git_and_parsed_files() {
+        let root = unique_temp_dir("repository-scan-budget");
+        fs::create_dir_all(root.join("src")).unwrap();
+        run_git(&root, &["init", "-q"]);
+        fs::write(root.join("src/lib.rs"), "#[cfg(test)]\nmod tests {}\n").unwrap();
+
+        let (report, counters) = performance::capture(|| analyze_test_modules(&root).unwrap());
+
+        assert_eq!(report.occurrences.len(), 1);
+        assert_eq!(counters.git_subprocesses, 4);
+        assert_eq!(counters.rust_files_parsed, 1);
+        assert_eq!(counters.rust_cache_hits, 0);
 
         fs::remove_dir_all(root).unwrap();
     }

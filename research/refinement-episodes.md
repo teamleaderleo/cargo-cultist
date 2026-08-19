@@ -186,7 +186,7 @@ cargo run --example refinement_episodes \
 
 The reader validates the bounded batch and reprints the typed records.
 
-## Initial executed GitHub receipt
+## Executed GitHub receipts
 
 The first two-family version of draft PR #179 passed on exact head:
 
@@ -194,11 +194,28 @@ The first two-family version of draft PR #179 passed on exact head:
 f4d92b05e061a99e262a1ef1eb2f2be424686359
 ```
 
-GitHub Actions CI run `32247329835` / run number `1222` completed successfully, including format, strict Clippy, active-work preflight, full tests, repository/history/CI-filter/diff dogfood. Generated provenance review run `32247329697` / run number `219` also passed.
+CI run `32247329835` / run number `1222` and generated provenance review run `32247329697` / run number `219` completed successfully. The first CI attempt had failed only at rustfmt before Clippy or tests; the formatter delta was applied verbatim and the standalone reader received fixture-local dead-code containment.
 
-The first CI attempt failed only at rustfmt before Clippy or tests. The formatter delta was applied verbatim, and the standalone reader received fixture-local dead-code containment.
+The three-family carrier was then rebuilt as one commit on merged #178 main so its behavioral join resolves against the current retained observation corpus.
 
-The three-family extension is rebuilt directly on main after merged #178 so the behavioral join is tested against the current retained observation corpus. Record its exact execution separately after the new head runs.
+Exact three-family semantic head:
+
+```text
+dbb39fb729df762ffefcf97d024e52fd647832cf
+```
+
+GitHub Actions CI run `32247721374` / run number `1235` completed successfully. The job passed:
+
+- `cargo fmt --check`;
+- `cargo clippy --all-targets -- -D warnings`;
+- active-work preflight;
+- full `cargo test`, including the three retained refinement episodes, rejected-candidate controls, and the cross-corpus #178 behavioral ID/outcome assertion;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON plus positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+Generated provenance review dogfood run `32247721348` / run number `223` also completed successfully on the same three-family head.
 
 ## Boundary
 

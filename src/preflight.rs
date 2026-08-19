@@ -14,12 +14,11 @@ pub fn build_preflight_analysis_report(
     let current_paths = changed_paths(root, &anchor, None, scope)?;
     let other_paths = changed_paths(root, &anchor, Some(against), scope)?;
 
-    let mut analysis = AnalysisReport::new("preflight-collisions", root.to_string_lossy().into_owned());
+    let mut analysis =
+        AnalysisReport::new("preflight-collisions", root.to_string_lossy().into_owned());
     analysis.claims.push(Claim::new(
         ClaimKind::Derived,
-        format!(
-            "Preflight compares current work and `{against}` from merge base `{anchor}`."
-        ),
+        format!("Preflight compares current work and `{against}` from merge base `{anchor}`."),
     ));
     analysis.claims.push(Claim::new(
         ClaimKind::Proven,
@@ -77,18 +76,15 @@ fn changed_paths(
     scope: Option<&Path>,
 ) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {
     let mut command = Command::new("git");
-    command
-        .arg("-C")
-        .arg(root)
-        .args([
-            "-c",
-            "core.quotepath=false",
-            "diff",
-            "--name-only",
-            "--no-renames",
-            "-z",
-            anchor,
-        ]);
+    command.arg("-C").arg(root).args([
+        "-c",
+        "core.quotepath=false",
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        anchor,
+    ]);
 
     if let Some(target) = target {
         command.arg(target);
@@ -125,9 +121,7 @@ fn merge_base(root: &Path, against: &str) -> Result<String, Box<dyn Error>> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(
-            format!("could not find merge base for `{against}` and HEAD: {stderr}").into(),
-        );
+        return Err(format!("could not find merge base for `{against}` and HEAD: {stderr}").into());
     }
 
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
@@ -215,9 +209,15 @@ mod tests {
 
         assert!(analysis.findings.is_empty());
         assert!(analysis.claims.iter().any(|claim| {
-            claim.kind == ClaimKind::Proven && claim.message.contains("no direct repository-path overlap")
+            claim.kind == ClaimKind::Proven
+                && claim.message.contains("no direct repository-path overlap")
         }));
-        assert!(analysis.claims.iter().any(|claim| claim.kind == ClaimKind::Unknown));
+        assert!(
+            analysis
+                .claims
+                .iter()
+                .any(|claim| claim.kind == ClaimKind::Unknown)
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -234,7 +234,8 @@ mod tests {
 
         assert_eq!(analysis.findings.len(), 1);
         assert!(analysis.claims.iter().any(|claim| {
-            claim.kind == ClaimKind::Proven && claim.message.contains("Current work modifies 2 path(s)")
+            claim.kind == ClaimKind::Proven
+                && claim.message.contains("Current work modifies 2 path(s)")
         }));
         fs::remove_dir_all(root).unwrap();
     }

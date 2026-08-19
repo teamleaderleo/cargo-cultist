@@ -1,0 +1,131 @@
+name: Fix durable obligation clearing discriminator
+
+on:
+  push:
+    branches:
+      - fix/170-clearing-condition-discriminator
+    paths:
+      - ".github/workflows/fix-170-clearing-condition-discriminator.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/170-clearing-condition-discriminator
+          fetch-depth: 0
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+      - name: Enforce singular clearing discriminator
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('src/durable_obligation.rs')
+          text = source.read_text()
+          anchor = '''    for condition in &obligation.clearing_conditions {
+              validate_discriminator(&condition.discriminator)?;
+              require_coordinates(&condition.requirements, "clearing condition requirements")?;
+          '''
+          replacement = '''    for condition in &obligation.clearing_conditions {
+              validate_discriminator(&condition.discriminator)?;
+              if condition.discriminator != obligation.missing_discriminator {
+                  return Err(DurableObligationError::new(
+                      "every clearing condition must answer the missing discriminator",
+                  ));
+              }
+              require_coordinates(&condition.requirements, "clearing condition requirements")?;
+          '''
+          if anchor not in text:
+              raise SystemExit('clearing-condition validation anchor not found')
+          text = text.replace(anchor, replacement, 1)
+
+          old = '''    if !obligation
+              .clearing_conditions
+              .iter()
+              .any(|condition| condition.discriminator == obligation.missing_discriminator)
+          {
+              return Err(DurableObligationError::new(
+                  "at least one clearing condition must answer the missing discriminator",
+              ));
+          }
+
+          '''
+          if old not in text:
+              raise SystemExit('old existential discriminator validation not found')
+          text = text.replace(old, '', 1)
+
+          marker = '''    #[test]
+              fn durable_record_round_trips_for_fresh_worker_handoff() {
+          '''
+          test = '''    #[test]
+              fn mixed_clearing_conditions_reject_before_wrong_kind_receipt_can_clear() {
+                  let mut record = obligation();
+                  let wrong_discriminator = DiscriminatorKey {
+                      kind: "target_test_listing".to_string(),
+                      target: record.missing_discriminator.target.clone(),
+                  };
+                  record.clearing_conditions.push(ClearingCondition {
+                      discriminator: wrong_discriminator.clone(),
+                      requirements: requirements("owner/repo", Some("head-a")),
+                  });
+                  let wrong_receipt = ClearingEvidenceReceipt {
+                      id: "listing-head-a".to_string(),
+                      discriminator: wrong_discriminator,
+                      requirements: requirements("owner/repo", Some("head-a")),
+                  };
+
+                  let error = evaluate_obligation(
+                      &record,
+                      &[wrong_receipt],
+                      &context(Some("head-a")),
+                  )
+                  .unwrap_err();
+                  assert!(
+                      error
+                          .to_string()
+                          .contains("every clearing condition must answer the missing discriminator")
+                  );
+              }
+
+              #[test]
+              fn durable_record_round_trips_for_fresh_worker_handoff() {
+          '''
+          if marker not in text:
+              raise SystemExit('test insertion anchor not found')
+          source.write_text(text.replace(marker, test, 1))
+
+          docs = Path('research/durable-unknown-obligation.md')
+          text = docs.read_text()
+          old = 'A clearing condition names an exact typed discriminator plus exact applicability requirements. A supplied receipt must match both before it can participate in clearing.\n'
+          new = old + '\nBecause v0 carries one singular `missing_discriminator`, every clearing condition must name that same discriminator. Heterogeneous alternative evidence species require a future explicit predicate/OR carrier; a plain condition list cannot grant unrelated evidence clearing authority.\n'
+          if old not in text:
+              raise SystemExit('research-note clearing-condition sentence not found')
+          text = text.replace(old, new, 1)
+          old = '- a clearing condition must actually answer the declared missing discriminator.\n'
+          new = '- every clearing condition must answer the declared singular missing discriminator;\n- a mixed valid + wrong-kind condition set rejects before the wrong-kind receipt can clear.\n'
+          if old not in text:
+              raise SystemExit('research-note control line not found')
+          docs.write_text(text.replace(old, new, 1))
+          PY
+          cargo fmt --all
+      - name: Verify focused controls
+        run: |
+          cargo fmt --all -- --check
+          cargo test durable_obligation::tests
+          cargo test --test durable_obligation
+          git diff --check
+      - name: Commit fix and remove carrier
+        run: |
+          git config user.name "Cultist repair carrier"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/durable_obligation.rs research/durable-unknown-obligation.md
+          git rm -f .github/workflows/fix-170-clearing-condition-discriminator.yml
+          git commit -m "fix: require every clearing condition to answer the missing discriminator"
+          git push origin HEAD:fix/170-clearing-condition-discriminator

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "episodes": [
+    {
+      "episode_id": "pull-140:main-head-movement:4f8f9fcd->85e0b08b",
+      "receipt": {
+        "schema_version": 1,
+        "repository": "teamleaderleo/cultist",
+        "revision": "4f8f9fcd8ef1dab1881d07d063a034d9d5d7f136",
+        "task": "pull-140-product-decision-changing-evidence",
+        "evidence_kind": "concurrent-main-head-movement",
+        "evidence_ref": "github:main@4f8f9fcd8ef1dab1881d07d063a034d9d5d7f136",
+        "delivery": "surfaced",
+        "consulted": true,
+        "outcome": "changed_next_action",
+        "action": "rebuild the product lane on current main and recheck live PR file overlap before opening pull request 140"
+      }
+    },
+    {
+      "episode_id": "github-actions:run/32242752523#active-work-heads-up",
+      "receipt": {
+        "schema_version": 1,
+        "repository": "teamleaderleo/cultist",
+        "revision": "0fa33cfbd7612478e03e29a328f2727b89a58789",
+        "task": "pull-140-product-decision-changing-evidence",
+        "evidence_kind": "active-work-heads-up",
+        "evidence_ref": "github-actions:run/32242752523#active-work-heads-up",
+        "delivery": "quiet",
+        "consulted": false,
+        "outcome": "correct_quiet_negative"
+      }
+    },
+    {
+      "episode_id": "project-memory:relation-admission:48839f62->d6c99b27",
+      "receipt": {
+        "schema_version": 1,
+        "repository": "teamleaderleo/cultist",
+        "revision": "48839f625721ba595b063fc8dfd21e365e6f24dc",
+        "task": "project-memory-relation-admission-review",
+        "evidence_kind": "project-memory-relation-strengthening",
+        "evidence_ref": "github:main@48839f625721ba595b063fc8dfd21e365e6f24dc:src/project_memory.rs",
+        "delivery": "surfaced",
+        "consulted": true,
+        "outcome": "changed_next_action",
+        "action": "open issue 163 and implement pull request 166 so the Rust project-memory boundary validates relation meaning and target mention"
+      }
+    }
+  ]
+}

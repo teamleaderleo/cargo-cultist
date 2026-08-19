@@ -44,19 +44,50 @@ When proposing a Cultist improvement from dogfood:
 
 A successful task can still expose a product problem. A failed task can still produce useful evidence. Neither automatically proves a general rule.
 
-## Keep external GitHub references precise without incidental backlinks
+## Prevent third-party GitHub backlinks before writing
 
-Cultist frequently cites public GitHub issues, pull requests, reviews, and commits as research evidence. Separate the machine/source coordinate from the human-facing link form.
+Cultist frequently studies public GitHub issues, pull requests, reviews, discussions, commits, and source. Internal research can churn aggressively. Human-facing third-party references require a stricter rule because an accidental GitHub cross-reference cannot be undone after the write has been processed.
 
-In issue bodies, pull-request bodies, and comments:
+For an automated worker, the rule is simple:
 
-- use `https://redirect.github.com/OWNER/REPOSITORY/...` for external GitHub links when a backlink is unnecessary;
-- avoid cross-repository shorthand such as `OWNER/REPOSITORY#123` in conversations when it would create an incidental backlink;
-- keep same-repository references such as `#109` or `#137` short when the cross-reference is intentional.
+**Every third-party GitHub reference the worker creates in human-facing interaction text must already be backlink-safe before the GitHub write happens.**
 
-In repository files, a literal source identity such as `` `The-PR-Agent/pr-agent#2424` `` is often enough. Use a `redirect.github.com` link when human click-through is useful.
+Default to non-linking wording when click-through is unnecessary:
 
-Do not rewrite canonical provider evidence merely for presentation hygiene. Keep `github.com` / `api.github.com` URLs unchanged when they are API inputs, exact source receipts, parser fixtures, workflow inputs, or copied source evidence. Apply backlink avoidance at the human-facing rendering layer.
+```text
+OWNER/REPOSITORY issue 123
+OWNER/REPOSITORY PR 456
+OWNER/REPOSITORY discussion 789
+```
+
+When a link is useful, use the literal redirect host:
+
+```text
+https://redirect.github.com/OWNER/REPOSITORY/issues/123
+https://redirect.github.com/OWNER/REPOSITORY/pull/456
+https://redirect.github.com/OWNER/REPOSITORY/discussions/789
+https://redirect.github.com/OWNER/REPOSITORY/commit/SHA
+```
+
+Automated human-facing text must not emit direct third-party `github.com` URLs or third-party `OWNER/REPOSITORY#123` shorthand. Do not rely on a post-write workflow to prevent a backlink; at that point the interaction already exists.
+
+Repositories under `teamleaderleo/*` are first-party coordination surfaces for this rule. Normal same-repository references such as `#109` and ordinary owned-repository links are allowed.
+
+Before creating or editing an issue, pull request, comment, review, inline review comment, or discussion that mentions third-party GitHub work, preflight the **exact text that will be written**:
+
+```sh
+python scripts/external_github_reference_guard.py \
+  --repository teamleaderleo/cultist \
+  --stdin < proposed-body.md
+```
+
+The write happens only after that preflight succeeds. Interaction preflight has no automated evidence-marker exception.
+
+Do not put clickable third-party issue/PR/discussion references, direct URLs, or cross-repository shorthand in commit messages. Prefer a plain project name and item number without GitHub shorthand, or omit the external coordinate from the commit message entirely.
+
+Canonical `github.com` / `api.github.com` provider coordinates may remain exact on machine/evidence surfaces where identity requires them: API inputs, retained JSON receipts, parser fixtures, workflow inputs, copied source payloads, and other non-interaction evidence. In tracked prose written by an agent, prefer non-linking wording or `redirect.github.com` unless exact canonical source text is itself the retained evidence.
+
+The CI reference guard is a detector and cleanup aid. It is not the prevention boundary.
 
 See `docs/external-reference-policy.md` for the durable policy and examples.
 

@@ -51,10 +51,12 @@ jobs:
             scripts/github_reference_url.py \
             scripts/github_reference_url_test.py \
             scripts/external_github_reference_guard.py \
-            scripts/external_github_reference_guard_test.py
+            scripts/external_github_reference_guard_test.py \
+            scripts/external_github_reference_preflight_test.py
           python scripts/github_reference_url_test.py
           python scripts/external_github_reference_guard_test.py
-      - name: External GitHub reference guard for pull request
+          python scripts/external_github_reference_preflight_test.py
+      - name: External GitHub reference post-write detector for pull request
         if: github.event_name == 'pull_request'
         env:
           CULTIST_BASE: ${{ github.event.pull_request.base.sha }}
@@ -63,7 +65,7 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --base "$CULTIST_BASE" \
             --event "$GITHUB_EVENT_PATH"
-      - name: External GitHub reference guard for push
+      - name: External GitHub reference detector for push
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
         env:
           CULTIST_BASE: ${{ github.event.before }}

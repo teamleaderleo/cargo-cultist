@@ -82,12 +82,7 @@ full historical packet
 -> exact operational detail for that action
 ```
 
-instead of:
-
-```text
-full historical packet
--> copy every neighboring event into treatment context
-```
+instead of copying every neighboring event into treatment context.
 
 ## Held-out capability-demand relation
 
@@ -123,20 +118,35 @@ cargo run --example prior_episode_detail < SELECTED_PRIOR_EPISODE.json
 
 No provider/network access occurs.
 
-## Relationship to behavioral trials
+## Executed current-main receipt
+
+Formatted semantic head:
+
+```text
+head:       c0ba546b95cb90c8bdaf94be3232469ad57db7c6
+merge view: fed6a69b6e4b8e2ff2a28d8e3b7a87100ad76086
+CI:         32267134335 success
+provenance: 32267134378 success
+```
+
+That merge-view run passed formatter, strict all-target Clippy, the real selected-detail controls, full tests, project-memory/review/closure/redirect controls, and normal Cultist repository/history/CI/diff dogfood. Provider-specific carriers skipped on their path filters.
+
+## Relationship to behavioral evaluation
 
 Merged [#245](https://redirect.github.com/teamleaderleo/cultist/pull/245) owns blindable paired behavioral-trial mechanics. Its worker packet fingerprints an arbitrary exact treatment context; it intentionally does not decide how that context was assembled.
 
-This projector sits one layer earlier:
+Merged [#246](https://redirect.github.com/teamleaderleo/cultist/pull/246) owns externally executable capability-demand run receipts and pair interpretation. It likewise does not assemble this selected historical detail.
+
+The layers now compose cleanly:
 
 ```text
 selected historical input
--> source-owned operational detail
+-> this source-owned operational detail
 -> treatment context assembly
--> #245 trial packet
+-> #245 blind worker packet
+-> external worker execution
+-> #246 run receipt / pair verdict where that capability-demand protocol applies
 ```
-
-Open [#246](https://redirect.github.com/teamleaderleo/cultist/pull/246) owns capability-demand worker run receipts and pair interpretation. This lane adds no worker execution or result semantics.
 
 Open [#164](https://redirect.github.com/teamleaderleo/cultist/pull/164) remains the broader evidence-planner research lane, stacked on unpublished durable-obligation work. This experiment does not import that planner or its types.
 

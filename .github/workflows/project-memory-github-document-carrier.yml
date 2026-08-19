@@ -1,0 +1,84 @@
+name: GitHub project-document carrier
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-fieldwork:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Check collector syntax
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/project_memory_github_document.py
+
+      - name: Collect #609 retained investigation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/project_memory_github_document.py \
+            --repository teamleaderleo/linux-fieldwork \
+            --revision b835ed842299f7654afc00f4988f7586e0be63bc \
+            --source-issue 609 \
+            --path investigations/cloud-hypervisor-qcow-r609-review/README.md \
+            --output packet.json \
+            > /tmp/project-document-collector.stdout
+
+      - name: Validate document through Rust boundary
+        run: |
+          cargo run --quiet --example project_document_packet \
+            < packet.json \
+            > summary.json
+
+      - name: Assert retained investigation discriminator
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packet = json.loads(Path("packet.json").read_text())
+          summary = json.loads(Path("summary.json").read_text())
+          expected_path = "investigations/cloud-hypervisor-qcow-r609-review/README.md"
+
+          assert packet["repository"] == "teamleaderleo/linux-fieldwork"
+          assert packet["revision"] == "b835ed842299f7654afc00f4988f7586e0be63bc"
+          assert summary["document_count"] == 1, summary
+          document = packet["documents"][0]
+          summary_document = summary["documents"][0]
+          assert document["path"] == expected_path
+          assert document["source"] == {"kind": "issue", "number": 609}
+          assert expected_path in document["source_evidence"]
+          assert document["text_complete"] is True
+          assert summary_document["blob_sha"] == document["blob_sha"]
+          assert summary_document["text_bytes"] == len(document["text"].encode("utf-8"))
+
+          text = document["text"]
+          assert "Cloud Hypervisor QCOW L2 ownership and publication" in text
+          assert "Current upstream head at this record: `284a2d42b98c514f57d3e89240861196d94fc6cb`." in text
+          assert "Review-added success control" in text
+          assert "Bradford's premise challenge" in text
+          assert "prepare -> own -> publish -> retire" in text
+          assert "Prefer the safer failure direction" in text
+          PY
+
+      - name: Upload carrier receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-document-carrier-${{ github.run_id }}
+          path: |
+            packet.json
+            summary.json
+          if-no-files-found: error

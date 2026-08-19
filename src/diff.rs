@@ -4,32 +4,59 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
-use crate::test_modules::{TestModuleOccurrence, TestModuleReport};
+use crate::test_modules::{
+    TestModuleOccurrence, TestModuleReport, analyze_test_module_files,
+    analyze_test_modules_excluding,
+};
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct LineRange {
+    start: usize,
+    end: usize,
+}
 
 #[derive(Debug, Default, Eq, PartialEq)]
 struct ChangedLines {
-    by_path: BTreeMap<PathBuf, BTreeSet<usize>>,
+    by_path: BTreeMap<PathBuf, Vec<LineRange>>,
 }
 
 impl ChangedLines {
     fn insert(&mut self, path: &Path, line: usize) {
-        self.by_path
-            .entry(path.to_path_buf())
-            .or_default()
-            .insert(line);
+        let ranges = self.by_path.entry(path.to_path_buf()).or_default();
+        if let Some(last) = ranges.last_mut()
+            && line <= last.end.saturating_add(1)
+        {
+            last.end = last.end.max(line);
+            return;
+        }
+        ranges.push(LineRange {
+            start: line,
+            end: line,
+        });
     }
 
     fn contains(&self, path: &Path, line: usize) -> bool {
-        self.by_path
-            .get(path)
-            .is_some_and(|lines| lines.contains(&line))
+        self.by_path.get(path).is_some_and(|ranges| {
+            ranges
+                .iter()
+                .any(|range| range.start <= line && line <= range.end)
+        })
     }
 
-    fn rust_file_count(&self) -> usize {
+    fn rust_paths(&self) -> impl Iterator<Item = &Path> {
         self.by_path
             .keys()
             .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("rs"))
-            .count()
+            .map(PathBuf::as_path)
+    }
+
+    fn rust_file_count(&self) -> usize {
+        self.rust_paths().count()
+    }
+
+    #[cfg(test)]
+    fn range_count(&self, path: &Path) -> usize {
+        self.by_path.get(path).map_or(0, Vec::len)
     }
 }
 
@@ -52,11 +79,9 @@ pub fn git_repo_root(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
 pub fn build_diff_analysis_report(
     root: &Path,
     base: Option<&str>,
-    report: &TestModuleReport,
 ) -> Result<AnalysisReport, Box<dyn Error>> {
     let patch = git_diff(root, base)?;
     let changed = parse_changed_lines(&patch);
-    let changed_modules = changed_test_modules(root, report, &changed);
 
     let mut analysis = AnalysisReport::new("diff-precedent", root.to_string_lossy().into_owned());
     analysis.claims.push(Claim::new(
@@ -73,13 +98,46 @@ pub fn build_diff_analysis_report(
         },
     ));
 
-    if changed_modules.is_empty() {
+    let changed_rust_paths: Vec<_> = changed
+        .rust_paths()
+        .map(|path| root.join(path))
+        .collect();
+    if changed_rust_paths.is_empty() {
         analysis.claims.push(Claim::new(
             ClaimKind::Observed,
             "No added or renamed test-gated module declarations were found in the diff.",
         ));
         return Ok(analysis);
     }
+
+    // Parse only changed Rust files first. Most diffs can stop here without
+    // walking or parsing the rest of the repository.
+    let changed_report = analyze_test_module_files(&changed_rust_paths)?;
+    if changed_test_modules(root, &changed_report, &changed).is_empty() {
+        analysis.claims.push(Claim::new(
+            ClaimKind::Observed,
+            "No added or renamed test-gated module declarations were found in the diff.",
+        ));
+        return Ok(analysis);
+    }
+
+    // A relevant declaration needs repository precedent. Reuse the changed
+    // files we already parsed and scan only the remaining Rust files.
+    let excluded_paths: BTreeSet<_> = changed_rust_paths.into_iter().collect();
+    let mut report = analyze_test_modules_excluding(root, &excluded_paths)?;
+    report.extend(changed_report);
+
+    add_diff_findings(root, &report, &changed, &mut analysis);
+    Ok(analysis)
+}
+
+fn add_diff_findings(
+    root: &Path,
+    report: &TestModuleReport,
+    changed: &ChangedLines,
+    analysis: &mut AnalysisReport,
+) {
+    let changed_modules = changed_test_modules(root, report, changed);
 
     for occurrence in changed_modules {
         let local_names = same_file_names(report, occurrence);
@@ -197,8 +255,6 @@ pub fn build_diff_analysis_report(
             "The changed test-module names match existing repository precedent.",
         ));
     }
-
-    Ok(analysis)
 }
 
 fn git_diff(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
@@ -221,6 +277,7 @@ fn git_diff(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
         ])
         .arg(anchor)
         .arg("--")
+        .arg("*.rs")
         .output()?;
 
     if !output.status.success() {
@@ -384,7 +441,45 @@ fn relative_path<'a>(root: &'a Path, path: &'a Path) -> &'a Path {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "cargo-cultist-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    fn run_git(root: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git command failed: git {args:?}");
+    }
+
+    fn init_repo(name: &str) -> PathBuf {
+        let root = unique_temp_dir(name);
+        fs::create_dir_all(&root).unwrap();
+        run_git(&root, &["init", "-q"]);
+        run_git(&root, &["config", "user.email", "cultist@example.invalid"]);
+        run_git(&root, &["config", "user.name", "Cargo Cultist Tests"]);
+        fs::write(root.join("README.md"), "baseline\n").unwrap();
+        fs::write(root.join("changed.rs"), "fn baseline() {}\n").unwrap();
+        fs::write(root.join("unrelated.rs"), [0xff, 0xfe, 0xfd]).unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-q", "-m", "baseline"]);
+        root
+    }
 
     #[test]
     fn detects_scope_tension_only_with_clear_precedent() {
@@ -446,6 +541,26 @@ mod tests {
         assert!(changed.contains(Path::new("src/a.rs"), 12));
         assert!(changed.contains(Path::new("src/a.rs"), 32));
         assert!(!changed.contains(Path::new("src/a.rs"), 31));
+        assert_eq!(changed.range_count(Path::new("src/a.rs")), 2);
+    }
+
+    #[test]
+    fn compacts_contiguous_added_lines_into_one_range() {
+        let patch = r#"diff --git src/a.rs src/a.rs
+--- src/a.rs
++++ src/a.rs
+@@ -10,0 +11,4 @@
++one
++two
++three
++four
+"#;
+
+        let changed = parse_changed_lines(patch);
+        assert_eq!(changed.range_count(Path::new("src/a.rs")), 1);
+        assert!(changed.contains(Path::new("src/a.rs"), 11));
+        assert!(changed.contains(Path::new("src/a.rs"), 14));
+        assert!(!changed.contains(Path::new("src/a.rs"), 15));
     }
 
     #[test]
@@ -472,5 +587,33 @@ mod tests {
         let selected = changed_test_modules(root, &report, &changed);
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].name, "special_tests");
+    }
+
+    #[test]
+    fn docs_only_diff_skips_repository_rust_scan() {
+        let root = init_repo("docs-only-diff");
+        fs::write(root.join("README.md"), "changed docs\n").unwrap();
+
+        let analysis = build_diff_analysis_report(&root, None).unwrap();
+
+        assert!(analysis.findings.is_empty());
+        assert!(analysis.claims.iter().any(|claim| claim
+            .message
+            .contains("No added or renamed test-gated module declarations")));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn irrelevant_rust_diff_skips_unrelated_repository_rust_scan() {
+        let root = init_repo("irrelevant-rust-diff");
+        fs::write(root.join("changed.rs"), "fn changed() { println!(\"hi\"); }\n").unwrap();
+
+        let analysis = build_diff_analysis_report(&root, None).unwrap();
+
+        assert!(analysis.findings.is_empty());
+        assert!(analysis.claims.iter().any(|claim| claim
+            .message
+            .contains("No added or renamed test-gated module declarations")));
+        fs::remove_dir_all(root).unwrap();
     }
 }

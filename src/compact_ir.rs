@@ -284,10 +284,7 @@ fn push_record<T: Serialize + ?Sized>(
     Ok(())
 }
 
-fn validate_report_schema(
-    schema_version: u32,
-    line: Option<usize>,
-) -> Result<(), CompactError> {
+fn validate_report_schema(schema_version: u32, line: Option<usize>) -> Result<(), CompactError> {
     if schema_version == REPORT_SCHEMA_VERSION {
         return Ok(());
     }
@@ -471,14 +468,19 @@ mod tests {
         let mut report = full_report();
         report.schema_version = REPORT_SCHEMA_VERSION + 1;
         let encode_error = encode_report(&report).unwrap_err();
-        assert!(encode_error.to_string().contains("unsupported AnalysisReport schema"));
-
-        let input = format!(
-            "C1\nR[{},\"a\",\"r\"]\n",
-            REPORT_SCHEMA_VERSION + 1
+        assert!(
+            encode_error
+                .to_string()
+                .contains("unsupported AnalysisReport schema")
         );
+
+        let input = format!("C1\nR[{},\"a\",\"r\"]\n", REPORT_SCHEMA_VERSION + 1);
         let decode_error = decode_report(&input).unwrap_err();
-        assert!(decode_error.to_string().contains("unsupported AnalysisReport schema"));
+        assert!(
+            decode_error
+                .to_string()
+                .contains("unsupported AnalysisReport schema")
+        );
     }
 
     #[test]

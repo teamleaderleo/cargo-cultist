@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -33,9 +33,18 @@ pub struct DecisionRecord {
     pub authority: Vec<DecisionAuthority>,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionScopeMatch {
+    Direct,
+    GitFileLineage,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 pub struct ResolvedDecision {
     pub source_file: String,
+    pub matched_via: DecisionScopeMatch,
+    pub matched_path: String,
     pub record: DecisionRecord,
 }
 
@@ -164,6 +173,7 @@ fn resolve_decisions(
     files.sort();
 
     let mut seen_ids = BTreeMap::<String, PathBuf>::new();
+    let mut lineage: Option<Vec<PathBuf>> = None;
     let mut resolved = Vec::new();
 
     for path in files {
@@ -195,7 +205,24 @@ fn resolve_decisions(
             .into());
         }
 
-        if target.starts_with(&scope) {
+        let scope_match = if target.starts_with(&scope) {
+            Some((DecisionScopeMatch::Direct, target.to_path_buf()))
+        } else {
+            let lineage = match &lineage {
+                Some(lineage) => lineage,
+                None => {
+                    lineage = Some(git_file_lineage(root, target)?);
+                    lineage.as_ref().expect("lineage initialized")
+                }
+            };
+            lineage
+                .iter()
+                .find(|historical_path| historical_path.starts_with(&scope))
+                .cloned()
+                .map(|historical_path| (DecisionScopeMatch::GitFileLineage, historical_path))
+        };
+
+        if let Some((matched_via, matched_path)) = scope_match {
             let source_file = path
                 .strip_prefix(root)
                 .map_err(|_| "decision record is outside the resolved Git repository")?
@@ -203,6 +230,8 @@ fn resolve_decisions(
                 .to_string();
             resolved.push(ResolvedDecision {
                 source_file,
+                matched_via,
+                matched_path: matched_path.display().to_string(),
                 record,
             });
         }
@@ -216,6 +245,55 @@ fn resolve_decisions(
             .then_with(|| left.record.id.cmp(&right.record.id))
     });
     Ok(resolved)
+}
+
+fn git_file_lineage(root: &Path, target: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "-c",
+            "core.quotepath=false",
+            "log",
+            "--follow",
+            "--find-renames=50%",
+            "--format=",
+            "--name-status",
+            "--",
+        ])
+        .arg(target)
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "git file-lineage lookup failed for {}: {}",
+            target.display(),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let mut paths = BTreeSet::new();
+    paths.insert(target.to_path_buf());
+    for line in String::from_utf8(output.stdout)?.lines() {
+        add_name_status_paths(line, &mut paths);
+    }
+    Ok(paths.into_iter().collect())
+}
+
+fn add_name_status_paths(line: &str, paths: &mut BTreeSet<PathBuf>) {
+    let fields: Vec<_> = line.split('\t').collect();
+    let Some(status) = fields.first().copied() else {
+        return;
+    };
+    if status.starts_with('R') || status.starts_with('C') {
+        if fields.len() >= 3 {
+            paths.insert(PathBuf::from(fields[1]));
+            paths.insert(PathBuf::from(fields[2]));
+        }
+    } else if fields.len() >= 2 && !status.is_empty() {
+        paths.insert(PathBuf::from(fields[1]));
+    }
 }
 
 fn validate_record(record: &DecisionRecord, path: &Path) -> Result<(), Box<dyn Error>> {
@@ -354,5 +432,20 @@ mod tests {
     fn rejects_noncanonical_separators_and_repeated_slashes() {
         assert!(canonical_scope("src\\history.rs", &fixture()).is_err());
         assert!(canonical_scope("src//history.rs", &fixture()).is_err());
+    }
+
+    #[test]
+    fn parses_rename_name_status_paths() {
+        let mut paths = BTreeSet::new();
+        add_name_status_paths("R100\told/path.rs\tnew/path.rs", &mut paths);
+        assert!(paths.contains(Path::new("old/path.rs")));
+        assert!(paths.contains(Path::new("new/path.rs")));
+    }
+
+    #[test]
+    fn parses_regular_name_status_path() {
+        let mut paths = BTreeSet::new();
+        add_name_status_paths("M\tsrc/history.rs", &mut paths);
+        assert_eq!(paths, BTreeSet::from([PathBuf::from("src/history.rs")]));
     }
 }

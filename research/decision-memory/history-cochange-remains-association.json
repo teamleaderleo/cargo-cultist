@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "history-cochange-remains-association-v1",
+  "kind": "historical-companion-policy",
+  "scope": {
+    "path_prefix": "src/history.rs"
+  },
+  "reason": "Raw historical co-change support is association evidence. Frequency alone does not establish that a companion is required for a future change, so examples, counterexamples, cohort exclusions, and stronger evidence layers remain visible before promotion.",
+  "authority": [
+    {
+      "kind": "issue",
+      "reference": "#34"
+    },
+    {
+      "kind": "pull_request",
+      "reference": "#39"
+    },
+    {
+      "kind": "roadmap",
+      "reference": "#19"
+    }
+  ]
+}

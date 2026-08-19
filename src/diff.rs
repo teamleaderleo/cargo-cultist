@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
+use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
 use crate::test_modules::{
@@ -80,8 +81,7 @@ pub fn build_diff_analysis_report(
     root: &Path,
     base: Option<&str>,
 ) -> Result<AnalysisReport, Box<dyn Error>> {
-    let patch = git_diff(root, base)?;
-    let changed = parse_changed_lines(&patch);
+    let changed = git_diff_changed_lines(root, base)?;
 
     let mut analysis = AnalysisReport::new("diff-precedent", root.to_string_lossy().into_owned());
     analysis.claims.push(Claim::new(
@@ -110,6 +110,25 @@ pub fn build_diff_analysis_report(
     // Parse only changed Rust files first. Most diffs can stop here without
     // walking or parsing the rest of the repository.
     let changed_report = analyze_test_module_files(&changed_rust_paths)?;
+    if !changed_report.parse_failures.is_empty() {
+        for (path, error) in &changed_report.parse_failures {
+            analysis.claims.push(
+                Claim::new(
+                    ClaimKind::Unknown,
+                    "A changed Rust file could not be parsed, so diff relevance could not be determined.",
+                )
+                .with_evidence(Evidence::at(
+                    error.clone(),
+                    Location::new(
+                        relative_path(root, path).to_string_lossy().into_owned(),
+                        None,
+                    ),
+                )),
+            );
+        }
+        return Ok(analysis);
+    }
+
     if changed_test_modules(root, &changed_report, &changed).is_empty() {
         analysis.claims.push(Claim::new(
             ClaimKind::Observed,
@@ -254,13 +273,13 @@ fn add_diff_findings(
     }
 }
 
-fn git_diff(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
+fn git_diff_changed_lines(root: &Path, base: Option<&str>) -> Result<ChangedLines, Box<dyn Error>> {
     let anchor = match base {
         Some(base) => merge_base(root, base)?,
         None => "HEAD".to_string(),
     };
 
-    let output = Command::new("git")
+    let mut child = Command::new("git")
         .arg("-C")
         .arg(root)
         .args([
@@ -275,14 +294,21 @@ fn git_diff(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
         .arg(anchor)
         .arg("--")
         .arg("*.rs")
-        .output()?;
+        .stdout(Stdio::piped())
+        .spawn()?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git diff failed: {stderr}").into());
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("git diff did not provide a stdout pipe")?;
+    let changed = parse_changed_lines(BufReader::new(stdout))?;
+    let status = child.wait()?;
+
+    if !status.success() {
+        return Err(format!("git diff failed with status {status}").into());
     }
 
-    Ok(String::from_utf8(output.stdout)?)
+    Ok(changed)
 }
 
 fn merge_base(root: &Path, base: &str) -> Result<String, Box<dyn Error>> {
@@ -300,24 +326,30 @@ fn merge_base(root: &Path, base: &str) -> Result<String, Box<dyn Error>> {
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
-fn parse_changed_lines(patch: &str) -> ChangedLines {
+fn parse_changed_lines<R: BufRead>(mut reader: R) -> io::Result<ChangedLines> {
     let mut changed = ChangedLines::default();
     let mut current_path: Option<PathBuf> = None;
     let mut current_new_line: Option<usize> = None;
+    let mut buffer = String::new();
 
-    for line in patch.lines() {
+    while reader.read_line(&mut buffer)? != 0 {
+        let line = buffer.trim_end_matches(['\n', '\r']);
+
         if let Some(path) = line.strip_prefix("+++ ") {
             current_path = (path != "/dev/null").then(|| PathBuf::from(path));
             current_new_line = None;
+            buffer.clear();
             continue;
         }
 
         if line.starts_with("@@") {
             current_new_line = hunk_new_start(line);
+            buffer.clear();
             continue;
         }
 
         let Some(new_line) = current_new_line else {
+            buffer.clear();
             continue;
         };
 
@@ -331,9 +363,11 @@ fn parse_changed_lines(patch: &str) -> ChangedLines {
         } else if !line.starts_with('\\') {
             current_new_line = Some(new_line + 1);
         }
+
+        buffer.clear();
     }
 
-    changed
+    Ok(changed)
 }
 
 fn hunk_new_start(header: &str) -> Option<usize> {
@@ -533,7 +567,7 @@ mod tests {
 +new
 "#;
 
-        let changed = parse_changed_lines(patch);
+        let changed = parse_changed_lines(patch.as_bytes()).unwrap();
         assert!(changed.contains(Path::new("src/a.rs"), 11));
         assert!(changed.contains(Path::new("src/a.rs"), 12));
         assert!(changed.contains(Path::new("src/a.rs"), 32));
@@ -553,7 +587,7 @@ mod tests {
 +four
 "#;
 
-        let changed = parse_changed_lines(patch);
+        let changed = parse_changed_lines(patch.as_bytes()).unwrap();
         assert_eq!(changed.range_count(Path::new("src/a.rs")), 1);
         assert!(changed.contains(Path::new("src/a.rs"), 11));
         assert!(changed.contains(Path::new("src/a.rs"), 14));
@@ -618,6 +652,29 @@ mod tests {
             claim
                 .message
                 .contains("No added or renamed test-gated module declarations")
+        }));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn changed_rust_parse_failure_stays_unknown_without_repository_scan() {
+        let root = init_repo("changed-parse-failure");
+        fs::write(root.join("changed.rs"), "fn changed( {\n").unwrap();
+
+        let analysis = build_diff_analysis_report(&root, None).unwrap();
+
+        assert!(analysis.findings.is_empty());
+        assert!(analysis.claims.iter().any(|claim| {
+            claim.kind == ClaimKind::Unknown
+                && claim
+                    .message
+                    .contains("diff relevance could not be determined")
+        }));
+        assert!(!analysis.claims.iter().any(|claim| {
+            claim.kind == ClaimKind::Observed
+                && claim
+                    .message
+                    .contains("No added or renamed test-gated module declarations")
         }));
         fs::remove_dir_all(root).unwrap();
     }

@@ -38,6 +38,13 @@ jobs:
             scripts/review_memory_github.py \
             scripts/review_memory_github_test.py
           python scripts/review_memory_github_test.py
+      - name: GitHub issue-closure adapter controls
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/closure_episode_github.py \
+            scripts/closure_episode_github_test.py
+          python scripts/closure_episode_github_test.py
       - name: Active work heads-up
         if: github.event_name == 'pull_request'
         continue-on-error: true

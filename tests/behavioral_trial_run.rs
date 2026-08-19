@@ -80,12 +80,7 @@ fn admitted_ab_pair_reuses_existing_behavioral_reconciliation() {
         1,
         "inspect_accepted_guard_detail",
     );
-    let treatment = receipt(
-        &plan,
-        BehavioralTrialArmKind::Treatment,
-        2,
-        "block_patch",
-    );
+    let treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
 
     let result = evaluate_behavioral_trial_runs(&plan, &control, &treatment).unwrap();
     assert_eq!(result.verdict, BehavioralTrialRunVerdict::Admitted);
@@ -109,12 +104,7 @@ fn admitted_ab_pair_reuses_existing_behavioral_reconciliation() {
 #[test]
 fn admitted_ba_order_maps_arms_by_packet_fingerprint() {
     let plan = plan();
-    let treatment = receipt(
-        &plan,
-        BehavioralTrialArmKind::Treatment,
-        1,
-        "block_patch",
-    );
+    let treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 1, "block_patch");
     let control = receipt(
         &plan,
         BehavioralTrialArmKind::Control,
@@ -174,12 +164,7 @@ fn frozen_worker_harness_affordance_or_sampling_drift_confounds_pair() {
     ];
 
     for mutate in mutations.drain(..) {
-        let mut treatment = receipt(
-            &plan,
-            BehavioralTrialArmKind::Treatment,
-            2,
-            "block_patch",
-        );
+        let mut treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
         mutate(&mut treatment);
         let result = evaluate_behavioral_trial_runs(&plan, &baseline, &treatment).unwrap();
         assert_eq!(result.verdict, BehavioralTrialRunVerdict::Confounded);
@@ -198,33 +183,18 @@ fn reused_nonfresh_or_preexposed_sessions_confound_pair() {
         "inspect_accepted_guard_detail",
     );
 
-    let mut treatment = receipt(
-        &plan,
-        BehavioralTrialArmKind::Treatment,
-        2,
-        "block_patch",
-    );
+    let mut treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
     treatment.session_id = control.session_id.clone();
     let result = evaluate_behavioral_trial_runs(&plan, &control, &treatment).unwrap();
     assert_eq!(result.verdict, BehavioralTrialRunVerdict::Confounded);
     assert!(!result.fresh_uncontaminated_sessions);
 
-    let mut treatment = receipt(
-        &plan,
-        BehavioralTrialArmKind::Treatment,
-        2,
-        "block_patch",
-    );
+    let mut treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
     treatment.fresh_session = false;
     let result = evaluate_behavioral_trial_runs(&plan, &control, &treatment).unwrap();
     assert_eq!(result.verdict, BehavioralTrialRunVerdict::Confounded);
 
-    let mut treatment = receipt(
-        &plan,
-        BehavioralTrialArmKind::Treatment,
-        2,
-        "block_patch",
-    );
+    let mut treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
     treatment.prior_condition_exposure = true;
     let result = evaluate_behavioral_trial_runs(&plan, &control, &treatment).unwrap();
     assert_eq!(result.verdict, BehavioralTrialRunVerdict::Confounded);
@@ -256,12 +226,7 @@ fn packet_file_hash_tampering_rejects_before_pair_interpretation() {
         1,
         "inspect_accepted_guard_detail",
     );
-    let mut treatment = receipt(
-        &plan,
-        BehavioralTrialArmKind::Treatment,
-        2,
-        "block_patch",
-    );
+    let mut treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
     treatment.worker_packet_file_sha256 = CONTROL_FILE_SHA.into();
 
     let error = evaluate_behavioral_trial_runs(&plan, &control, &treatment).unwrap_err();
@@ -277,12 +242,7 @@ fn unknown_packet_fingerprint_rejects_before_pair_interpretation() {
         1,
         "inspect_accepted_guard_detail",
     );
-    let mut treatment = receipt(
-        &plan,
-        BehavioralTrialArmKind::Treatment,
-        2,
-        "block_patch",
-    );
+    let mut treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
     treatment.worker_packet_fingerprint =
         "cultist-behavioral-worker-packet-sha256-v1:0000000000000000000000000000000000000000000000000000000000000000"
             .into();
@@ -300,12 +260,7 @@ fn action_outside_registered_vocabulary_rejects_before_pair_interpretation() {
         1,
         "inspect_accepted_guard_detail",
     );
-    let mut treatment = receipt(
-        &plan,
-        BehavioralTrialArmKind::Treatment,
-        2,
-        "block_patch",
-    );
+    let mut treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
     treatment.first_action_id = "invent_new_action".into();
 
     let error = evaluate_behavioral_trial_runs(&plan, &control, &treatment).unwrap_err();

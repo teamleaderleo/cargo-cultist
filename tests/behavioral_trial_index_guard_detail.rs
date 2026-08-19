@@ -35,9 +35,9 @@ use project_memory::parse_project_memory_packet;
 
 const PLAN: &[u8] =
     include_bytes!("../research/behavioral-trials/stensibly-index-guard-detail.json");
-const PLAN_FINGERPRINT: &str = "cultist-behavioral-trial-plan-sha256-v1:6f3eddecf177271c0ad60f32fb17008841bdb81f34aa717f52be90c3bdd1f69b";
-const CONTROL_PACKET_FINGERPRINT: &str = "cultist-behavioral-worker-packet-sha256-v1:9949665d13b162692ebd3f7d12b6f162881f18d2d381c7257100bbb89c317f01";
-const TREATMENT_PACKET_FINGERPRINT: &str = "cultist-behavioral-worker-packet-sha256-v1:6d3d93c574e81800ef1829216356d258553cabc7d2bdce2d09c32f46659c738c";
+const PLAN_FINGERPRINT: &str = "cultist-behavioral-trial-plan-sha256-v1:1aca6332c77ed72b49cb20593f215c7eb2952121ad9bf3d5ae60bea0df5df024";
+const CONTROL_PACKET_FINGERPRINT: &str = "cultist-behavioral-worker-packet-sha256-v1:5fa460fe007276013ed019830daaf9fc8d086cc5d3d5dfdfc5dd33a58052887d";
+const TREATMENT_PACKET_FINGERPRINT: &str = "cultist-behavioral-worker-packet-sha256-v1:a80303b59b9a46c5f4e6adb446abb01fbaeb5d898911bf6ad1248b3b0cf38549";
 
 fn selected_detail() -> PriorEpisodeDetail {
     let memory = parse_project_memory_packet(include_bytes!(
@@ -77,6 +77,41 @@ fn plan_changes_only_worker_visible_selected_detail_after_the_compact_front() {
         control.allowed_first_actions,
         treatment.allowed_first_actions
     );
+    assert_eq!(
+        control
+            .allowed_first_actions
+            .iter()
+            .map(|action| action.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "block_patch",
+            "inspect_accepted_guard_detail",
+            "approve_patch",
+            "inspect_more_repository_context",
+        ]
+    );
+    let worker_visible_vocabulary = format!(
+        "{}\n{}",
+        control.task_instruction,
+        control
+            .allowed_first_actions
+            .iter()
+            .map(|action| format!("{}\n{}", action.id, action.label))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
+    .to_ascii_lowercase();
+    for forbidden in [
+        "shorten",
+        "64",
+        "identifier limit",
+        "preserving field order",
+    ] {
+        assert!(
+            !worker_visible_vocabulary.contains(forbidden),
+            "worker-visible task/action vocabulary leaks `{forbidden}`"
+        );
+    }
     assert_eq!(control.context.len(), 1_082);
     assert_eq!(treatment.context.len(), 1_775);
 
@@ -143,7 +178,7 @@ fn synthetic_reversed_pair_is_descriptive_only_and_maps_first_actions_to_their_a
                 plan_fingerprint: plan_fingerprint.clone(),
                 worker_packet_fingerprint: treatment.worker_packet_fingerprint.clone(),
                 worker_ref: "worker:synthetic-treatment".to_string(),
-                first_action_id: "block_and_shorten_identifier".to_string(),
+                first_action_id: "block_patch".to_string(),
             },
             BehavioralTrialObservation {
                 schema_version: BEHAVIORAL_TRIAL_SCHEMA_VERSION,
@@ -161,10 +196,7 @@ fn synthetic_reversed_pair_is_descriptive_only_and_maps_first_actions_to_their_a
         evaluation.control.first_action_id,
         "inspect_accepted_guard_detail"
     );
-    assert_eq!(
-        evaluation.treatment.first_action_id,
-        "block_and_shorten_identifier"
-    );
+    assert_eq!(evaluation.treatment.first_action_id, "block_patch");
     assert!(!evaluation.same_first_action);
 }
 

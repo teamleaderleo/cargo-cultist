@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/cultist",
+  "revision": "1065086c45ad167037d290b83d77d52975d1f1a9",
+  "task": "pull-255-demand-gated-refinement-probe-planning",
+  "evidence_kind": "refinement-investigation-demand-gate",
+  "evidence_ref": "github:pull/255@1065086c45ad167037d290b83d77d52975d1f1a9",
+  "delivery": "surfaced",
+  "consulted": true,
+  "outcome": "changed_next_action",
+  "action": "plan the rust-edit-class probe only for syntax-changing-current-cohort and skip evidence acquisition for reverse-edit-class-control and singleton-commit-partition"
+}

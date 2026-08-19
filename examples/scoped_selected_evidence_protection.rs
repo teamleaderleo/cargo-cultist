@@ -115,7 +115,9 @@ mod packet {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         {
-            return Err("protected scope evidence refs must be exact lowercase 40-hex Git SHAs".into());
+            return Err(
+                "protected scope evidence refs must be exact lowercase 40-hex Git SHAs".into(),
+            );
         }
         Ok(())
     }

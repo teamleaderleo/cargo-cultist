@@ -35,6 +35,7 @@ struct BoundEnvelopeIdentity {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum BindError {
+    NoRequirements,
     MissingRepository,
     MissingRevision,
     MissingTask,
@@ -45,6 +46,10 @@ fn bind_context(
     context: AmbientContext<'_>,
     requirements: ContextRequirements,
 ) -> Result<BoundEnvelopeIdentity, BindError> {
+    if !requirements.repository && !requirements.revision && !requirements.task {
+        return Err(BindError::NoRequirements);
+    }
+
     let repository = required_value(
         context.repository,
         requirements.repository,
@@ -161,6 +166,26 @@ fn missing_required_revision_fails_closed_instead_of_guessing_from_ambient_state
     );
 
     assert_eq!(result, Err(BindError::MissingRevision));
+}
+
+#[test]
+fn empty_requirements_fail_closed_instead_of_meaning_context_free_global() {
+    let report = report_without_revision_semantics();
+    let result = bind_context(
+        &report,
+        AmbientContext {
+            repository: Some("teamleaderleo/cultist"),
+            revision: Some("aaaaaaaa"),
+            task: Some("T1"),
+        },
+        ContextRequirements {
+            repository: false,
+            revision: false,
+            task: false,
+        },
+    );
+
+    assert_eq!(result, Err(BindError::NoRequirements));
 }
 
 #[test]

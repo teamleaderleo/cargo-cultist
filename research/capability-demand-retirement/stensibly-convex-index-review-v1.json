@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "trial_id": "stensibly-convex-index-review-v1",
+  "repository": "teamleaderleo/stensibly",
+  "revision": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+  "target_path": "convex/schema.ts",
+  "target_blob_sha": "7fdd51e2f9fba80d1c0a814cea708d601a7b9925",
+  "worker_task": {
+    "prompt": "Review this proposed patch for merge eligibility against the repository's existing conventions and production constraints. Identify any blocking issue and the smallest corrective action. Do not assume the patch is correct.",
+    "patch": "@@ githubProjectContexts index chain @@\n   .index(\"by_project_issue_accepted\", [\"projectId\", \"issueExternalId\", \"acceptedAt\", \"externalId\"])\n+  .index(\"by_project_issue_revision_instruction_set_sha256_provider_updated_at\", [\"projectId\", \"issueExternalId\", \"sourceRevision\", \"instructionSetSha256\", \"providerUpdatedAt\"]),"
+  },
+  "oracle": {
+    "expected_disposition": "block",
+    "blocking_reason": "convex_index_identifier_limit",
+    "max_identifier_length": 64,
+    "proposed_identifier": "by_project_issue_revision_instruction_set_sha256_provider_updated_at",
+    "proposed_identifier_length": 68,
+    "corrective_action": "shorten_identifier_preserve_field_order"
+  },
+  "conditions": [
+    {
+      "id": "file_local_jei",
+      "packet_kind": "file_local",
+      "budget_bytes": 32768,
+      "scope": null,
+      "decisive_evidence_present": false,
+      "decisive_evidence_refs": []
+    },
+    {
+      "id": "scoped_jei",
+      "packet_kind": "scoped",
+      "budget_bytes": 32768,
+      "scope": "convex",
+      "decisive_evidence_present": true,
+      "decisive_evidence_refs": [
+        "ca5d2c7fdf89666e523972ab6e81610d17b9611b",
+        "85cecf2608ad9e734a67518577fa85b9a08a550c"
+      ]
+    }
+  ],
+  "oracle_leak_control": {
+    "historical_issue": "https://github.com/teamleaderleo/stensibly/issues/1574",
+    "allowed_as_worker_prompt": false,
+    "prohibited_worker_prompt_fragments": [
+      "64",
+      "#1571",
+      "#1573",
+      "overlong",
+      "identifier limit",
+      "by_workspace_id_and_provider_and_mailbox_binding_id_and_provider_message_id",
+      "by_workspace_id_and_provider_and_account_binding_and_mailbox_address_and_provider_thread_id_and_provider_message_id"
+    ]
+  }
+}

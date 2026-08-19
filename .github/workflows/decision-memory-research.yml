@@ -1,0 +1,177 @@
+name: Decision memory research
+
+on:
+  pull_request:
+    paths:
+      - examples/decision_memory.rs
+      - research/decision-memory.md
+      - research/decision-memory/**
+      - .github/workflows/decision-memory-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  memory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Quality gates
+        run: |
+          cargo fmt --check
+          cargo clippy --example decision_memory -- -D warnings
+          cargo test --example decision_memory
+
+      - name: Resolve accepted self-dogfood decision
+        run: |
+          set -euo pipefail
+          mkdir -p research-output
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/history.rs \
+            | tee research-output/history-decision.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/history-decision.json').read_text())
+          assert report['analysis'] == 'decision_memory', report
+          assert report['target'] == 'src/history.rs', report
+          assert len(report['decisions']) == 1, report
+          decision = report['decisions'][0]
+          assert decision['record']['id'] == 'history-cochange-remains-association-v1', decision
+          assert decision['record']['scope']['path_prefix'] == 'src/history.rs', decision
+          assert [item['reference'] for item in decision['record']['authority']] == [
+              '#34', '#39', '#19'
+          ], decision
+          PY
+
+      - name: Keep unrelated target empty
+        run: |
+          set -euo pipefail
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/main.rs \
+            | tee research-output/unrelated.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/unrelated.json').read_text())
+          assert report['target'] == 'src/main.rs', report
+          assert report['decisions'] == [], report
+          PY
+
+      - name: Reject unsupported schema
+        run: |
+          set -euo pipefail
+          records="$(mktemp -d -p . decision-memory-schema.XXXXXX)"
+          cat > "$records/unsupported.json" <<'EOF'
+          {
+            "schema_version": 99,
+            "id": "unsupported",
+            "kind": "test",
+            "scope": {"path_prefix": "src/history.rs"},
+            "reason": "invalid fixture",
+            "authority": [{"kind": "issue", "reference": "#75"}]
+          }
+          EOF
+          if cargo run --quiet --example decision_memory -- "$records" src/history.rs \
+              > research-output/schema.out 2> research-output/schema.err; then
+            echo 'unsupported schema unexpectedly succeeded' >&2
+            exit 1
+          fi
+          grep -F 'unsupported decision schema 99' research-output/schema.err
+          rm -rf "$records"
+
+      - name: Reject noncanonical scopes
+        run: |
+          set -euo pipefail
+          for scope in '../src/history.rs' 'src/./history.rs'; do
+            records="$(mktemp -d -p . decision-memory-scope.XXXXXX)"
+            python - "$records/record.json" "$scope" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path, scope = sys.argv[1:]
+          Path(path).write_text(json.dumps({
+              'schema_version': 1,
+              'id': 'bad-scope',
+              'kind': 'test',
+              'scope': {'path_prefix': scope},
+              'reason': 'invalid fixture',
+              'authority': [{'kind': 'issue', 'reference': '#75'}],
+          }))
+          PY
+            if cargo run --quiet --example decision_memory -- "$records" src/history.rs \
+                > research-output/scope.out 2> research-output/scope.err; then
+              echo "noncanonical scope unexpectedly succeeded: $scope" >&2
+              exit 1
+            fi
+            grep -F 'not canonical repository-relative path syntax' research-output/scope.err
+            rm -rf "$records"
+          done
+
+      - name: Reject duplicate decision ids
+        run: |
+          set -euo pipefail
+          records="$(mktemp -d -p . decision-memory-duplicate.XXXXXX)"
+          for name in a b; do
+            cat > "$records/$name.json" <<'EOF'
+          {
+            "schema_version": 1,
+            "id": "duplicate-id",
+            "kind": "test",
+            "scope": {"path_prefix": "src/history.rs"},
+            "reason": "duplicate fixture",
+            "authority": [{"kind": "issue", "reference": "#75"}]
+          }
+          EOF
+          done
+          if cargo run --quiet --example decision_memory -- "$records" src/history.rs \
+              > research-output/duplicate.out 2> research-output/duplicate.err; then
+            echo 'duplicate decision id unexpectedly succeeded' >&2
+            exit 1
+          fi
+          grep -F 'duplicate decision id `duplicate-id`' research-output/duplicate.err
+          rm -rf "$records"
+
+      - name: Reject symlinked decision records
+        run: |
+          set -euo pipefail
+          records="$(mktemp -d -p . decision-memory-symlink.XXXXXX)"
+          cat > "$records/real" <<'EOF'
+          {
+            "schema_version": 1,
+            "id": "symlinked",
+            "kind": "test",
+            "scope": {"path_prefix": "src/history.rs"},
+            "reason": "symlink fixture",
+            "authority": [{"kind": "issue", "reference": "#75"}]
+          }
+          EOF
+          ln -s real "$records/link.json"
+          if cargo run --quiet --example decision_memory -- "$records" src/history.rs \
+              > research-output/symlink.out 2> research-output/symlink.err; then
+            echo 'symlinked decision record unexpectedly succeeded' >&2
+            exit 1
+          fi
+          grep -F 'is a symlink; decision memory must be repository-owned regular files' \
+            research-output/symlink.err
+          rm -rf "$records"
+
+      - name: Upload research receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: decision-memory-research
+          path: research-output/
+          if-no-files-found: error

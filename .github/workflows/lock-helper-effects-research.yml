@@ -1,0 +1,57 @@
+name: Lock helper effects research
+
+on:
+  pull_request:
+    paths:
+      - examples/lock_helper_effects.rs
+      - .github/workflows/lock-helper-effects-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wgpu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Probe quality gates
+        working-directory: cultist
+        run: |
+          cargo fmt --check
+          cargo clippy --example lock_helper_effects -- -D warnings
+          cargo test --example lock_helper_effects
+
+      - name: Checkout pinned WGPU
+        uses: actions/checkout@v4
+        with:
+          repository: gfx-rs/wgpu
+          ref: 95c30b29528b23564290b42c197335394f03642d
+          path: corpus/wgpu
+          persist-credentials: false
+
+      - name: Recover helper-carried allowed edge
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example lock_helper_effects -- \
+            corpus/wgpu \
+            wgpu-core/src/lock/rank.rs \
+            wgpu-core/src/device/queue.rs \
+            allocate_submission \
+            flush_pending_writes \
+            | tee /tmp/wgpu-helper-effects.txt
+
+          grep -F '`allocate_submission` returns while `command_index_guard` / `command_indices` remains owned by the return value (rank `DEVICE_COMMAND_INDICES`).' /tmp/wgpu-helper-effects.txt
+          grep -F 'helper result `submission` holds/acquires `command_indices` as `DEVICE_COMMAND_INDICES`' /tmp/wgpu-helper-effects.txt
+          grep -F 'direct acquisition holds/acquires `pending_writes` as `QUEUE_PENDING_WRITES`' /tmp/wgpu-helper-effects.txt
+          grep -F 'Every supported direct or helper-carried acquisition follows the declared successor rule' /tmp/wgpu-helper-effects.txt

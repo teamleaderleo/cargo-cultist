@@ -1,6 +1,7 @@
 mod ci_test_filters;
 mod diff;
 mod finding;
+mod generated_diff;
 mod history;
 mod render;
 mod report;

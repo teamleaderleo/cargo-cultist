@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
+use crate::generated_diff::add_generated_companion_findings;
 use crate::test_modules::{
     TestModuleOccurrence, TestModuleReport, analyze_test_module_files,
     analyze_test_modules_excluding,
@@ -97,6 +98,8 @@ pub fn build_diff_analysis_report(
             ),
         },
     ));
+
+    add_generated_companion_findings(root, base, &mut analysis)?;
 
     let changed_rust_paths: Vec<_> = changed.rust_paths().map(|path| root.join(path)).collect();
     if changed_rust_paths.is_empty() {

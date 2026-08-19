@@ -41,10 +41,7 @@ fn request() -> RefinementCandidateReadinessRequest {
     }
 }
 
-fn set_selected_held_out(
-    request: &mut RefinementCandidateReadinessRequest,
-    status: HeldOutStatus,
-) {
+fn set_selected_held_out(request: &mut RefinementCandidateReadinessRequest, status: HeldOutStatus) {
     let episode = request
         .refinements
         .episodes
@@ -82,7 +79,10 @@ fn selected_status_survivor_with_unknown_held_out_stays_satisfied_and_preserves_
         candidate.disposition,
         RefinementInvestigationDispositionStatus::Satisfied
     );
-    assert_eq!(candidate.replay_result.held_out_status, HeldOutStatus::Unknown);
+    assert_eq!(
+        candidate.replay_result.held_out_status,
+        HeldOutStatus::Unknown
+    );
 }
 
 #[test]
@@ -100,7 +100,10 @@ fn selected_status_survivor_with_not_run_held_out_can_request_exact_missing_obse
         candidate.disposition,
         RefinementInvestigationDispositionStatus::ObservationAcquisitionNeeded
     );
-    assert_eq!(candidate.replay_result.held_out_status, HeldOutStatus::NotRun);
+    assert_eq!(
+        candidate.replay_result.held_out_status,
+        HeldOutStatus::NotRun
+    );
     assert_eq!(candidate.acquisition_frontiers.len(), 1);
     assert_eq!(
         candidate.acquisition_frontiers[0].subject_ref,

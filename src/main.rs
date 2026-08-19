@@ -385,7 +385,9 @@ fn parse_preflight_args(args: Vec<String>) -> Result<PreflightArgs, Box<dyn Erro
         (Some(against), None) => PreflightSource::Against(against),
         (None, Some(inventory)) => PreflightSource::Inventory(inventory),
         (Some(_), Some(_)) => {
-            return Err("preflight accepts only one of `--against REV` or `--inventory FILE`".into());
+            return Err(
+                "preflight accepts only one of `--against REV` or `--inventory FILE`".into(),
+            );
         }
         (None, None) => {
             return Err(

@@ -13,6 +13,8 @@ use syn::visit::{self, Visit};
 use syn::{Attribute, ItemFn, ItemMod, Meta, Token};
 use walkdir::{DirEntry, WalkDir};
 
+use crate::performance;
+
 const CACHE_SCHEMA_VERSION: u32 = 1;
 const CACHE_NAMESPACE: &str = "rust-syntax-v1";
 
@@ -175,7 +177,7 @@ fn git_rust_inputs(
     excluded_paths: &BTreeSet<PathBuf>,
     skipped_dirs: &[&str],
 ) -> Result<Option<Vec<RustInput>>, Box<dyn Error>> {
-    let probe = Command::new("git")
+    let probe = performance::git_command()
         .arg("-C")
         .arg(root)
         .args(["rev-parse", "--is-inside-work-tree"])
@@ -245,7 +247,7 @@ fn git_rust_inputs(
 }
 
 fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>, Box<dyn Error>> {
-    let output = Command::new("git")
+    let output = performance::git_command()
         .arg("-C")
         .arg(root)
         .args(args)

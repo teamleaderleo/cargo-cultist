@@ -132,7 +132,10 @@ pub fn plan_observation_probe(
     let obligation = DurableObligation {
         schema_version: DURABLE_OBLIGATION_SCHEMA_VERSION,
         id: format!("observation-bridge:{}", bridge.bridge_id),
-        question: format!("Acquire current observation through bridge {}", bridge.bridge_id),
+        question: format!(
+            "Acquire current observation through bridge {}",
+            bridge.bridge_id
+        ),
         subject: bridge.clearing_requirements.clone(),
         established_evidence: Vec::new(),
         missing_discriminator: bridge.probe_discriminator.clone(),
@@ -230,7 +233,9 @@ fn validate_request(
     Ok(())
 }
 
-fn validate_frontier(frontier: &ObservationFrontierReceipt) -> Result<(), ObservationProbeBridgeError> {
+fn validate_frontier(
+    frontier: &ObservationFrontierReceipt,
+) -> Result<(), ObservationProbeBridgeError> {
     validate_atom(
         &frontier.discriminator_id,
         "frontier discriminator_id",

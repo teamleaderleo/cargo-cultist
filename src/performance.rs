@@ -1,11 +1,8 @@
 use std::cell::RefCell;
 use std::env;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use serde::Serialize;
-
-static ENABLED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static STATE: RefCell<Option<PerfState>> = const { RefCell::new(None) };
@@ -34,9 +31,6 @@ pub fn init_from_environment() {
 }
 
 pub fn record_git_subprocess() {
-    if !ENABLED.load(Ordering::Relaxed) {
-        return;
-    }
     STATE.with(|state| {
         if let Some(state) = state.borrow_mut().as_mut() {
             state.counters.git_subprocesses += 1;
@@ -45,9 +39,6 @@ pub fn record_git_subprocess() {
 }
 
 pub fn record_rust_scan(parsed: usize, cache_hits: usize, source_bytes_read: u64) {
-    if !ENABLED.load(Ordering::Relaxed) {
-        return;
-    }
     STATE.with(|state| {
         if let Some(state) = state.borrow_mut().as_mut() {
             state.counters.rust_files_parsed += parsed;
@@ -67,7 +58,6 @@ pub fn emit_if_enabled() {
 }
 
 fn begin() {
-    ENABLED.store(true, Ordering::Relaxed);
     STATE.with(|state| {
         *state.borrow_mut() = Some(PerfState {
             started: Instant::now(),
@@ -77,17 +67,12 @@ fn begin() {
 }
 
 fn finish() -> Option<PerfCounters> {
-    if !ENABLED.load(Ordering::Relaxed) {
-        return None;
-    }
-    let result = STATE.with(|state| {
+    STATE.with(|state| {
         let mut state = state.borrow_mut();
         let mut state = state.take()?;
         state.counters.wall_time_us = elapsed_us(state.started);
         Some(state.counters)
-    });
-    ENABLED.store(false, Ordering::Relaxed);
-    result
+    })
 }
 
 fn elapsed_us(started: Instant) -> u64 {
@@ -108,7 +93,6 @@ mod tests {
 
     #[test]
     fn disabled_counters_are_inert() {
-        ENABLED.store(false, Ordering::Relaxed);
         record_git_subprocess();
         record_rust_scan(3, 4, 500);
         assert_eq!(finish(), None);

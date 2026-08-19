@@ -24,6 +24,61 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+      - name: Exercise decision-memory research resolver
+        run: |
+          set -euo pipefail
+
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/history.rs \
+            > /tmp/cultist-decision-history.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/cultist-decision-history.json').read_text())
+          assert report['analysis'] == 'decision_memory', report
+          assert report['target'] == 'src/history.rs', report
+          assert len(report['decisions']) == 1, report
+          decision = report['decisions'][0]
+          assert decision['record']['id'] == 'history-cochange-remains-association-v1', decision
+          assert decision['record']['scope']['path_prefix'] == 'src/history.rs', decision
+          assert [item['reference'] for item in decision['record']['authority']] == [
+              '#34', '#39', '#19'
+          ], decision
+          PY
+
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/main.rs \
+            > /tmp/cultist-decision-unrelated.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/cultist-decision-unrelated.json').read_text())
+          assert report['target'] == 'src/main.rs', report
+          assert report['decisions'] == [], report
+          PY
+
+          bad_records="$(mktemp -d -p . decision-memory-invalid.XXXXXX)"
+          cat > "$bad_records/unsupported.json" <<'EOF'
+          {
+            "schema_version": 99,
+            "id": "unsupported",
+            "kind": "test",
+            "scope": {"path_prefix": "src/history.rs"},
+            "reason": "invalid fixture",
+            "authority": [{"kind": "issue", "reference": "#75"}]
+          }
+          EOF
+          if cargo run --quiet --example decision_memory -- \
+              "$bad_records" src/history.rs \
+              > /tmp/cultist-decision-invalid.out \
+              2> /tmp/cultist-decision-invalid.err; then
+            echo "unsupported decision schema unexpectedly succeeded" >&2
+            exit 1
+          fi
+          grep -q 'unsupported decision schema 99' /tmp/cultist-decision-invalid.err
+          rm -rf "$bad_records"
       - name: Dogfood repository scan
         run: cargo run -- .
       - name: Dogfood repository JSON

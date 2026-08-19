@@ -4,6 +4,7 @@ mod finding;
 mod history;
 mod render;
 mod report;
+mod rust_facts;
 mod test_modules;
 
 use std::env;

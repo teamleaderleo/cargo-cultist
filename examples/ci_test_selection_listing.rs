@@ -4,6 +4,9 @@ mod ci_test_filters;
 #[allow(dead_code)]
 #[path = "../src/finding.rs"]
 mod finding;
+#[allow(dead_code)]
+#[path = "../src/rust_facts.rs"]
+mod rust_facts;
 
 use std::env;
 use std::error::Error;

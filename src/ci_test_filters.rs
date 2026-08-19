@@ -3,12 +3,12 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use proc_macro2::Span;
-use syn::visit::{self, Visit};
-use syn::{Attribute, ItemFn, ItemMod};
-use walkdir::{DirEntry, WalkDir};
+use walkdir::WalkDir;
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
+use crate::rust_facts::scan_rust_repository;
+
+const SKIPPED_RUST_DIRS: &[&str] = &[".git", "target", "node_modules", ".venv", "vendor"];
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ExplicitTest {
@@ -35,8 +35,15 @@ pub struct CiTestFilterReport {
 
 pub fn analyze_ci_test_filters(root: &Path) -> Result<CiTestFilterReport, Box<dyn Error>> {
     let mut report = CiTestFilterReport::default();
-    collect_explicit_tests(root, &mut report)?;
     collect_workflow_commands(root, &mut report)?;
+
+    // A repository with no supported selector has no CI-test finding to build,
+    // so avoid paying for a Rust inventory at all.
+    if report.commands.is_empty() {
+        return Ok(report);
+    }
+
+    collect_explicit_tests(root, &mut report)?;
 
     report
         .tests
@@ -56,6 +63,14 @@ pub fn build_ci_test_filter_analysis(root: &Path, report: &CiTestFilterReport) -
         "ci-test-filter-inventory",
         root.to_string_lossy().into_owned(),
     );
+
+    if report.commands.is_empty() {
+        analysis.claims.push(Claim::new(
+            ClaimKind::Proven,
+            "No supported literal `cargo test --lib FILTER` workflow commands were found.",
+        ));
+        return analysis;
+    }
 
     analysis.claims.push(Claim::new(
         ClaimKind::Proven,
@@ -165,32 +180,24 @@ fn collect_explicit_tests(
     root: &Path,
     report: &mut CiTestFilterReport,
 ) -> Result<(), Box<dyn Error>> {
-    for entry in WalkDir::new(root)
-        .into_iter()
-        .filter_entry(should_visit_rust)
-    {
-        let entry = entry?;
-        if !entry.file_type().is_file()
-            || entry.path().extension().and_then(|ext| ext.to_str()) != Some("rs")
-        {
+    let scan = scan_rust_repository(root, &BTreeSet::new(), SKIPPED_RUST_DIRS)?;
+
+    for file in scan.files {
+        if let Some(error) = file.facts.parse_error {
+            report.parse_failures.push((file.path, error));
             continue;
         }
 
-        let path = entry.path();
-        let source = fs::read_to_string(path)?;
-        match syn::parse_file(&source) {
-            Ok(file) => {
-                let mut visitor = ExplicitTestVisitor {
-                    path,
-                    tests: &mut report.tests,
-                    possible_module_fragments: &mut report.possible_module_fragments,
-                };
-                visitor.visit_file(&file);
-            }
-            Err(error) => report
-                .parse_failures
-                .push((path.to_path_buf(), error.to_string())),
+        for test in file.facts.explicit_tests {
+            report.tests.push(ExplicitTest {
+                name: test.name,
+                path: file.path.clone(),
+                line: test.line,
+            });
         }
+        report
+            .possible_module_fragments
+            .extend(file.facts.module_names);
     }
 
     Ok(())
@@ -340,50 +347,6 @@ fn is_yaml(path: &Path) -> bool {
     )
 }
 
-fn should_visit_rust(entry: &DirEntry) -> bool {
-    if !entry.file_type().is_dir() {
-        return true;
-    }
-
-    !matches!(
-        entry.file_name().to_str(),
-        Some(".git" | "target" | "node_modules" | ".venv" | "vendor")
-    )
-}
-
-struct ExplicitTestVisitor<'a> {
-    path: &'a Path,
-    tests: &'a mut Vec<ExplicitTest>,
-    possible_module_fragments: &'a mut BTreeSet<String>,
-}
-
-impl<'ast> Visit<'ast> for ExplicitTestVisitor<'_> {
-    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        if has_test_attr(&node.attrs) {
-            self.tests.push(ExplicitTest {
-                name: node.sig.ident.to_string(),
-                path: self.path.to_path_buf(),
-                line: span_line(node.sig.ident.span()),
-            });
-        }
-        visit::visit_item_fn(self, node);
-    }
-
-    fn visit_item_mod(&mut self, node: &'ast ItemMod) {
-        self.possible_module_fragments
-            .insert(node.ident.to_string());
-        visit::visit_item_mod(self, node);
-    }
-}
-
-fn has_test_attr(attrs: &[Attribute]) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident("test"))
-}
-
-fn span_line(span: Span) -> usize {
-    span.start().line
-}
-
 fn relative_path(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
@@ -393,7 +356,20 @@ fn relative_path(root: &Path, path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "cargo-cultist-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn recognizes_narrow_filtered_lib_commands() {
@@ -487,5 +463,19 @@ mod tests {
         assert!(has_possible_explicit_match(&report, "works"));
         assert!(!has_possible_explicit_match(&report, "src"));
         assert!(!has_possible_explicit_match(&report, "missing"));
+    }
+
+    #[test]
+    fn no_supported_workflow_skips_rust_inventory() {
+        let root = unique_temp_dir("ci-tests-no-command");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src/lib.rs"), [0xff, 0xfe, 0xfd]).unwrap();
+
+        let report = analyze_ci_test_filters(&root).unwrap();
+
+        assert!(report.commands.is_empty());
+        assert!(report.tests.is_empty());
+        assert!(report.parse_failures.is_empty());
+        fs::remove_dir_all(root).unwrap();
     }
 }

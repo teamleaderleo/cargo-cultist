@@ -1,11 +1,13 @@
 # Roadmap
 
-`cargo-cultist` explores repository reasoning between two familiar extremes:
+Cultist explores repository reasoning between two familiar extremes:
 
 - deterministic tools that enforce rules we already know; and
 - unconstrained AI review that is asked to infer everything from a codebase.
 
 The project goal is to make the middle useful.
+
+Rust is the first semantic adapter, not the product boundary. Repository-generic evidence such as Git history, concurrent-change overlap, decision memory, and explicit project guidance should remain useful across languages. Language-specific analyzers should add stronger claims only where their adapters can justify them.
 
 ## Core loop
 
@@ -30,7 +32,7 @@ Repository statistics are evidence, not policy. If a repository uses `unit_tests
 
 ### Keep scope visible
 
-Precedent can differ at the same time across a file, crate, repository, and recent history. When those scopes disagree, Cultist should show the tension instead of hiding it in one score.
+Precedent can differ at the same time across a file, module/package/crate, repository, and recent history. When those scopes disagree, Cultist should show the tension instead of hiding it in one score.
 
 Tracking issue: #3.
 
@@ -62,6 +64,12 @@ Model-assisted explanations may eventually help interpret evidence, but the tool
 
 Tracking issue: #17.
 
+### Keep language adapters honest
+
+A language adapter can strengthen repository evidence with syntax or semantic facts, but it must not silently turn adapter coverage into a universal repository claim. Generic Git/project evidence and language-specific evidence should remain separately attributable.
+
+Tracking issue: #14.
+
 ### Teach the project why
 
 When humans decide an exception is intentional, the reason should be preservable in version control so future analysis can distinguish a known exception from forgotten folklore.
@@ -78,7 +86,7 @@ Tracking issue: #11.
 
 ### 1. Precedent engine
 
-The first implementation already compares changed test-module declarations with repository-wide and same-file precedent. The next step is to make precedent richer without pretending popularity is correctness.
+The first Rust implementation already compares changed test-module declarations with repository-wide and same-file precedent. The next step is to make precedent richer without pretending popularity is correctness.
 
 - #3 — scope-aware precedent and precedent tension
 - #4 — temporal precedent and convention drift
@@ -105,15 +113,26 @@ Questions become more valuable when their human answers can persist and eventual
 - #11 — lint incubation and promotion
 - #15 — claim provenance model
 
-### 4. Engine, interfaces, and evaluation
+### 4. Engine, adapters, interfaces, and evaluation
 
-The underlying engine should support more analyzers without turning into a pile of ad hoc scans or opaque scores.
+The underlying engine should support more analyzers and languages without turning into a pile of ad hoc scans or opaque scores.
 
 - #13 — local evidence index
-- #14 — progressive semantic adapters
+- #14 — progressive semantic/language adapters
 - #16 — dogfood corpus and precision-focused evaluation
 - #17 — optional bounded LLM explanations
 - #22 — stable machine-readable findings / JSON
+
+### 5. Concurrent work and agent context
+
+Cultist should help changes see relevant work around them before integration cost accumulates.
+
+- #62 — bounded agent context packets
+- #74 — `brief -> diff -> teach` agent edit lifecycle
+- #96 — concurrent-change preflight
+- #99 — real agent-heavy coordination corpus
+
+The first preflight slice is intentionally generic Git evidence: direct path overlap is `PROVEN`; deeper generated, historical, policy, or behavioral relationships remain separately earned evidence.
 
 ## Near-term sequence
 
@@ -126,13 +145,17 @@ A useful order for the next few experiments is:
 5. **Temporal precedent** (#4)
 6. **Helper/dependency precedent** (#20, #21)
 7. **History and exception archaeology** (#8, #9, #12)
+8. **Agent context + concurrent-work evidence** (#62, #74, #96, #99)
+9. **Additional language adapters** only where held-out cases justify them
 
 This is not a commitment to build everything in order. Small experiments that falsify an idea are valuable. The project should prefer evidence that a feature is useful over completing a grand architecture.
 
 ## Canonical dogfood case
 
-Cloud Hypervisor PR #8734 is currently the clearest example of the intended behavior.
+Cloud Hypervisor PR #8734 is currently the clearest example of the intended precedent behavior.
 
 The repository-wide evidence favored `unit_tests`, while the changed `vfio.rs` file already contained `tests`. Cultist surfaced both facts and asked which scope should govern the change. During that dogfood run, the tool also exposed a bug in its own diff semantics, leading to a merge-base-aware fix.
+
+The newer concurrent-work dogfood adds a second standard: Cultist should surface direct overlap between parallel changes without claiming that disjoint paths are independent.
 
 That is the standard to aim for: the tool should be willing to find ambiguity in the repository, ambiguity in its own conclusions, and bugs in itself.

@@ -108,8 +108,9 @@ pub fn extract_snapshot(input: &str) -> Result<ExtractionReport, EdgeError> {
         )));
     }
 
-    let snapshot: WorkMetadataSnapshot = serde_json::from_str(input)
-        .map_err(|error| EdgeError::new(format!("invalid coordination metadata snapshot: {error}")))?;
+    let snapshot: WorkMetadataSnapshot = serde_json::from_str(input).map_err(|error| {
+        EdgeError::new(format!("invalid coordination metadata snapshot: {error}"))
+    })?;
     validate_snapshot(&snapshot)?;
 
     let known_ids = snapshot
@@ -239,7 +240,8 @@ fn validate_snapshot(snapshot: &WorkMetadataSnapshot) -> Result<(), EdgeError> {
                 work.source, work.id
             )));
         }
-        if work.head_sha.len() != 40 || !work.head_sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        if work.head_sha.len() != 40 || !work.head_sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
             return Err(EdgeError::new(format!(
                 "{} head_sha must be exactly 40 hexadecimal characters",
                 work.id
@@ -315,7 +317,10 @@ fn opens_fence(line: &str) -> Option<(char, usize)> {
     if first != '`' && first != '~' {
         return None;
     }
-    let width = line.chars().take_while(|character| *character == first).count();
+    let width = line
+        .chars()
+        .take_while(|character| *character == first)
+        .count();
     (width >= 3).then_some((first, width))
 }
 
@@ -432,7 +437,10 @@ mod tests {
             work("#703", ""),
         ]);
         let report = extract_snapshot(&input).unwrap();
-        assert_eq!(report.source_receipts[0].source_updated_at, "2026-08-19T00:00:00Z");
+        assert_eq!(
+            report.source_receipts[0].source_updated_at,
+            "2026-08-19T00:00:00Z"
+        );
         assert!(report.unknowns[0].contains("continued applicability"));
     }
 

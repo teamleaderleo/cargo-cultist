@@ -153,15 +153,14 @@ pub fn context_digest(context: &str) -> String {
 
 pub fn fingerprint_plan(plan: &BehavioralTrialPlan) -> Result<String, BehavioralTrialError> {
     validate_plan(plan)?;
-    let mut components = Vec::<Vec<u8>>::new();
-    components.push(plan.schema_version.to_be_bytes().to_vec());
-    components.push(plan.trial_id.as_bytes().to_vec());
-    components.push(plan.task_instruction.as_bytes().to_vec());
-    components.push(
+    let mut components = vec![
+        plan.schema_version.to_be_bytes().to_vec(),
+        plan.trial_id.as_bytes().to_vec(),
+        plan.task_instruction.as_bytes().to_vec(),
         (plan.allowed_first_actions.len() as u64)
             .to_be_bytes()
             .to_vec(),
-    );
+    ];
     for action in &plan.allowed_first_actions {
         components.push(action.id.as_bytes().to_vec());
         components.push(action.label.as_bytes().to_vec());

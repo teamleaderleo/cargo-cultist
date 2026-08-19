@@ -17,6 +17,8 @@ Encoding a prospective clearing edge as if evidence already existed would confus
 
 This carrier therefore treats **the open durable record** and **arrived clearing receipts** as separate things.
 
+That counterexample was fed back into #141/#156 as well: an obligation node may now remain open with zero clearing edges instead of requiring a fabricated future evidence object.
+
 ## v0 record
 
 ```text
@@ -77,6 +79,30 @@ The stacked carrier tests:
 - record round-trips with completed evidence references for fresh-worker handoff;
 - a clearing condition must actually answer the declared missing discriminator.
 
+## Executed GitHub receipt
+
+Draft stacked PR #159 ran against exact parent #156 head:
+
+```text
+parent  9beaeaab2bece20a4e0bb9c880f510f740bf8cfb
+child   fd37861d73e966ed64538c60cc00bf32f8f928b2
+```
+
+GitHub Actions CI run `32243607858` / run number `1045` completed successfully on the stacked PR merge ref. The job passed:
+
+- `cargo fmt --check`;
+- `cargo clippy --all-targets -- -D warnings`;
+- active-work heads-up;
+- full `cargo test` including the durable-obligation harness;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON plus positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+The PR-only push-diff step remained skipped by workflow context.
+
+The first current-stack CI attempt was a useful mechanical control: rustfmt rejected handwritten formatting in the new research files. Applying the exact formatter diff plus a fixture-local dead-code allowance for the standalone example allowed the next run to reach and pass Clippy/tests.
+
 ## Boundary
 
 - discriminator `{kind,target}` is a research key, not a final universal evidence ontology;
@@ -89,3 +115,5 @@ The stacked carrier tests:
 ## Next discriminator
 
 The next useful experiment is #145: given this typed missing discriminator and a bounded set of available probe capabilities, select the cheapest admitted probe capable of producing a matching receipt. That experiment should consume this object rather than restating the missing question in prose.
+
+Keep planning forecasts separate from observed performance receipts. Current `PerfCounters` measure work after execution; a planner cost is an admitted forecast before execution and can later be calibrated against measured counters where the dimensions overlap.

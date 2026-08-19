@@ -8,11 +8,11 @@ mod applicability;
 #[path = "../src/closure_episode.rs"]
 mod closure_episode;
 #[allow(dead_code)]
-#[path = "../src/review_memory.rs"]
-mod review_memory;
-#[allow(dead_code)]
 #[path = "../src/prior_episode_front.rs"]
 mod prior_episode_front;
+#[allow(dead_code)]
+#[path = "../src/review_memory.rs"]
+mod review_memory;
 
 use prior_episode_front::{
     MAX_PRIOR_EPISODE_FRONT_QUERY_BYTES, evaluate_prior_episode_front,

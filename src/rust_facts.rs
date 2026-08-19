@@ -227,8 +227,7 @@ fn git_rust_inputs(
         }
         let path = root.join(&relative);
         if excluded_paths.contains(&path)
-            || !fs::symlink_metadata(&path)
-                .is_ok_and(|metadata| metadata.file_type().is_file())
+            || !fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_file())
         {
             continue;
         }
@@ -246,7 +245,11 @@ fn git_rust_inputs(
 }
 
 fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>, Box<dyn Error>> {
-    let output = Command::new("git").arg("-C").arg(root).args(args).output()?;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()?;
     if !output.status.success() {
         return Err(format!(
             "git {} failed: {}",
@@ -268,7 +271,10 @@ fn parse_nul_paths(output: &[u8]) -> Option<Vec<PathBuf>> {
 
 fn parse_index_ids(output: &[u8]) -> Option<BTreeMap<PathBuf, String>> {
     let mut ids = BTreeMap::new();
-    for record in output.split(|byte| *byte == 0).filter(|record| !record.is_empty()) {
+    for record in output
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty())
+    {
         let record = std::str::from_utf8(record).ok()?;
         let (metadata, path) = record.split_once('\t')?;
         let mut fields = metadata.split_whitespace();
@@ -299,7 +305,11 @@ fn parse_dirty_paths(output: &[u8]) -> Option<BTreeSet<PathBuf>> {
         let status = &record[..2];
         dirty.insert(PathBuf::from(&record[3..]));
 
-        if status.as_bytes().iter().any(|byte| matches!(byte, b'R' | b'C')) {
+        if status
+            .as_bytes()
+            .iter()
+            .any(|byte| matches!(byte, b'R' | b'C'))
+        {
             index += 1;
             let other = std::str::from_utf8(*records.get(index)?).ok()?;
             dirty.insert(PathBuf::from(other));
@@ -378,10 +388,9 @@ impl FactCache {
             return;
         };
 
-        let temporary = self.root.join(format!(
-            ".{content_id}.{}.tmp",
-            std::process::id()
-        ));
+        let temporary = self
+            .root
+            .join(format!(".{content_id}.{}.tmp", std::process::id()));
         if fs::write(&temporary, bytes).is_ok() {
             let _ = fs::rename(&temporary, &path);
         }
@@ -569,8 +578,7 @@ mod tests {
 
         run_git(&root, &["mv", "src/lib.rs", "src/renamed.rs"]);
         run_git(&root, &["commit", "-q", "-m", "rename"]);
-        let renamed_inputs =
-            rust_inputs(&root, &BTreeSet::new(), &[".git", "target"]).unwrap();
+        let renamed_inputs = rust_inputs(&root, &BTreeSet::new(), &[".git", "target"]).unwrap();
         let renamed = scan_inputs(&renamed_inputs, Some(&cache)).unwrap();
         assert_eq!(renamed.parsed_files, 0);
         assert_eq!(renamed.cache_hits, 1);

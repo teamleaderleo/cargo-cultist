@@ -1,0 +1,153 @@
+name: JEI parent-scope inference pilot
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/jei-parent-scope-pilot.yml"
+      - "scripts/jei_parent_scope_pilot.py"
+
+permissions:
+  contents: read
+
+jobs:
+  parent-scope-controls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Resolve SmolRunner control
+        id: smol
+        run: |
+          python cultist/scripts/external_dogfood_case.py \
+            --registry cultist/research/external-dogfood-cases.json \
+            --case smolrunner-disposable-clone-history \
+            --github-output "$GITHUB_OUTPUT" \
+            > smolrunner-case.json
+          cat smolrunner-case.json
+
+      - name: Resolve Stensibly control
+        id: stens
+        run: |
+          python cultist/scripts/external_dogfood_case.py \
+            --registry cultist/research/external-dogfood-cases.json \
+            --case stensibly-1575-pre-guard-jei \
+            --github-output "$GITHUB_OUTPUT" \
+            > stensibly-case.json
+          cat stensibly-case.json
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build file-local and scoped packet examples
+        run: |
+          cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
+          cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
+
+      - name: Checkout pinned SmolRunner state
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.smol.outputs.repository }}
+          ref: ${{ steps.smol.outputs.ref }}
+          fetch-depth: ${{ steps.smol.outputs.fetch_depth }}
+          persist-credentials: false
+          path: target-smolrunner
+
+      - name: Measure SmolRunner parent scope
+        env:
+          TARGET_FILE: ${{ steps.smol.outputs.history_file }}
+          TARGET_REPOSITORY: ${{ steps.smol.outputs.repository }}
+          TARGET_SOURCE: ${{ steps.smol.outputs.source }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          test "$(git -C target-smolrunner rev-parse HEAD)" = "${{ steps.smol.outputs.ref }}"
+          python cultist/scripts/jei_parent_scope_pilot.py \
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet" \
+            --scoped-exe "$PWD/cultist/target/release/examples/scoped_agent_context_packet" \
+            --repo "$PWD/target-smolrunner" \
+            --target "$TARGET_FILE" \
+            --budget 32768 \
+            --expectation already_sufficient \
+            --repository-label "$TARGET_REPOSITORY" \
+            --source "$TARGET_SOURCE / auto-parent-control" \
+            --required-subject "Remove duplicate worker readiness probes (#540)" \
+            --required-subject "Reduce live admission latency before JIT" \
+            --required-subject "fix: collapse redundant clone admission polls (#533)" \
+            --required-subject "keep clone preflight before durable checkpoint (#530)" \
+            --output "$PWD/artifacts/smolrunner-parent-scope.json"
+
+      - name: Checkout pinned Stensibly state
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.stens.outputs.repository }}
+          ref: ${{ steps.stens.outputs.ref }}
+          fetch-depth: ${{ steps.stens.outputs.fetch_depth }}
+          persist-credentials: false
+          path: target-stensibly
+
+      - name: Measure Stensibly parent scope
+        env:
+          TARGET_FILE: ${{ steps.stens.outputs.history_file }}
+          TARGET_REPOSITORY: ${{ steps.stens.outputs.repository }}
+          TARGET_SOURCE: ${{ steps.stens.outputs.source }}
+        run: |
+          set -euo pipefail
+          test "$(git -C target-stensibly rev-parse HEAD)" = "${{ steps.stens.outputs.ref }}"
+          python cultist/scripts/jei_parent_scope_pilot.py \
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet" \
+            --scoped-exe "$PWD/cultist/target/release/examples/scoped_agent_context_packet" \
+            --repo "$PWD/target-stensibly" \
+            --target "$TARGET_FILE" \
+            --budget 32768 \
+            --expectation adds_missing \
+            --repository-label "$TARGET_REPOSITORY" \
+            --source "$TARGET_SOURCE / auto-parent-control" \
+            --required-subject "Keep Gmail semantic-admission indexes deployable (#1571)" \
+            --required-subject "Keep Gmail mailbox-disposition indexes deployable (#1573)" \
+            --output "$PWD/artifacts/stensibly-parent-scope.json"
+
+      - name: Write parent-scope comparison
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          cases = [
+              ("SmolRunner · file-local already sufficient", Path("artifacts/smolrunner-parent-scope.json")),
+              ("Stensibly · parent adds missing lessons", Path("artifacts/stensibly-parent-scope.json")),
+          ]
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Automatic parent-scope pilot\n\n")
+              out.write("| case | parent | file bytes | scoped bytes | overhead | scope rows | novel required | scope evictions | result |\n")
+              out.write("|---|---|---:|---:|---:|---:|---:|---|---|\n")
+              for title, path in cases:
+                  if not path.is_file():
+                      out.write(f"| {title} | — | — | — | — | — | — | — | missing receipt |\n")
+                      continue
+                  receipt = json.loads(path.read_text(encoding="utf-8"))
+                  out.write(
+                      f"| {title} | `{receipt['inferred_parent_scope']}` | "
+                      f"{receipt['file_packet_serialized_bytes']} | {receipt['scoped_selected_serialized_bytes']} | "
+                      f"{receipt['selected_byte_overhead']} | {receipt['scope_history_count']} | "
+                      f"{receipt['novel_required_count']} | `{receipt['scope_semantic_evictions']}` | "
+                      f"{'PASS' if receipt['acceptance']['passed'] else 'FAIL'} |\n"
+                  )
+          PY
+
+      - name: Upload parent-scope receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jei-parent-scope-controls-${{ github.run_id }}
+          path: |
+            artifacts/smolrunner-parent-scope.json
+            artifacts/stensibly-parent-scope.json
+          if-no-files-found: error

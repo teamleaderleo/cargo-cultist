@@ -170,7 +170,13 @@ pub fn evaluate_review_memory(
 
     matches.sort_by(|left, right| left.event_id.cmp(&right.event_id));
 
-    let disposition = if matches
+    let current_identity_missing = query.current.context.repository.is_none()
+        || query.current.context.revision.is_none()
+        || query.current.context.work.is_none();
+
+    let disposition = if current_identity_missing {
+        ReviewThreadDisposition::NeedContext
+    } else if matches
         .iter()
         .any(|entry| entry.match_kind == ReviewMemoryMatchKind::Current)
     {

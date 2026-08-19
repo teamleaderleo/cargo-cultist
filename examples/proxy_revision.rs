@@ -9,7 +9,9 @@ use std::io;
 use std::path::Path;
 
 use project_memory::{MAX_PROJECT_MEMORY_BYTES, parse_project_memory_packet};
-use proxy_revision::{MAX_PROXY_REVISION_BYTES, evaluate_proxy_revision, parse_proxy_revision_claim};
+use proxy_revision::{
+    MAX_PROXY_REVISION_BYTES, evaluate_proxy_revision, parse_proxy_revision_claim,
+};
 
 fn main() {
     if let Err(error) = run() {
@@ -20,8 +22,8 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args().skip(1);
-    let memory_path = args.next().ok_or_else(|| usage_error())?;
-    let claim_path = args.next().ok_or_else(|| usage_error())?;
+    let memory_path = args.next().ok_or_else(usage_error)?;
+    let claim_path = args.next().ok_or_else(usage_error)?;
     if args.next().is_some() {
         return Err(usage_error().into());
     }

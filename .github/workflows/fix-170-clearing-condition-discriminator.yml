@@ -6,12 +6,16 @@ on:
       - fix/170-clearing-condition-discriminator
     paths:
       - ".github/workflows/fix-170-clearing-condition-discriminator.yml"
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   fix:
+    if: github.event_name == 'push' || github.head_ref == 'fix/170-clearing-condition-discriminator'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

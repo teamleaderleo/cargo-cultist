@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 pub const MAX_TRIAL_SPEC_BYTES: usize = 128 * 1024;
 pub const MAX_TRIAL_MANIFEST_BYTES: usize = 128 * 1024;
@@ -13,6 +14,8 @@ const MAX_PATH_BYTES: usize = 4096;
 #[serde(deny_unknown_fields)]
 pub struct TrialSpec {
     pub schema_version: u32,
+    #[serde(skip)]
+    pub source_sha256: String,
     pub trial_id: String,
     pub repository: String,
     pub revision: String,
@@ -79,6 +82,7 @@ pub struct ArtifactDigest {
 #[serde(deny_unknown_fields)]
 pub struct TrialInputManifest {
     pub schema_version: u32,
+    pub trial_spec_sha256: String,
     pub trial_id: String,
     pub repository: String,
     pub revision: String,
@@ -106,6 +110,9 @@ pub struct EvaluatorOnly {
 #[serde(deny_unknown_fields)]
 pub struct ManifestCondition {
     pub packet: ArtifactDigest,
+    pub packet_kind: PacketKind,
+    pub budget_bytes: usize,
+    pub scope: Option<String>,
     pub decisive_evidence_present: bool,
     #[serde(default)]
     pub decisive_evidence_refs: Vec<String>,
@@ -132,6 +139,7 @@ pub enum EvidenceInspection {
 pub struct WorkerRunReceipt {
     pub schema_version: u32,
     pub trial_id: String,
+    pub trial_spec_sha256: String,
     pub pair_id: String,
     pub run_id: String,
     pub condition_id: String,
@@ -194,8 +202,9 @@ pub struct PairEvaluation {
 
 pub fn parse_trial_spec(input: &[u8]) -> Result<TrialSpec, String> {
     ensure_bounded(input, MAX_TRIAL_SPEC_BYTES, "trial spec")?;
-    let spec: TrialSpec = serde_json::from_slice(input).map_err(|error| error.to_string())?;
+    let mut spec: TrialSpec = serde_json::from_slice(input).map_err(|error| error.to_string())?;
     validate_trial_spec(&spec)?;
+    spec.source_sha256 = sha256_hex(input);
     Ok(spec)
 }
 
@@ -319,9 +328,12 @@ fn validate_trial_spec(spec: &TrialSpec) -> Result<(), String> {
         if !ids.insert(condition.id.as_str()) {
             return Err(format!("duplicate trial condition {}", condition.id));
         }
-        if condition.budget_bytes == 0 || condition.budget_bytes > 16 * 1024 * 1024 {
-            return Err(format!("condition {} has invalid budget", condition.id));
-        }
+        validate_condition_recipe(
+            &condition.id,
+            condition.packet_kind,
+            condition.budget_bytes,
+            condition.scope.as_deref(),
+        )?;
         if condition.decisive_evidence_present && condition.decisive_evidence_refs.is_empty() {
             return Err(format!(
                 "condition {} marks decisive evidence present without refs",
@@ -349,6 +361,7 @@ fn validate_manifest(manifest: &TrialInputManifest) -> Result<(), String> {
         ));
     }
     validate_id(&manifest.trial_id, "trial_id")?;
+    validate_sha256(&manifest.trial_spec_sha256, "trial_spec_sha256")?;
     validate_id(&manifest.repository, "repository")?;
     validate_git_sha(&manifest.revision, "revision")?;
     validate_path(&manifest.target_path, "target_path")?;
@@ -362,6 +375,12 @@ fn validate_manifest(manifest: &TrialInputManifest) -> Result<(), String> {
     for (id, condition) in &manifest.conditions {
         validate_id(id, "condition id")?;
         validate_artifact_digest(&condition.packet, "condition packet")?;
+        validate_condition_recipe(
+            id,
+            condition.packet_kind,
+            condition.budget_bytes,
+            condition.scope.as_deref(),
+        )?;
         if condition.decisive_evidence_present && condition.decisive_evidence_refs.is_empty() {
             return Err(format!(
                 "manifest condition {id} marks decisive evidence present without refs"
@@ -392,6 +411,23 @@ fn validate_manifest_against_spec(
         return Err("trial input manifest does not match frozen trial identity".into());
     }
 
+    if manifest.trial_spec_sha256 != spec.source_sha256 {
+        return Err("trial input manifest does not match exact frozen trial-spec bytes".into());
+    }
+
+    let expected_task = line_artifact_digest(&spec.worker_task.prompt);
+    let expected_patch = line_artifact_digest(&spec.worker_task.patch);
+    let expected_oracle = oracle_artifact_digest(&spec.oracle)?;
+    if manifest.worker_visible_common.task != expected_task {
+        return Err("task artifact does not match frozen trial spec".into());
+    }
+    if manifest.worker_visible_common.patch != expected_patch {
+        return Err("patch artifact does not match frozen trial spec".into());
+    }
+    if manifest.evaluator_only.oracle != expected_oracle {
+        return Err("oracle artifact does not match frozen trial spec".into());
+    }
+
     let spec_conditions = spec
         .conditions
         .iter()
@@ -404,6 +440,12 @@ fn validate_manifest_against_spec(
         let expected = spec_conditions
             .get(id.as_str())
             .ok_or_else(|| format!("manifest contains undeclared condition {id}"))?;
+        if expected.packet_kind != condition.packet_kind
+            || expected.budget_bytes != condition.budget_bytes
+            || expected.scope != condition.scope
+        {
+            return Err(format!("condition {id} materialization recipe drifted"));
+        }
         if expected.decisive_evidence_present != condition.decisive_evidence_present {
             return Err(format!("condition {id} decisive-evidence state drifted"));
         }
@@ -451,6 +493,7 @@ fn validate_run_receipt(receipt: &WorkerRunReceipt) -> Result<(), String> {
     validate_path(&receipt.target_path, "target_path")?;
     validate_git_sha(&receipt.target_blob_sha, "target_blob_sha")?;
     for (value, field) in [
+        (&receipt.trial_spec_sha256, "trial_spec_sha256"),
         (&receipt.task_sha256, "task_sha256"),
         (&receipt.patch_sha256, "patch_sha256"),
         (&receipt.evidence_packet_sha256, "evidence_packet_sha256"),
@@ -475,6 +518,7 @@ fn validate_receipt_against_manifest(
     manifest: &TrialInputManifest,
 ) -> Result<(), String> {
     if receipt.trial_id != manifest.trial_id
+        || receipt.trial_spec_sha256 != manifest.trial_spec_sha256
         || receipt.repository != manifest.repository
         || receipt.revision != manifest.revision
         || receipt.target_path != manifest.target_path
@@ -510,6 +554,7 @@ fn validate_receipt_against_manifest(
 fn same_frozen_identity(first: &WorkerRunReceipt, second: &WorkerRunReceipt) -> bool {
     first.pair_id == second.pair_id
         && first.trial_id == second.trial_id
+        && first.trial_spec_sha256 == second.trial_spec_sha256
         && first.repository == second.repository
         && first.revision == second.revision
         && first.target_path == second.target_path
@@ -521,6 +566,75 @@ fn same_frozen_identity(first: &WorkerRunReceipt, second: &WorkerRunReceipt) -> 
         && first.harness_identity == second.harness_identity
         && first.affordance_identity == second.affordance_identity
         && first.sampling_config_sha256 == second.sampling_config_sha256
+}
+
+fn validate_condition_recipe(
+    id: &str,
+    packet_kind: PacketKind,
+    budget_bytes: usize,
+    scope: Option<&str>,
+) -> Result<(), String> {
+    if budget_bytes == 0 || budget_bytes > 16 * 1024 * 1024 {
+        return Err(format!("condition {id} has invalid budget"));
+    }
+    match (packet_kind, scope) {
+        (PacketKind::FileLocal, None) => Ok(()),
+        (PacketKind::Scoped, Some(scope)) => validate_path(scope, "condition scope"),
+        (PacketKind::FileLocal, Some(_)) => {
+            Err(format!("condition {id} is file-local but declares a scope"))
+        }
+        (PacketKind::Scoped, None) => Err(format!("condition {id} is scoped but omits its scope")),
+    }
+}
+
+fn line_artifact_digest(text: &str) -> ArtifactDigest {
+    let mut bytes = text.as_bytes().to_vec();
+    bytes.push(b'\n');
+    artifact_digest(&bytes)
+}
+
+fn oracle_artifact_digest(oracle: &Oracle) -> Result<ArtifactDigest, String> {
+    let values = BTreeMap::from([
+        (
+            "blocking_reason",
+            serde_json::Value::String(oracle.blocking_reason.clone()),
+        ),
+        (
+            "corrective_action",
+            serde_json::Value::String(oracle.corrective_action.clone()),
+        ),
+        (
+            "expected_disposition",
+            serde_json::Value::String(oracle.expected_disposition.clone()),
+        ),
+        (
+            "max_identifier_length",
+            serde_json::Value::from(oracle.max_identifier_length),
+        ),
+        (
+            "proposed_identifier",
+            serde_json::Value::String(oracle.proposed_identifier.clone()),
+        ),
+        (
+            "proposed_identifier_length",
+            serde_json::Value::from(oracle.proposed_identifier_length),
+        ),
+    ]);
+    let mut bytes = serde_json::to_vec_pretty(&values).map_err(|error| error.to_string())?;
+    bytes.push(b'\n');
+    Ok(artifact_digest(&bytes))
+}
+
+fn artifact_digest(bytes: &[u8]) -> ArtifactDigest {
+    ArtifactDigest {
+        sha256: sha256_hex(bytes),
+        bytes: bytes.len(),
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn validate_artifact_digest(digest: &ArtifactDigest, field: &str) -> Result<(), String> {

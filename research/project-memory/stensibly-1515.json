@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/stensibly",
+  "anchor": {
+    "kind": "pull_request",
+    "number": 1515
+  },
+  "artifacts": [
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1515
+      },
+      "title": "Dogfood: stale mail head recovery R5Q7",
+      "state": "closed",
+      "created_at": "2026-08-15T06:53:47Z",
+      "closed_at": "2026-08-15T06:54:50Z",
+      "revision": {
+        "head_sha": "1321b1fc8793e3ac301bbba1eeb39ab274bc0f1e",
+        "base_sha": "249a30d84bd60042d2dcae08521166546162efc1",
+        "merged": false
+      },
+      "changed_paths": [
+        "docs/dogfood-stale-mail-r5q7.md"
+      ],
+      "evidence_text": "Draft-only adversarial dogfood target for #1488/#1504.\n\nAborted as a proof target after the verifier accidentally created a PR review COMMENT instead of the required ordinary conversation comment. The A→B stale-head refusal itself was clean, but this PR is intentionally excluded from the final exactly-one-conversation-comment evidence.\n\nHandle: STN-HANDOFF:R5Q7\n\nNever merge.\n\n— Rook · adversarial recovery verifier",
+      "evidence_complete": true
+    }
+  ],
+  "edges": []
+}

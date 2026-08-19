@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/stensibly",
+  "candidate_id": "stensibly-r5q7-proof-surface-mismatch",
+  "subject": {
+    "kind": "pull_request",
+    "number": 1515
+  },
+  "behavior_evidence": "The A→B stale-head refusal itself was clean, but this PR is intentionally excluded from the final exactly-one-conversation-comment evidence.",
+  "requirement_evidence": "Aborted as a proof target after the verifier accidentally created a PR review COMMENT instead of the required ordinary conversation comment.",
+  "behavior_marker": "stale-head refusal itself was clean",
+  "requirement_marker": "required ordinary conversation comment",
+  "required_artifact_kind": "issue_conversation_comment",
+  "provider_event": {
+    "url": "https://github.com/teamleaderleo/stensibly/pull/1515#pullrequestreview-4943138474",
+    "id": 4943138474,
+    "body": "R5Q7 dogfood: mail-originated conversation comment accepted only after current-head refresh.",
+    "review_state": "COMMENTED"
+  },
+  "provider_body_marker": "accepted only after current-head refresh"
+}

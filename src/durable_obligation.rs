@@ -277,7 +277,11 @@ fn validate_discriminator(discriminator: &DiscriminatorKey) -> Result<(), Durabl
 }
 
 fn validate_id(value: &str, field: &str) -> Result<(), DurableObligationError> {
-    if value.is_empty() || value.trim() != value || value.len() > MAX_ID_BYTES || value.contains('\0') {
+    if value.is_empty()
+        || value.trim() != value
+        || value.len() > MAX_ID_BYTES
+        || value.contains('\0')
+    {
         return Err(DurableObligationError::new(format!(
             "{field} must be a bounded canonical identifier"
         )));
@@ -385,11 +389,11 @@ mod tests {
             &context(Some("head-b")),
         )
         .unwrap();
+        assert_eq!(evaluation.status, DurableObligationStatus::ReopenRequired);
         assert_eq!(
-            evaluation.status,
-            DurableObligationStatus::ReopenRequired
+            evaluation.subject_applicability,
+            ApplicabilityStatus::Invalid
         );
-        assert_eq!(evaluation.subject_applicability, ApplicabilityStatus::Invalid);
         assert_eq!(evaluation.clearing.invalid, vec!["test-head-a"]);
     }
 
@@ -397,14 +401,18 @@ mod tests {
     fn missing_current_coordinate_remains_unknown() {
         let evaluation = evaluate_obligation(&obligation(), &[], &context(None)).unwrap();
         assert_eq!(evaluation.status, DurableObligationStatus::Unknown);
-        assert_eq!(evaluation.subject_applicability, ApplicabilityStatus::Unknown);
+        assert_eq!(
+            evaluation.subject_applicability,
+            ApplicabilityStatus::Unknown
+        );
     }
 
     #[test]
     fn semantically_adjacent_receipt_does_not_clear() {
         let mut wrong = receipt("head-a");
         wrong.discriminator.kind = "target_test_listing".to_string();
-        let evaluation = evaluate_obligation(&obligation(), &[wrong], &context(Some("head-a"))).unwrap();
+        let evaluation =
+            evaluate_obligation(&obligation(), &[wrong], &context(Some("head-a"))).unwrap();
         assert_eq!(evaluation.status, DurableObligationStatus::Open);
         assert_eq!(evaluation.unmatched_receipts, vec!["test-head-a"]);
     }
@@ -415,7 +423,10 @@ mod tests {
         let encoded = serde_json::to_string(&record).unwrap();
         let decoded: DurableObligation = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, record);
-        assert_eq!(decoded.established_evidence, vec!["E-history", "E-guidance"]);
+        assert_eq!(
+            decoded.established_evidence,
+            vec!["E-history", "E-guidance"]
+        );
     }
 
     #[test]
@@ -423,6 +434,10 @@ mod tests {
         let mut record = obligation();
         record.clearing_conditions[0].discriminator.kind = "provider_current".to_string();
         let error = evaluate_obligation(&record, &[], &context(Some("head-a"))).unwrap_err();
-        assert!(error.to_string().contains("answer the missing discriminator"));
+        assert!(
+            error
+                .to_string()
+                .contains("answer the missing discriminator")
+        );
     }
 }

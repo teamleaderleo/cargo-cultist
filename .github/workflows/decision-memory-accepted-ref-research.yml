@@ -1,0 +1,121 @@
+name: Decision memory accepted-ref provenance research
+
+on:
+  pull_request:
+    paths:
+      - examples/decision_memory.rs
+      - research/decision-memory/current-only-authority-fixture.json
+      - .github/workflows/decision-memory-accepted-ref-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  accepted-ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch accepted main reference
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git rev-parse --verify refs/remotes/origin/main^{commit}
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Quality gates
+        run: |
+          cargo fmt --check
+          cargo clippy --example decision_memory -- -D warnings
+          cargo test --example decision_memory
+
+      - name: Classify existing history decision as accepted
+        run: |
+          set -euo pipefail
+          mkdir -p research-output
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/history.rs \
+            | tee research-output/history-accepted.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/history-accepted.json').read_text())
+          assert report['accepted_reference'] == 'refs/remotes/origin/main', report
+          decisions = [d for d in report['decisions'] if d['record']['id'] == 'history-cochange-remains-association-v1']
+          assert len(decisions) == 1, report
+          acceptance = decisions[0]['acceptance']
+          assert acceptance['status'] == 'accepted_ref', acceptance
+          assert acceptance['reference'] == 'refs/remotes/origin/main', acceptance
+          PY
+
+      - name: Classify second merged decision as accepted
+        run: |
+          set -euo pipefail
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/generated_diff.rs \
+            | tee research-output/generated-diff-accepted.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/generated-diff-accepted.json').read_text())
+          decisions = [d for d in report['decisions'] if d['record']['id'] == 'generated-companion-canonical-provenance-v1']
+          assert len(decisions) == 1, report
+          assert decisions[0]['acceptance']['status'] == 'accepted_ref', decisions[0]
+          PY
+
+      - name: Classify branch-only fixture as current-only
+        run: |
+          set -euo pipefail
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/main.rs \
+            | tee research-output/current-only.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/current-only.json').read_text())
+          decisions = [d for d in report['decisions'] if d['record']['id'] == 'current-only-authority-fixture-v1']
+          assert len(decisions) == 1, report
+          decision = decisions[0]
+          assert decision['matched_via'] == 'direct', decision
+          assert decision['acceptance']['status'] == 'current_only', decision
+          assert decision['acceptance']['reference'] == 'refs/remotes/origin/main', decision
+          PY
+
+      - name: Keep unavailable accepted reference explicit unknown
+        env:
+          CARGO_CULTIST_DECISION_ACCEPTED_REF: refs/remotes/origin/intentionally-missing
+        run: |
+          set -euo pipefail
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/history.rs \
+            | tee research-output/unknown-ref.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/unknown-ref.json').read_text())
+          assert report['accepted_reference'] == 'refs/remotes/origin/intentionally-missing', report
+          decisions = [d for d in report['decisions'] if d['record']['id'] == 'history-cochange-remains-association-v1']
+          assert len(decisions) == 1, report
+          acceptance = decisions[0]['acceptance']
+          assert acceptance['status'] == 'unknown', acceptance
+          assert acceptance['reference'] == 'refs/remotes/origin/intentionally-missing', acceptance
+          PY
+
+      - name: Upload accepted-ref receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: decision-memory-accepted-ref-provenance
+          path: research-output/
+          if-no-files-found: error

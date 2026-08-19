@@ -56,9 +56,9 @@ fn set_selected_held_out(request: &mut RefinementCandidateReadinessRequest, stat
     selected.replay_result.held_out_status = status;
 }
 
-fn selected<'a>(
-    evaluation: &'a refinement_investigation_demand::RefinementInvestigationDemandEvaluation,
-) -> &'a refinement_investigation_demand::RefinementInvestigationDisposition {
+fn selected(
+    evaluation: &refinement_investigation_demand::RefinementInvestigationDemandEvaluation,
+) -> &refinement_investigation_demand::RefinementInvestigationDisposition {
     evaluation
         .candidates
         .iter()

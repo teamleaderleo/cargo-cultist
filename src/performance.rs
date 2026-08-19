@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::env;
+use std::process::Command;
 use std::time::Instant;
 
 use serde::Serialize;
@@ -28,6 +29,11 @@ pub fn init_from_environment() {
     if enabled {
         begin();
     }
+}
+
+pub fn git_command() -> Command {
+    record_git_subprocess();
+    Command::new("git")
 }
 
 pub fn record_git_subprocess() {

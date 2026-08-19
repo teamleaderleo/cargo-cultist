@@ -112,7 +112,7 @@ replacement_rule_missing
 observed_proxy_revision
 ```
 
-The retained case should evaluate to:
+The retained case evaluates to:
 
 ```text
 status                           observed_proxy_revision
@@ -147,6 +147,42 @@ cargo run --example proxy_revision -- \
   research/project-memory/stensibly-1604-1605.json \
   research/proxy-revision/stensibly-1604-1605.json
 ```
+
+## Executed current-main receipt
+
+The semantic code + retained evidence head was:
+
+```text
+head:       8d7c5ed05077e242e8013b78cf7cf91d52b89834
+main:       6edf32f07138579d87abf5210e84c71e94c1d431
+merge view: c25ab8817bfc0528edecb19a7b41679291abd474
+```
+
+GitHub Actions receipt:
+
+```text
+CI run:                    32259077612  success
+Generated provenance run:  32259077595  success
+```
+
+The merge-view CI passed:
+
+```text
+rustfmt
+all-target Clippy with -D warnings
+project-memory lineage controls
+GitHub review-memory adapter controls
+GitHub issue-closure adapter controls
+external GitHub reference controls
+full Rust tests
+repository scan text + JSON dogfood
+bounded history text + JSON dogfood
+CI test-filter text + JSON dogfood
+positive/control CI-filter fixtures
+pull-request diff text + JSON dogfood
+```
+
+The retained proxy-revision tests passed all ten adversarial controls above. The only change after this semantic receipt is the durable receipt prose in this research note.
 
 ## Product direction
 

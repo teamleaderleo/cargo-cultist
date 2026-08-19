@@ -135,10 +135,7 @@ pub fn evaluate_lesson_promotion(
         .copied()
         .collect::<BTreeSet<_>>();
 
-    let missing_repair_coverage = repair_set
-        .difference(&covered)
-        .copied()
-        .collect::<Vec<_>>();
+    let missing_repair_coverage = repair_set.difference(&covered).copied().collect::<Vec<_>>();
     let different_class_coverage = covered
         .intersection(&adjacent_set)
         .copied()
@@ -194,11 +191,7 @@ impl LessonPromotionClaim {
             ));
         }
         validate_repository(&self.repository)?;
-        validate_bounded_single_line(
-            &self.candidate_id,
-            "candidate_id",
-            MAX_CANDIDATE_ID_BYTES,
-        )?;
+        validate_bounded_single_line(&self.candidate_id, "candidate_id", MAX_CANDIDATE_ID_BYTES)?;
         validate_bounded_single_line(
             &self.candidate_discriminator_id,
             "candidate_discriminator_id",
@@ -313,7 +306,8 @@ impl LessonPromotionClaim {
             if !repair.source_evidence.contains(&self.repair_marker) {
                 return Err(format!(
                     "repair evidence for {} does not contain candidate marker `{}`",
-                    display_ref(repair.artifact), self.repair_marker
+                    display_ref(repair.artifact),
+                    self.repair_marker
                 ));
             }
         }
@@ -325,7 +319,8 @@ impl LessonPromotionClaim {
             if !adjacent.source_evidence.contains(&adjacent.marker) {
                 return Err(format!(
                     "adjacent evidence for {} does not contain marker `{}`",
-                    display_ref(adjacent.artifact), adjacent.marker
+                    display_ref(adjacent.artifact),
+                    adjacent.marker
                 ));
             }
         }
@@ -335,7 +330,8 @@ impl LessonPromotionClaim {
         if !self.guard.source_evidence.contains(&self.guard.marker) {
             return Err(format!(
                 "guard evidence for {} does not contain marker `{}`",
-                display_ref(self.guard.artifact), self.guard.marker
+                display_ref(self.guard.artifact),
+                self.guard.marker
             ));
         }
         if !guard.changed_paths.contains(&self.guard.enforcement_path) {

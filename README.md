@@ -2,15 +2,15 @@
 
 **Find out why before you copy it.**
 
-Cultist is an experiment in repository-aware analysis: gather facts about what a repository actually does, recover relevant precedent and history, search for counterexamples, and raise useful questions without pretending every observation is an error.
+Cultist is an experiment in repository-aware analysis: gather deterministic facts, preserve provenance and counterexamples, and ask useful questions before inventing project rules.
 
-> Status: very early prototype. The public analyzer commands are deterministic, local, and read-only.
+> Status: very early prototype. The current public analyzer implementation is a Rust distribution named `cargo-cultist`; its public commands are deterministic, local, and read-only.
 
-The current implementation is distributed as the Rust package and Cargo subcommand `cargo-cultist`. Rust-specific analyzers are the first semantic adapter, not the product boundary. Repository-level primitives such as Git history and direct concurrent-change preflight are language-agnostic.
+Rust is the first semantic adapter, not the product boundary. Some useful Cultist primitives are already repository-generic — Git history, decision memory, evidence provenance, and direct concurrent-change preflight — while Rust-specific analyzers currently provide the deepest source-level evidence.
 
-See [ROADMAP.md](ROADMAP.md) for the project thesis, design principles, and active research directions. The umbrella tracking issue is #19.
+See [ROADMAP.md](ROADMAP.md) for the project thesis, design principles, and active research directions. The umbrella tracking issue is #19. Agents working on Cultist should also follow [AGENTS.md](AGENTS.md), which treats implementation friction, false assumptions, counterexamples, and duplicated work as dogfood evidence worth feeding back into the project when the evidence earns it.
 
-Traditional linters are strongest when a rule is already known. Cultist starts one step earlier: it gathers repository evidence, identifies deviations or unexplained relationships, and preserves uncertainty when the evidence is not strong enough to recover intent.
+Traditional linters are strongest when a rule is already known. Cultist starts one step earlier: it gathers facts about what a repository actually does, identifies deviations or unexplained relationships, searches for counterexamples, and raises questions without pretending every observation is an error.
 
 The core evidence model distinguishes:
 
@@ -24,9 +24,11 @@ Human-readable and JSON output are rendered from the same provenance-bearing fin
 
 ## Current commands
 
+The current Rust distribution is installed/invoked as `cargo-cultist` / `cargo cultist`. That launcher name does not imply every Cultist analyzer is Cargo-specific.
+
 ### Repository test-module conventions
 
-The default Rust analyzer inspects `#[cfg(test)]` modules and reports the names a repository actually uses. It calls out one-off names and files that mix multiple test-module names without turning the majority spelling into a universal rule.
+The default command inspects Rust `#[cfg(test)]` modules and reports the names a repository actually uses. It calls out one-off names and files that mix multiple test-module names without turning the majority spelling into a universal rule.
 
 ```bash
 cargo cultist
@@ -37,7 +39,7 @@ The interesting primitive is a **finding**, not a lint error: repository statist
 
 ### Diff-aware precedent
 
-`cargo cultist diff` looks at test-module declarations added or renamed by the current change and compares them with existing repository-wide and file-local precedent.
+`cargo cultist diff` currently applies Rust-aware change analysis, including test-module precedent and generated-companion evidence where the required provenance gates are satisfied.
 
 ```bash
 cargo cultist diff
@@ -51,14 +53,14 @@ When repository-wide and file-local precedent disagree, the analyzer surfaces **
 
 ### Concurrent-change preflight
 
-`cargo cultist preflight` compares the current change set with another ref from their merge base and reports direct repository-path overlap as `PROVEN` collision evidence.
+`cargo cultist preflight` compares two concurrent Git change sets from their merge base and reports direct path overlap as `PROVEN` collision evidence.
 
 ```bash
 cargo cultist preflight --against other-agent
 cargo cultist preflight --against origin/main --format json
 ```
 
-The first slice is deliberately language-agnostic: it uses Git path changes and does not parse Rust. When two changes touch different paths, Cultist says that deeper generated, historical, policy, or behavioral relationships remain `UNKNOWN` instead of claiming independence.
+The first slice is deliberately repository-generic: it does not parse Rust to establish direct path overlap. Different paths remain semantically `UNKNOWN` until independent evidence can establish a generated, historical, policy, or behavioral relationship.
 
 ### Historical companions
 
@@ -123,7 +125,8 @@ Current research includes:
 - execution-aware libtest `--list` verification of CI selectors;
 - agentic-history corpora from Stensibly and SmolRunner;
 - bounded repository-evidence packets for coding agents;
-- repo-local decision memory and concurrent-change coordination evidence.
+- repository-local decision memory;
+- concurrent-change coordination evidence.
 
 Some research examples intentionally execute repository tooling. In particular, Cargo/libtest listing can compile code and run build scripts. Those experiments carry an explicit effect boundary and are not silently invoked by the ordinary analyzer commands.
 
@@ -140,14 +143,14 @@ hypothesis
 
 A successful experiment does not automatically become a lint or public feature.
 
-## Current Rust distribution
+## Usage
 
-From this repository while developing:
+From this repository while developing the current Rust distribution:
 
 ```bash
 cargo run -- /path/to/a/rust/repository
 cargo run -- diff --base origin/main /path/to/a/rust/repository
-cargo run -- preflight --against other-agent /path/to/a/repository
+cargo run -- preflight --against some-ref /path/to/a/repository
 cargo run -- history /path/to/a/repository/src/file.rs
 cargo run -- ci-tests /path/to/a/rust/repository
 ```
@@ -156,10 +159,10 @@ After installing locally:
 
 ```bash
 cargo install --path .
-cd /path/to/a/repository
+cargo cultist preflight --against other-ref /path/to/a/repository
+cd /path/to/a/rust/repository
 cargo cultist
 cargo cultist diff
-cargo cultist preflight --against origin/main
 cargo cultist history src/file.rs
 cargo cultist ci-tests
 ```
@@ -169,18 +172,20 @@ The current Rust binary can also be invoked directly:
 ```bash
 cargo-cultist .
 cargo-cultist diff --base origin/main .
-cargo-cultist preflight --against origin/main .
+cargo-cultist preflight --against other-ref .
 cargo-cultist history src/file.rs
 cargo-cultist ci-tests .
 ```
 
-The product/protocol name is **Cultist**. `cargo-cultist` is the Rust distribution name retained so `cargo cultist ...` works naturally.
+Future distribution wrappers or language adapters should consume the same stable machine-readable evidence model instead of requiring the rest of the ecosystem to embed the Rust crate.
 
 ## Dogfooding
 
 CI runs formatting, Clippy, and tests, then dogfoods the public analyzers and their JSON output against Cultist itself. Pull-request and push CI run diff analysis against the relevant base/current change.
 
 The tool is expected to inspect its own changes without special treatment. Disposable fixtures and pinned external replays are used when a detector needs a stronger discriminator; temporary network-heavy research workflows are retired after their evidence is recorded.
+
+Dogfood is also product input. When work exposes duplicate effort, a missed repository fact, stale evidence, a false assumption, a useful counterexample, or a repeated manual investigation, treat that as a candidate Cultist lesson. Preserve the exact evidence, test the generalization, and feed it back through the smallest appropriate analyzer, regression, research receipt, decision record, or focused follow-up. Do not turn ordinary inconvenience into a universal rule.
 
 ## Active research directions
 
@@ -192,9 +197,9 @@ Near-term work is increasingly about composing independent evidence instead of a
 - helper/dependency intent and locally expanded idioms;
 - explicit repository-guidance freshness and instruction lifecycle;
 - bounded agent context packets that optimize selected evidence per byte instead of context volume;
-- concurrent-work preflight using independently earned repository relationships;
-- language-neutral evidence contracts with language-specific semantic adapters;
-- promotion of repeated, well-understood human consensus into deterministic policy.
+- active-change coordination and semantic preflight;
+- promotion of repeated, well-understood human consensus into deterministic policy;
+- additional language adapters only where real corpus evidence earns them.
 
 Optional model-assisted explanation can sit on top of bounded evidence later. The deterministic finding must remain useful without a model.
 

@@ -1,0 +1,174 @@
+name: Refactor shared Rust syntax fingerprint
+
+on:
+  push:
+    branches:
+      - refactor/shared-rust-syntax-fingerprint
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/shared-rust-syntax-fingerprint
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+      - name: Move syntax fingerprint into rust_facts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          facts = Path('src/rust_facts.rs')
+          text = facts.read_text()
+          text = text.replace(
+              'use std::process::Command;\n',
+              'use std::process::Command;\nuse std::str::FromStr;\n',
+              1,
+          )
+          text = text.replace(
+              'use proc_macro2::Span;\n',
+              'use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};\n',
+              1,
+          )
+          marker = 'fn scan_inputs(\n'
+          assert marker in text
+          helper = r'''pub fn rust_syntax_fingerprint(source: &str) -> Option<String> {
+    let tokens = TokenStream::from_str(source).ok()?;
+    Some(strip_doc_attributes(tokens).to_string())
+}
+
+fn strip_doc_attributes(stream: TokenStream) -> TokenStream {
+    let tokens: Vec<_> = stream.into_iter().collect();
+    let mut output = TokenStream::new();
+    let mut index = 0;
+
+    while index < tokens.len() {
+        if is_hash(&tokens[index]) {
+            if index + 1 < tokens.len() && is_doc_group(&tokens[index + 1]) {
+                index += 2;
+                continue;
+            }
+            if index + 2 < tokens.len()
+                && is_bang(&tokens[index + 1])
+                && is_doc_group(&tokens[index + 2])
+            {
+                index += 3;
+                continue;
+            }
+        }
+
+        let token = match tokens[index].clone() {
+            TokenTree::Group(group) => {
+                let mut normalized =
+                    Group::new(group.delimiter(), strip_doc_attributes(group.stream()));
+                normalized.set_span(group.span());
+                TokenTree::Group(normalized)
+            }
+            other => other,
+        };
+        output.extend([token]);
+        index += 1;
+    }
+
+    output
+}
+
+fn is_hash(token: &TokenTree) -> bool {
+    matches!(token, TokenTree::Punct(punct) if punct.as_char() == '#')
+}
+
+fn is_bang(token: &TokenTree) -> bool {
+    matches!(token, TokenTree::Punct(punct) if punct.as_char() == '!')
+}
+
+fn is_doc_group(token: &TokenTree) -> bool {
+    let TokenTree::Group(group) = token else {
+        return false;
+    };
+    group.delimiter() == Delimiter::Bracket
+        && matches!(group.stream().into_iter().next(), Some(TokenTree::Ident(ident)) if ident == "doc")
+}
+
+'''
+          if 'pub fn rust_syntax_fingerprint' not in text:
+              text = text.replace(marker, helper + marker, 1)
+          facts.write_text(text)
+
+          generated = Path('src/generated_diff.rs')
+          text = generated.read_text()
+          text = text.replace('use std::str::FromStr;\n', '', 1)
+          text = text.replace(
+              'use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};\n',
+              '',
+              1,
+          )
+          finding_import = 'use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};\n'
+          assert finding_import in text
+          if 'use crate::rust_facts::rust_syntax_fingerprint;' not in text:
+              text = text.replace(
+                  finding_import,
+                  finding_import + 'use crate::rust_facts::rust_syntax_fingerprint;\n',
+                  1,
+              )
+          start = text.index('fn rust_syntax_fingerprint(source: &str) -> Option<String> {')
+          end = text.index('fn discover_generator_relations(', start)
+          text = text[:start] + text[end:]
+          generated.write_text(text)
+
+          example = Path('examples/rust_syntax_cohort.rs')
+          text = example.read_text()
+          if not text.startswith('#[allow(dead_code)]'):
+              text = '#[allow(dead_code)]\n#[path = "../src/rust_facts.rs"]\nmod rust_facts;\n\n' + text
+          text = text.replace('use std::str::FromStr;\n', '', 1)
+          text = text.replace(
+              'use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};\n',
+              '',
+              1,
+          )
+          first_use = 'use std::collections::{BTreeMap, BTreeSet};\n'
+          assert first_use in text
+          if 'use rust_facts::rust_syntax_fingerprint;' not in text:
+              text = text.replace(
+                  first_use,
+                  'use rust_facts::rust_syntax_fingerprint;\n\n' + first_use,
+                  1,
+              )
+          start = text.index('fn rust_syntax_fingerprint(source: &str) -> Result<String, Box<dyn Error>> {')
+          end = text.index('fn companion_counts(', start)
+          text = text[:start] + text[end:]
+          # Shared helper returns Option rather than Result; adapt the four existing test sites.
+          text = text.replace('rust_syntax_fingerprint(before).unwrap()', 'rust_syntax_fingerprint(before).unwrap()')
+          text = text.replace('rust_syntax_fingerprint(after).unwrap()', 'rust_syntax_fingerprint(after).unwrap()')
+          # classify_rust_edit already destructures Ok; convert that pair to Some.
+          text = text.replace(
+              '    let (Ok(before), Ok(after)) = (\n        rust_syntax_fingerprint(&before),\n        rust_syntax_fingerprint(&after),\n    ) else {\n',
+              '    let (Some(before), Some(after)) = (\n        rust_syntax_fingerprint(&before),\n        rust_syntax_fingerprint(&after),\n    ) else {\n',
+              1,
+          )
+          example.write_text(text)
+          PY
+          cargo fmt
+      - name: Quality gates
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+          cargo test --example rust_syntax_cohort
+      - name: Commit refactor
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/rust_facts.rs src/generated_diff.rs examples/rust_syntax_cohort.rs
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'refactor: share Rust syntax fingerprint facts'
+          git push origin HEAD:refactor/shared-rust-syntax-fingerprint

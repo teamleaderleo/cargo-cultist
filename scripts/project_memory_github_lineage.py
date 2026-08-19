@@ -130,6 +130,7 @@ def collect(
         tuple[tuple[str, int], str, tuple[str, int], str]
     ] = set()
     depth_frontier: list[dict[str, Any]] = []
+    incomplete_evidence_artifacts: list[dict[str, Any]] = []
 
     while queue:
         source_number = queue.popleft()
@@ -140,6 +141,12 @@ def collect(
             # The sidecar receipt makes that omission observable.
             depth_frontier.append(source["reference"].copy())
             continue
+
+        if source.get("evidence_complete") is not True:
+            # Existing GitHub packet adapters may fall back to a title when an artifact
+            # body is absent. We can still inspect the admitted text, but absence of a
+            # relation in that fallback cannot certify absence from the source artifact.
+            incomplete_evidence_artifacts.append(source["reference"].copy())
 
         for edge in admitted_edges(repository, source):
             if edge.get("from") != source["reference"]:
@@ -208,7 +215,8 @@ def collect(
         "artifact_count": len(artifacts),
         "edge_count": len(edges),
         "depth_frontier": depth_frontier,
-        "complete_within_requested_depth": True,
+        "incomplete_evidence_artifacts": incomplete_evidence_artifacts,
+        "complete_within_requested_depth": not incomplete_evidence_artifacts,
     }
 
     if artifact_key(packet["anchor"]) != anchor_identity:

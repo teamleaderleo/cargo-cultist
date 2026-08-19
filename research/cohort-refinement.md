@@ -125,6 +125,53 @@ If a counterexample lacks the admitted fact, expected: `incomplete_evidence` eve
 
 This prevents missing classification from masquerading as explained counterevidence.
 
+## Executed GitHub receipt
+
+Draft PR #168 ran the research-only generic evaluator against current main through the ordinary repository gates.
+
+Exact code head:
+
+```text
+eb5d0a801cd946693e0729672235a7beecc62f9f
+```
+
+GitHub Actions CI run `32244992654` / run number `1121` completed successfully. The job passed:
+
+- `cargo fmt --check`;
+- `cargo clippy --all-targets -- -D warnings`;
+- active-work heads-up;
+- full `cargo test`, including the cohort-refinement controls;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON plus positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+The PR-only push-diff step remained skipped by workflow context.
+
+Generated provenance review dogfood run `32244992658` / run number `186` also completed successfully on the same head.
+
+Two earlier CI attempts were formatter-only controls. The first exposed the main rustfmt layout; the second found one remaining multiline condition. No semantic or Clippy change was required between the formatted head and the successful run.
+
+## What this adds beyond the retained Oxc probe
+
+The Oxc syntax replay proved one useful discriminator for one evidence family. This carrier adds a generic evaluation boundary that keeps fact production separate and tests four distinct outcomes:
+
+```text
+forward Oxc-like supplied facts
+  -> candidate
+
+reverse Oxc-like supplied facts
+  -> no_improvement
+
+identity-like singleton partition
+  -> overfit
+
+missing current/counterexample fact
+  -> unknown_current / incomplete_evidence
+```
+
+That is enough to reuse the same refinement evaluator with package/scope/generated/authored facts later without teaching it how those facts are produced.
+
 ## Boundary
 
 - fact production remains analyzer/language-specific;

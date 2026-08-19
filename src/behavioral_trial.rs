@@ -9,8 +9,7 @@ pub const BEHAVIORAL_TRIAL_SCHEMA_VERSION: u32 = 1;
 pub const MAX_BEHAVIORAL_TRIAL_BYTES: usize = 512 * 1024;
 pub const CONTEXT_DIGEST_SCHEME: &str = "cultist-behavioral-context-sha256-v1";
 pub const PLAN_FINGERPRINT_SCHEME: &str = "cultist-behavioral-trial-plan-sha256-v1";
-pub const WORKER_PACKET_FINGERPRINT_SCHEME: &str =
-    "cultist-behavioral-worker-packet-sha256-v1";
+pub const WORKER_PACKET_FINGERPRINT_SCHEME: &str = "cultist-behavioral-worker-packet-sha256-v1";
 const MAX_TRIAL_ID_BYTES: usize = 1024;
 const MAX_TASK_BYTES: usize = 16 * 1024;
 const MAX_CONTEXT_BYTES: usize = 128 * 1024;
@@ -126,7 +125,9 @@ impl fmt::Display for BehavioralTrialError {
 
 impl Error for BehavioralTrialError {}
 
-pub fn parse_behavioral_trial_plan(bytes: &[u8]) -> Result<BehavioralTrialPlan, BehavioralTrialError> {
+pub fn parse_behavioral_trial_plan(
+    bytes: &[u8],
+) -> Result<BehavioralTrialPlan, BehavioralTrialError> {
     enforce_input_bound(bytes)?;
     let plan: BehavioralTrialPlan = serde_json::from_slice(bytes).map_err(|error| {
         BehavioralTrialError::new(format!("invalid behavioral-trial plan JSON: {error}"))
@@ -135,7 +136,9 @@ pub fn parse_behavioral_trial_plan(bytes: &[u8]) -> Result<BehavioralTrialPlan, 
     Ok(plan)
 }
 
-pub fn parse_behavioral_trial_pair(bytes: &[u8]) -> Result<BehavioralTrialPair, BehavioralTrialError> {
+pub fn parse_behavioral_trial_pair(
+    bytes: &[u8],
+) -> Result<BehavioralTrialPair, BehavioralTrialError> {
     enforce_input_bound(bytes)?;
     let pair: BehavioralTrialPair = serde_json::from_slice(bytes).map_err(|error| {
         BehavioralTrialError::new(format!("invalid behavioral-trial pair JSON: {error}"))
@@ -154,7 +157,11 @@ pub fn fingerprint_plan(plan: &BehavioralTrialPlan) -> Result<String, Behavioral
     components.push(plan.schema_version.to_be_bytes().to_vec());
     components.push(plan.trial_id.as_bytes().to_vec());
     components.push(plan.task_instruction.as_bytes().to_vec());
-    components.push((plan.allowed_first_actions.len() as u64).to_be_bytes().to_vec());
+    components.push(
+        (plan.allowed_first_actions.len() as u64)
+            .to_be_bytes()
+            .to_vec(),
+    );
     for action in &plan.allowed_first_actions {
         components.push(action.id.as_bytes().to_vec());
         components.push(action.label.as_bytes().to_vec());
@@ -205,16 +212,19 @@ pub fn evaluate_behavioral_trial_pair(
     let mut mapped = BTreeMap::<BehavioralTrialArmKindKey, &BehavioralTrialObservation>::new();
     for observation in &pair.observations {
         validate_observation(observation, plan, &plan_fingerprint)?;
-        let key = if observation.worker_packet_fingerprint == control_packet.worker_packet_fingerprint {
-            BehavioralTrialArmKindKey::Control
-        } else if observation.worker_packet_fingerprint == treatment_packet.worker_packet_fingerprint {
-            BehavioralTrialArmKindKey::Treatment
-        } else {
-            return Err(BehavioralTrialError::new(format!(
-                "observation from worker `{}` names an unknown worker-packet fingerprint",
-                observation.worker_ref
-            )));
-        };
+        let key =
+            if observation.worker_packet_fingerprint == control_packet.worker_packet_fingerprint {
+                BehavioralTrialArmKindKey::Control
+            } else if observation.worker_packet_fingerprint
+                == treatment_packet.worker_packet_fingerprint
+            {
+                BehavioralTrialArmKindKey::Treatment
+            } else {
+                return Err(BehavioralTrialError::new(format!(
+                    "observation from worker `{}` names an unknown worker-packet fingerprint",
+                    observation.worker_ref
+                )));
+            };
         if mapped.insert(key, observation).is_some() {
             return Err(BehavioralTrialError::new(
                 "paired behavioral trial contains two observations for the same arm",
@@ -224,10 +234,16 @@ pub fn evaluate_behavioral_trial_pair(
 
     let control = mapped
         .get(&BehavioralTrialArmKindKey::Control)
-        .ok_or_else(|| BehavioralTrialError::new("paired behavioral trial is missing the control observation"))?;
+        .ok_or_else(|| {
+            BehavioralTrialError::new("paired behavioral trial is missing the control observation")
+        })?;
     let treatment = mapped
         .get(&BehavioralTrialArmKindKey::Treatment)
-        .ok_or_else(|| BehavioralTrialError::new("paired behavioral trial is missing the treatment observation"))?;
+        .ok_or_else(|| {
+            BehavioralTrialError::new(
+                "paired behavioral trial is missing the treatment observation",
+            )
+        })?;
 
     Ok(BehavioralTrialEvaluation {
         schema_version: BEHAVIORAL_TRIAL_SCHEMA_VERSION,
@@ -275,9 +291,17 @@ fn validate_plan(plan: &BehavioralTrialPlan) -> Result<(), BehavioralTrialError>
 }
 
 fn validate_arm(arm: &BehavioralTrialArm, label: &str) -> Result<(), BehavioralTrialError> {
-    validate_coordinate(&arm.context_ref, &format!("{label}.context_ref"), MAX_CONTEXT_REF_BYTES)?;
+    validate_coordinate(
+        &arm.context_ref,
+        &format!("{label}.context_ref"),
+        MAX_CONTEXT_REF_BYTES,
+    )?;
     validate_text(&arm.context, &format!("{label}.context"), MAX_CONTEXT_BYTES)?;
-    validate_digest(&arm.context_digest, CONTEXT_DIGEST_SCHEME, &format!("{label}.context_digest"))?;
+    validate_digest(
+        &arm.context_digest,
+        CONTEXT_DIGEST_SCHEME,
+        &format!("{label}.context_digest"),
+    )?;
     let expected = context_digest(&arm.context);
     if arm.context_digest != expected {
         return Err(BehavioralTrialError::new(format!(
@@ -334,7 +358,11 @@ fn validate_observation(
         WORKER_PACKET_FINGERPRINT_SCHEME,
         "observation.worker_packet_fingerprint",
     )?;
-    validate_coordinate(&observation.worker_ref, "observation.worker_ref", MAX_WORKER_REF_BYTES)?;
+    validate_coordinate(
+        &observation.worker_ref,
+        "observation.worker_ref",
+        MAX_WORKER_REF_BYTES,
+    )?;
     validate_token(
         &observation.first_action_id,
         "observation.first_action_id",
@@ -374,7 +402,9 @@ fn fingerprint_worker_packet_material(
         plan.task_instruction.as_bytes().to_vec(),
         context.as_bytes().to_vec(),
         context_digest.as_bytes().to_vec(),
-        (plan.allowed_first_actions.len() as u64).to_be_bytes().to_vec(),
+        (plan.allowed_first_actions.len() as u64)
+            .to_be_bytes()
+            .to_vec(),
     ];
     for action in &plan.allowed_first_actions {
         components.push(action.id.as_bytes().to_vec());
@@ -438,7 +468,11 @@ fn enforce_input_bound(bytes: &[u8]) -> Result<(), BehavioralTrialError> {
     Ok(())
 }
 
-fn validate_coordinate(value: &str, field: &str, maximum: usize) -> Result<(), BehavioralTrialError> {
+fn validate_coordinate(
+    value: &str,
+    field: &str,
+    maximum: usize,
+) -> Result<(), BehavioralTrialError> {
     if value.is_empty()
         || value.trim() != value
         || value.len() > maximum
@@ -454,10 +488,11 @@ fn validate_coordinate(value: &str, field: &str, maximum: usize) -> Result<(), B
 
 fn validate_token(value: &str, field: &str, maximum: usize) -> Result<(), BehavioralTrialError> {
     validate_coordinate(value, field, maximum)?;
-    if !value
-        .bytes()
-        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-' | b'.' | b':' | b'/'))
-    {
+    if !value.bytes().all(|byte| {
+        byte.is_ascii_lowercase()
+            || byte.is_ascii_digit()
+            || matches!(byte, b'_' | b'-' | b'.' | b':' | b'/')
+    }) {
         return Err(BehavioralTrialError::new(format!(
             "{field} must use lowercase ASCII token characters"
         )));

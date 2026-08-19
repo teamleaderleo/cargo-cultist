@@ -8,8 +8,23 @@ mod applicability;
 #[path = "../src/closure_episode.rs"]
 mod closure_episode;
 #[allow(dead_code)]
+#[path = "../src/lesson_promotion.rs"]
+mod lesson_promotion;
+#[allow(dead_code)]
+#[path = "../src/observation_reconciliation.rs"]
+mod observation_reconciliation;
+#[allow(dead_code)]
 #[path = "../src/prior_episode_front.rs"]
 mod prior_episode_front;
+#[allow(dead_code)]
+#[path = "../src/project_memory.rs"]
+mod project_memory;
+#[allow(dead_code)]
+#[path = "../src/proof_surface.rs"]
+mod proof_surface;
+#[allow(dead_code)]
+#[path = "../src/proxy_revision.rs"]
+mod proxy_revision;
 #[allow(dead_code)]
 #[path = "../src/review_memory.rs"]
 mod review_memory;

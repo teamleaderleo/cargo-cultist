@@ -4,8 +4,18 @@
 mod applicability;
 #[path = "../src/closure_episode.rs"]
 mod closure_episode;
+#[path = "../src/lesson_promotion.rs"]
+mod lesson_promotion;
+#[path = "../src/observation_reconciliation.rs"]
+mod observation_reconciliation;
 #[path = "../src/prior_episode_front.rs"]
 mod prior_episode_front;
+#[path = "../src/project_memory.rs"]
+mod project_memory;
+#[path = "../src/proof_surface.rs"]
+mod proof_surface;
+#[path = "../src/proxy_revision.rs"]
+mod proxy_revision;
 #[path = "../src/review_memory.rs"]
 mod review_memory;
 

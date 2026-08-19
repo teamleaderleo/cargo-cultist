@@ -17,6 +17,7 @@ pub enum ClaimKind {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Location {
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -33,6 +34,7 @@ impl Location {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Evidence {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,6 +58,7 @@ impl Evidence {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Claim {
     pub kind: ClaimKind,
     pub message: String,
@@ -79,6 +82,7 @@ impl Claim {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Finding {
     pub kind: String,
     pub title: String,
@@ -117,6 +121,7 @@ impl Finding {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AnalysisReport {
     pub schema_version: u32,
     pub analysis: String,
@@ -141,6 +146,7 @@ impl AnalysisReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{Value, json};
 
     #[test]
     fn serializes_claim_provenance() {
@@ -173,5 +179,93 @@ mod tests {
         let json = serde_json::to_string(&report).unwrap();
         let decoded: AnalysisReport = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, report);
+    }
+
+    #[test]
+    fn rejects_unknown_machine_report_fields_at_every_record_layer() {
+        let base = sample_report_json();
+        let mut cases = Vec::new();
+
+        let mut report = base.clone();
+        report
+            .as_object_mut()
+            .unwrap()
+            .insert("future_report_field".to_string(), json!(true));
+        cases.push(("report", report));
+
+        let mut finding = base.clone();
+        finding["findings"][0]
+            .as_object_mut()
+            .unwrap()
+            .insert("future_finding_field".to_string(), json!(true));
+        cases.push(("finding", finding));
+
+        let mut claim = base.clone();
+        claim["claims"][0]
+            .as_object_mut()
+            .unwrap()
+            .insert("future_claim_field".to_string(), json!(true));
+        cases.push(("claim", claim));
+
+        let mut evidence = base.clone();
+        evidence["claims"][0]["evidence"][0]
+            .as_object_mut()
+            .unwrap()
+            .insert("future_evidence_field".to_string(), json!(true));
+        cases.push(("evidence", evidence));
+
+        let mut location = base;
+        location["claims"][0]["evidence"][0]["location"]
+            .as_object_mut()
+            .unwrap()
+            .insert("future_location_field".to_string(), json!(true));
+        cases.push(("location", location));
+
+        for (layer, value) in cases {
+            let error = serde_json::from_value::<AnalysisReport>(value).unwrap_err();
+            assert!(
+                error.to_string().contains("unknown field"),
+                "{layer} unexpectedly accepted unknown machine semantics: {error}"
+            );
+        }
+    }
+
+    fn sample_report_json() -> Value {
+        json!({
+            "schema_version": REPORT_SCHEMA_VERSION,
+            "analysis": "example",
+            "repository": "/repo",
+            "claims": [
+                {
+                    "kind": "observed",
+                    "message": "example observation",
+                    "evidence": [
+                        {
+                            "message": "source evidence",
+                            "location": {
+                                "path": "src/lib.rs",
+                                "line": 7
+                            }
+                        }
+                    ]
+                }
+            ],
+            "findings": [
+                {
+                    "kind": "example",
+                    "title": "Example",
+                    "location": {
+                        "path": "src/main.rs"
+                    },
+                    "claims": [
+                        {
+                            "kind": "unknown",
+                            "message": "missing discriminator"
+                        }
+                    ],
+                    "question": "Investigate?"
+                }
+            ]
+        })
     }
 }

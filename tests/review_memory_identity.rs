@@ -7,7 +7,7 @@ mod review_memory;
 
 use applicability::EvaluationContext;
 use review_memory::{
-    CurrentConcern, ReviewMemoryQuery, ReviewThreadDisposition, REVIEW_MEMORY_SCHEMA_VERSION,
+    CurrentConcern, REVIEW_MEMORY_SCHEMA_VERSION, ReviewMemoryQuery, ReviewThreadDisposition,
     evaluate_review_memory,
 };
 

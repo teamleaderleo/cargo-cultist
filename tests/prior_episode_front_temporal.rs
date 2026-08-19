@@ -126,7 +126,10 @@ fn four_retained_temporal_species_project_to_exact_next_actions_in_order() {
     };
     assert_eq!(id, "stensibly:responsibility-proxy");
     assert_eq!(*next, PriorEpisodeNextAction::UseCorrectedPredicate);
-    assert_eq!(evaluation.status, ProxyRevisionStatus::ObservedProxyRevision);
+    assert_eq!(
+        evaluation.status,
+        ProxyRevisionStatus::ObservedProxyRevision
+    );
     assert!(!evaluation.automatic_generalization_authority);
 
     let PriorEpisodeFrontItem::ObservationReconciliation {

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
+use crate::performance;
 use crate::rust_facts::scan_rust_repository;
 
 const SKIPPED_RUST_DIRS: &[&str] = &[".git", "target", "node_modules", ".venv", "vendor"];
@@ -181,6 +182,7 @@ fn collect_explicit_tests(
     report: &mut CiTestFilterReport,
 ) -> Result<(), Box<dyn Error>> {
     let scan = scan_rust_repository(root, &BTreeSet::new(), SKIPPED_RUST_DIRS)?;
+    performance::record_rust_scan(scan.parsed_files, scan.cache_hits, 0);
 
     for file in scan.files {
         if let Some(error) = file.facts.parse_error {

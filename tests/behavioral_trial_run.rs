@@ -7,7 +7,8 @@ mod behavioral_trial_run;
 
 use behavioral_trial::{
     BEHAVIORAL_TRIAL_SCHEMA_VERSION, BehavioralTrialArmKind, BehavioralTrialObservation,
-    BehavioralTrialPlan, fingerprint_plan, materialize_worker_packet, parse_behavioral_trial_plan,
+    BehavioralTrialPlan, BehavioralWorkerPacket, fingerprint_plan, materialize_worker_packet,
+    parse_behavioral_trial_plan,
 };
 use behavioral_trial_run::{
     BEHAVIORAL_TRIAL_RUN_SCHEMA_VERSION, BehavioralTrialExecutionOrigin,
@@ -62,6 +63,12 @@ fn raw_observation(
     .unwrap()
 }
 
+fn canonical_worker_packet_bytes(packet: &BehavioralWorkerPacket) -> Vec<u8> {
+    let mut bytes = serde_json::to_vec_pretty(packet).unwrap();
+    bytes.push(b'\n');
+    bytes
+}
+
 fn run_receipt(
     plan: &BehavioralTrialPlan,
     arm: BehavioralTrialArmKind,
@@ -70,7 +77,7 @@ fn run_receipt(
     first_action_id: &str,
 ) -> behavioral_trial_run::BehavioralTrialRunReceipt {
     let packet = materialize_worker_packet(plan, arm).unwrap();
-    let raw_packet = serde_json::to_vec(&packet).unwrap();
+    let raw_packet = canonical_worker_packet_bytes(&packet);
     let raw_output = raw_observation(plan, arm, worker_ref, first_action_id);
     build_behavioral_trial_run_receipt(plan, metadata, &raw_packet, &raw_output).unwrap()
 }
@@ -136,7 +143,7 @@ fn real_guard_detail_plan_admits_fresh_ba_pair_and_preserves_exact_run_metadata(
 fn receipt_builder_rejects_nonfresh_or_preexposed_run_metadata() {
     let plan = plan();
     let packet = materialize_worker_packet(&plan, BehavioralTrialArmKind::Control).unwrap();
-    let raw_packet = serde_json::to_vec(&packet).unwrap();
+    let raw_packet = canonical_worker_packet_bytes(&packet);
     let raw_output = raw_observation(
         &plan,
         BehavioralTrialArmKind::Control,
@@ -158,10 +165,40 @@ fn receipt_builder_rejects_nonfresh_or_preexposed_run_metadata() {
 }
 
 #[test]
+fn receipt_builder_rejects_semantically_equal_reformatted_packet_bytes() {
+    let plan = plan();
+    let packet = materialize_worker_packet(&plan, BehavioralTrialArmKind::Control).unwrap();
+    let minified_packet = serde_json::to_vec(&packet).unwrap();
+    let raw_output = raw_observation(
+        &plan,
+        BehavioralTrialArmKind::Control,
+        "worker-run:reformatted-packet",
+        "inspect_accepted_guard_detail",
+    );
+
+    let error = build_behavioral_trial_run_receipt(
+        &plan,
+        metadata(
+            1,
+            "session:reformatted-packet",
+            "provider:session/reformatted-packet",
+        ),
+        &minified_packet,
+        &raw_output,
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("exact materializer serialization")
+    );
+}
+
+#[test]
 fn raw_worker_output_must_bind_to_exact_packet_and_registered_action() {
     let plan = plan();
     let packet = materialize_worker_packet(&plan, BehavioralTrialArmKind::Control).unwrap();
-    let raw_packet = serde_json::to_vec(&packet).unwrap();
+    let raw_packet = canonical_worker_packet_bytes(&packet);
 
     let wrong_arm_output = raw_observation(
         &plan,

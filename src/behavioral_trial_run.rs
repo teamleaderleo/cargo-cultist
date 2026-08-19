@@ -162,7 +162,7 @@ pub fn build_behavioral_trial_run_receipt(
         serde_json::from_slice(raw_worker_packet).map_err(|error| {
             BehavioralTrialRunError::new(format!("invalid behavioral worker packet JSON: {error}"))
         })?;
-    let arm = validate_worker_packet(plan, &worker_packet)?;
+    let arm = validate_worker_packet(plan, &worker_packet, raw_worker_packet)?;
 
     let observation: BehavioralTrialObservation =
         serde_json::from_slice(raw_output).map_err(|error| {
@@ -321,7 +321,7 @@ fn validate_receipt(
                 "invalid retained behavioral worker packet JSON: {error}"
             ))
         })?;
-    let arm = validate_worker_packet(plan, &packet)?;
+    let arm = validate_worker_packet(plan, &packet, receipt.raw_worker_packet.as_bytes())?;
     let observation: BehavioralTrialObservation = serde_json::from_str(&receipt.raw_output)
         .map_err(|error| {
             BehavioralTrialRunError::new(format!(
@@ -340,20 +340,34 @@ fn validate_receipt(
 fn validate_worker_packet(
     plan: &BehavioralTrialPlan,
     packet: &BehavioralWorkerPacket,
+    raw_packet: &[u8],
 ) -> Result<BehavioralTrialArmKind, BehavioralTrialRunError> {
     let control =
         materialize_worker_packet(plan, BehavioralTrialArmKind::Control).map_err(source_error)?;
     let treatment =
         materialize_worker_packet(plan, BehavioralTrialArmKind::Treatment).map_err(source_error)?;
-    if packet == &control {
-        Ok(BehavioralTrialArmKind::Control)
+    let (arm, expected) = if packet == &control {
+        (BehavioralTrialArmKind::Control, &control)
     } else if packet == &treatment {
-        Ok(BehavioralTrialArmKind::Treatment)
+        (BehavioralTrialArmKind::Treatment, &treatment)
     } else {
-        Err(BehavioralTrialRunError::new(
+        return Err(BehavioralTrialRunError::new(
             "raw behavioral worker packet does not equal either frozen plan arm",
+        ));
+    };
+
+    let mut expected_bytes = serde_json::to_vec_pretty(expected).map_err(|error| {
+        BehavioralTrialRunError::new(format!(
+            "failed to serialize the frozen behavioral worker packet: {error}"
         ))
+    })?;
+    expected_bytes.push(b'\n');
+    if raw_packet != expected_bytes.as_slice() {
+        return Err(BehavioralTrialRunError::new(
+            "raw behavioral worker packet bytes do not match the exact materializer serialization",
+        ));
     }
+    Ok(arm)
 }
 
 fn validate_observation_against_packet(

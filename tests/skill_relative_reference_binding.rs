@@ -144,11 +144,13 @@ fn explicit_root_binding_does_not_make_traversal_or_absolute_references_valid() 
 
     for invalid in ["../scripts/fetch_comments.py", "/tmp/fetch_comments.py", ""] {
         let reference = Path::new(invalid);
-        assert!(resolve_reference(
-            &context,
-            reference,
-            ReferenceResolution::ExplicitSkillRoot(&context.skill_root),
-        )
-        .is_none());
+        assert!(
+            resolve_reference(
+                &context,
+                reference,
+                ReferenceResolution::ExplicitSkillRoot(&context.skill_root),
+            )
+            .is_none()
+        );
     }
 }

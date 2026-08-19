@@ -79,7 +79,15 @@ fn list_selected_tests(root: &Path, command: &str) -> Result<Vec<String>, String
 
 fn listing_args(command: &str) -> Option<Vec<String>> {
     let tokens: Vec<_> = command.split_whitespace().collect();
-    if tokens.len() < 4 || tokens[0] != "cargo" || tokens[1] != "test" {
+    if tokens.len() < 4 || tokens[0] != "cargo" {
+        return None;
+    }
+
+    let mut command_index = 1;
+    if tokens.get(command_index).is_some_and(|token| token.starts_with('+')) {
+        command_index += 1;
+    }
+    if tokens.get(command_index).copied() != Some("test") {
         return None;
     }
 
@@ -126,6 +134,25 @@ mod tests {
                 "io_uring".to_string(),
                 "--lib".to_string(),
                 "test_rollback".to_string(),
+                "--".to_string(),
+                "--list".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn preserves_cargo_toolchain_selector() {
+        assert_eq!(
+            listing_args(
+                "cargo +1.88.0 test --lib test_rollback --locked --no-default-features"
+            ),
+            Some(vec![
+                "+1.88.0".to_string(),
+                "test".to_string(),
+                "--lib".to_string(),
+                "test_rollback".to_string(),
+                "--locked".to_string(),
+                "--no-default-features".to_string(),
                 "--".to_string(),
                 "--list".to_string(),
             ])

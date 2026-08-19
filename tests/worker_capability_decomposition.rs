@@ -11,6 +11,7 @@ enum FailureBoundary {
     AffordanceMiss,
     ExecutionMiss,
     ValidationMiss,
+    CompletionContractMiss,
     Unexplained,
 }
 
@@ -29,7 +30,8 @@ struct EpisodeAssessment {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 struct EpisodeFacts {
-    task_completed: bool,
+    task_reported_complete: bool,
+    completion_contract_satisfied: bool,
     specification_complete: bool,
     decisive_evidence_required: bool,
     decisive_evidence_available: bool,
@@ -48,7 +50,8 @@ struct EpisodeFacts {
 impl EpisodeFacts {
     fn baseline_failure() -> Self {
         Self {
-            task_completed: false,
+            task_reported_complete: false,
+            completion_contract_satisfied: false,
             specification_complete: true,
             decisive_evidence_required: true,
             decisive_evidence_available: true,
@@ -67,7 +70,7 @@ impl EpisodeFacts {
 }
 
 fn assess_episode(facts: EpisodeFacts) -> EpisodeAssessment {
-    if facts.task_completed {
+    if facts.completion_contract_satisfied {
         return EpisodeAssessment {
             boundary: FailureBoundary::None,
             response: ResponseQuality::Success,
@@ -94,6 +97,8 @@ fn assess_episode(facts: EpisodeFacts) -> EpisodeAssessment {
         FailureBoundary::ExecutionMiss
     } else if !facts.required_validation_completed {
         FailureBoundary::ValidationMiss
+    } else if facts.task_reported_complete {
+        FailureBoundary::CompletionContractMiss
     } else {
         FailureBoundary::Unexplained
     };
@@ -268,6 +273,20 @@ fn selection_miss_can_precede_a_downstream_worker_failure_after_manual_recovery(
 }
 
 #[test]
+fn reported_completion_without_verified_contract_is_not_success() {
+    let mut facts = EpisodeFacts::baseline_failure();
+    facts.task_reported_complete = true;
+
+    assert_eq!(
+        assess_episode(facts),
+        EpisodeAssessment {
+            boundary: FailureBoundary::CompletionContractMiss,
+            response: ResponseQuality::Failed,
+        }
+    );
+}
+
+#[test]
 fn insufficient_receipts_stay_unexplained_instead_of_becoming_model_blame() {
     let mut facts = EpisodeFacts::baseline_failure();
     facts.interpretation_matches_oracle = None;
@@ -278,9 +297,9 @@ fn insufficient_receipts_stay_unexplained_instead_of_becoming_model_blame() {
 }
 
 #[test]
-fn completed_task_is_success_without_failure_attribution() {
+fn verified_completion_contract_is_success_without_failure_attribution() {
     let mut facts = EpisodeFacts::baseline_failure();
-    facts.task_completed = true;
+    facts.completion_contract_satisfied = true;
 
     assert_eq!(
         assess_episode(facts),

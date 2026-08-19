@@ -18,10 +18,16 @@
       "title": "skill-creator: run_eval.py parallel workers cross-match skill UUIDs, producing false-negative trigger rates",
       "reported_boundary": "measurement_misrepresented",
       "evidence_status": "source_mechanism_confirmed",
-      "source_evidence_url": "https://github.com/anthropics/skills/blob/0a64e398ec6bb34a494f0c347e8ccae53a862f8e/skills/skill-creator/scripts/run_eval.py",
-      "source_evidence_blob_sha": "e58c70bea39d5b252a1e819f242bbdcdf20e8b87",
-      "repair_url": "https://github.com/anthropics/skills/pull/1437",
-      "repair_status": "proposed_open",
+      "source_evidence": [
+        {
+          "url": "https://github.com/anthropics/skills/blob/0a64e398ec6bb34a494f0c347e8ccae53a862f8e/skills/skill-creator/scripts/run_eval.py",
+          "blob_sha": "e58c70bea39d5b252a1e819f242bbdcdf20e8b87"
+        }
+      ],
+      "repair": {
+        "url": "https://github.com/anthropics/skills/pull/1437",
+        "status": "proposed_open"
+      },
       "candidate_discriminator": "compare parallel and isolated/serial trigger evaluation under the same skill description; current source confirms shared project registration, per-query UUID names, parallel execution, and exact per-query UUID matching, but the claimed trigger-rate consequence is not independently replayed here"
     },
     {
@@ -75,8 +81,18 @@
       "source_url": "https://github.com/openai/skills/issues/96",
       "title": "gh-address-comments can't find scripts/fetch_comments.py and falls back to GraphQL",
       "reported_boundary": "context_binding_miss",
-      "evidence_status": "reported_only",
-      "candidate_discriminator": "resolve helper references against an explicit skill root instead of the target repository cwd"
+      "evidence_status": "source_mechanism_confirmed",
+      "source_evidence": [
+        {
+          "url": "https://github.com/openai/skills/blob/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/gh-address-comments/SKILL.md",
+          "blob_sha": "0ee19e080dc9f0b082157080d1e65511ddc49e7e"
+        },
+        {
+          "url": "https://github.com/openai/skills/blob/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/gh-address-comments/scripts/fetch_comments.py",
+          "blob_sha": "09b9c01c50d9202bd6455ce36887e08be92ac1ae"
+        }
+      ],
+      "candidate_discriminator": "current skill instructions use the unbound relative reference scripts/fetch_comments.py while the helper is bundled under the skill directory; replay from target-repository cwd versus an explicitly bound skill root is still required to confirm the reported runtime failure"
     },
     {
       "id": "openai/skills#526",

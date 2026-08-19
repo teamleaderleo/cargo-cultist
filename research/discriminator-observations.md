@@ -141,6 +141,31 @@ cargo run --example discriminator_observations \
 
 The reader validates the supplied observation batch and prints generic current/unknown/invalid partition receipts.
 
+## Executed GitHub receipt
+
+Draft PR #187 was compacted to one semantic commit on #179's exact green receipt head.
+
+Exact semantic head:
+
+```text
+bea8b42be1d372096c64e41c7dce37cb363b8f1a
+```
+
+GitHub Actions CI run `32248518562` / run number `1266` completed successfully. The job passed:
+
+- `cargo fmt --check`;
+- `cargo clippy --all-targets -- -D warnings`;
+- active-work preflight;
+- full `cargo test`, including selected #179 discriminator coverage, KNOWN/UNKNOWN/INVALID partition behavior, duplicate/conflict identity controls, distinct-source identity preservation, deterministic round trip, and opaque value semantics;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON plus positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+The first CI attempt failed only at rustfmt before Clippy or tests. The exact formatter delta was applied, then the branch was compacted back to the single semantic commit above before the successful run.
+
+Because #187 is stacked on #179 rather than `main`, the PR executes the ordinary CI workflow; the generated-provenance PR workflow is not part of this stacked carrier's gate.
+
 ## Boundary
 
 - research-only reference seam;
@@ -153,7 +178,7 @@ The reader validates the supplied observation batch and prints generic current/u
 
 ## Next discriminator
 
-If this three-family reference seam survives CI, the next useful experiment is deliberately tiny:
+The three-family reference seam survived CI. The next useful experiment is deliberately tiny:
 
 ```text
 #179 candidate needs discriminator D
@@ -161,9 +186,9 @@ If this three-family reference seam survives CI, the next useful experiment is d
 -> return explicit missing-observation frontier
 ```
 
-Then compare that frontier with #145's probe-capability planning. A useful composition would let #145 select a source-owned probe capable of producing observation D without making #185 execute it.
+Compare that frontier with #145's probe-capability planning while keeping their vocabularies separate. #185 identifies the missing generic observation reference; a source adapter must map that need to #145's `{kind,target}` clearing/probe contract. The generic layer must not assume that a matching string means a probe can produce the observation.
 
-If the bridge requires family-specific probe semantics inside #185, keep the bridge in adapters and preserve the reference module as the narrow boundary earned here.
+A useful composition would let #145 select a source-owned probe capable of producing observation D while #185 remains a read-only reference/partition layer. If the bridge requires family-specific probe semantics inside #185, keep the bridge in adapters and preserve the reference module as the narrow boundary earned here.
 
 North star:
 

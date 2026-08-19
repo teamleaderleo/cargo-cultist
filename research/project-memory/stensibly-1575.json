@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/stensibly",
+  "anchor": {
+    "kind": "pull_request",
+    "number": 1575
+  },
+  "artifacts": [
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1575
+      },
+      "title": "Catch overlong Convex index identifiers in CI",
+      "state": "closed",
+      "created_at": "2026-08-15T12:57:17Z",
+      "closed_at": "2026-08-15T13:00:58Z",
+      "revision": {
+        "head_sha": "78a9061b2feebe71211f0034ff2705b7143f6ce9",
+        "base_sha": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+        "merged": true
+      },
+      "changed_paths": [
+        "test/convex-index-identifier-limit.test.ts"
+      ],
+      "evidence_text": "Closes #1574.\nFollow-up to production deployability repairs #1569/#1571/#1573.\n\nPrevent the same class of production-only Convex failure from merging again. Ordinary CI previously accepted two `by_*` index identifiers over Convex's 64-character limit; protected production schema analysis caught them only after merge.\n\nAdd one Bun regression that scans retained `convex/**/*.ts` string literals matching `by_*` and fails when any exceed 64 characters. Generated Convex files are excluded. The test also reconstructs the two historical mail index names from fragments and proves both exceed the production limit.",
+      "evidence_complete": false
+    },
+    {
+      "reference": {
+        "kind": "issue",
+        "number": 1574
+      },
+      "title": "Catch overlong Convex index identifiers before production deploy",
+      "state": "closed",
+      "created_at": "2026-08-15T12:56:28Z",
+      "closed_at": "2026-08-15T13:00:59Z",
+      "revision": null,
+      "changed_paths": [],
+      "evidence_text": "Programme: deployment reliability follow-up from #1568/#1570/#1572\nRelated: #1488 hosted mail production recovery\n\nTwo independent mail schemas passed ordinary repository CI and only failed later in protected Convex Production because their index names exceeded Convex's 64-character identifier limit. Add one source-level reversing control so ordinary CI catches that deployment class before merge.",
+      "evidence_complete": false
+    },
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1569
+      },
+      "title": "Keep hosted mail contracts Convex-runtime neutral",
+      "state": "closed",
+      "created_at": "2026-08-15T12:24:43Z",
+      "closed_at": "2026-08-15T12:31:18Z",
+      "revision": {
+        "head_sha": "ee1888efd3e59c5e3ebcaf449642145044983670",
+        "base_sha": "237beebb7e42aa1a8588a2d149cc313246f285ec",
+        "merged": true
+      },
+      "changed_paths": [
+        "package.json",
+        "src/mail-thread-contract.ts",
+        "test/mail-thread-runtime-neutral.test.ts",
+        "test/runtime/run-mail-thread-handle-runtime.ts"
+      ],
+      "evidence_text": "Closes #1568.\nContinuation from closed #1518 / merged #1524.\n\nRepair the production Convex deployment failure exposed after #1524. Ordinary Convex mail functions import the shared mail-thread contract; that contract imported `node:crypto`, so production `convex codegen --dry-run --typecheck enable` could not bundle the hosted outbound functions and the actual Convex deploy step never ran.",
+      "evidence_complete": false
+    },
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1571
+      },
+      "title": "Keep Gmail semantic-admission indexes deployable",
+      "state": "closed",
+      "created_at": "2026-08-15T12:35:46Z",
+      "closed_at": "2026-08-15T12:40:25Z",
+      "revision": {
+        "head_sha": "4301d87b7a46d88f3758139388a6ff9bb8ff67f7",
+        "base_sha": "8c322159d5f821cc213c2b0cfde65d4583793ff8",
+        "merged": true
+      },
+      "changed_paths": [
+        "convex/mailSemanticAdmission.ts",
+        "convex/mailSemanticAdmissionIndexes.test.ts",
+        "convex/mailSemanticAdmissionIndexes.ts",
+        "convex/mailSemanticAdmissionSchema.ts"
+      ],
+      "evidence_text": "Closes #1570.\nDeployment continuation from #1568/#1569; parent semantics merged in #1528/#1521.\n\nAfter #1569 cleared the `node:crypto` Convex bundle failure, production schema evaluation exposed the next blocker: one Gmail semantic-admission index name exceeds Convex's 64-character identifier limit, so the real Convex deployment still never runs.\n\nReplace that overlong identifier with a 63-character identifier, preserve exact field order, share the literal between schema declaration and both query sites, and add a focused 64-character-limit regression.",
+      "evidence_complete": false
+    },
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1573
+      },
+      "title": "Keep Gmail mailbox-disposition indexes deployable",
+      "state": "closed",
+      "created_at": "2026-08-15T12:48:20Z",
+      "closed_at": "2026-08-15T12:52:59Z",
+      "revision": {
+        "head_sha": "d26c8c2f02d1249abd40d1c3d17cefe72e024e5d",
+        "base_sha": "ca5d2c7fdf89666e523972ab6e81610d17b9611b",
+        "merged": true
+      },
+      "changed_paths": [
+        "convex/gmailMailboxDisposition.ts",
+        "convex/gmailMailboxDispositionIndexes.test.ts",
+        "convex/gmailMailboxDispositionSchema.ts"
+      ],
+      "evidence_text": "Closes #1572.\nParent: #1522 / merged #1565.\nDeployment continuation: #1568/#1569, #1570/#1571.\n\nProduction Convex analysis now gets past the outbound runtime and semantic-admission blockers, then rejects the merged #1522 exact-message disposition lane because its six-field index name exceeds Convex's 64-character identifier limit. This packet changes only that identifier so the already-merged semantics can deploy.\n\nRename that index to a 60-character identifier while preserving the exact indexed sequence and add a focused identifier-limit reversal.",
+      "evidence_complete": false
+    }
+  ],
+  "edges": [
+    {
+      "from": {
+        "kind": "pull_request",
+        "number": 1575
+      },
+      "relation": "closes",
+      "to": {
+        "kind": "issue",
+        "number": 1574
+      },
+      "evidence": "Closes #1574."
+    },
+    {
+      "from": {
+        "kind": "pull_request",
+        "number": 1575
+      },
+      "relation": "follow_up_to",
+      "to": {
+        "kind": "pull_request",
+        "number": 1569
+      },
+      "evidence": "Follow-up to production deployability repairs #1569/#1571/#1573."
+    },
+    {
+      "from": {
+        "kind": "pull_request",
+        "number": 1575
+      },
+      "relation": "follow_up_to",
+      "to": {
+        "kind": "pull_request",
+        "number": 1571
+      },
+      "evidence": "Follow-up to production deployability repairs #1569/#1571/#1573."
+    },
+    {
+      "from": {
+        "kind": "pull_request",
+        "number": 1575
+      },
+      "relation": "follow_up_to",
+      "to": {
+        "kind": "pull_request",
+        "number": 1573
+      },
+      "evidence": "Follow-up to production deployability repairs #1569/#1571/#1573."
+    },
+    {
+      "from": {
+        "kind": "pull_request",
+        "number": 1571
+      },
+      "relation": "continuation_from",
+      "to": {
+        "kind": "pull_request",
+        "number": 1569
+      },
+      "evidence": "Deployment continuation from #1568/#1569; parent semantics merged in #1528/#1521."
+    },
+    {
+      "from": {
+        "kind": "pull_request",
+        "number": 1573
+      },
+      "relation": "continuation_from",
+      "to": {
+        "kind": "pull_request",
+        "number": 1569
+      },
+      "evidence": "Deployment continuation: #1568/#1569, #1570/#1571."
+    },
+    {
+      "from": {
+        "kind": "pull_request",
+        "number": 1573
+      },
+      "relation": "continuation_from",
+      "to": {
+        "kind": "pull_request",
+        "number": 1571
+      },
+      "evidence": "Deployment continuation: #1568/#1569, #1570/#1571."
+    }
+  ]
+}

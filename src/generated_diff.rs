@@ -767,9 +767,7 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].sha, "abc");
         assert_eq!(records[0].parent.as_deref(), Some("parent"));
-        assert!(records[0]
-            .paths
-            .contains(Path::new("generated/output.rs")));
+        assert!(records[0].paths.contains(Path::new("generated/output.rs")));
         assert_eq!(records[1].subject, "docs: two");
     }
 

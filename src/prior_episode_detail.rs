@@ -63,9 +63,7 @@ pub fn project_prior_episode_detail(
         inputs: vec![input.clone()],
     };
     let front = evaluate_prior_episode_front(&query).map_err(|error| {
-        PriorEpisodeDetailError::new(format!(
-            "selected prior episode is not actionable: {error}"
-        ))
+        PriorEpisodeDetailError::new(format!("selected prior episode is not actionable: {error}"))
     })?;
 
     if front.items.len() != 1 || !front.quiet.is_empty() {

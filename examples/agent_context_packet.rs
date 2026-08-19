@@ -151,7 +151,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let budget = PacketBudget::default();
     let guidance = applicable_guidance(&root, &target)?;
-    let reviewed_decisions = decision_memory::resolve_repository_decisions(&root, &relative_target)?;
+    let reviewed_decisions =
+        decision_memory::resolve_repository_decisions(&root, &relative_target)?;
     let (recent_history, history_truncated) =
         recent_commits(&root, &relative_target, budget.max_history_commits)?;
     let CompanionAnalysis {

@@ -117,7 +117,7 @@ test_path_missing
 observed_reconciliation
 ```
 
-The retained case should evaluate to:
+The retained case evaluates to:
 
 ```text
 status                  observed_reconciliation
@@ -155,6 +155,42 @@ cargo run --example observation_reconciliation -- \
   research/project-memory/stensibly-1609-1610.json \
   research/observation-reconciliation/stensibly-1609-1610.json
 ```
+
+## Executed current-main receipt
+
+The formatted semantic code + retained evidence head was:
+
+```text
+head:       7174484426834a932ee54f90c33699e48a1c0b9a
+main:       a76fae2e768e6429a55260a5177500a8e0be79ff
+merge view: 9d434166dd375af005270922e459df564506cad1
+```
+
+GitHub Actions receipt:
+
+```text
+CI run:                    32260151598  success
+Generated provenance run:  32260151606  success
+```
+
+The merge-view CI passed:
+
+```text
+rustfmt
+all-target Clippy with -D warnings
+project-memory lineage controls
+GitHub review-memory adapter controls
+GitHub issue-closure adapter controls
+external GitHub reference controls
+full Rust tests
+repository scan text + JSON dogfood
+bounded history text + JSON dogfood
+CI test-filter text + JSON dogfood
+positive/control CI-filter fixtures
+pull-request diff text + JSON dogfood
+```
+
+The retained observation-reconciliation tests passed all fourteen adversarial controls above. The only change after this semantic receipt is the durable receipt prose in this research note.
 
 ## Product direction
 

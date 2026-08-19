@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "inputs": [
+    {
+      "kind": "review_memory",
+      "id": "pr-agent:2424:github-fallback-publish-state",
+      "query": {
+        "schema_version": 1,
+        "current": {
+          "concern_key": "pr-agent:persistent-inline-comments:github-fallback-publish-state",
+          "context": {
+            "repository": "The-PR-Agent/pr-agent",
+            "revision": "f6070fb1a45516565bbb8deeb02a1f66cec13d91",
+            "work": "github:pull/2424",
+            "path": "pr_agent/git_providers/github_provider.py"
+          }
+        },
+        "records": [
+          {
+            "event_id": "github:pull/2424/review-comment/3355870564",
+            "concern_key": "pr-agent:persistent-inline-comments:github-fallback-publish-state",
+            "source_ref": "github:pull/2424/review-comment/3355870564",
+            "subject": {
+              "repository": "The-PR-Agent/pr-agent",
+              "work": "github:pull/2424",
+              "revision": "8fb9e4e86b4794d39afba2d62413571cbc04a744",
+              "scope": {
+                "mode": "exact",
+                "path": "pr_agent/git_providers/github_provider.py"
+              }
+            },
+            "outcome": "patch_changed",
+            "resolution_ref": "github:pull/2424/review-comment/3355925719"
+          }
+        ]
+      }
+    }
+  ]
+}

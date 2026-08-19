@@ -29,18 +29,18 @@ episode_ids[]
 
 so a consumer can always inspect exactly which retained episodes produced the number.
 
-No weighting is applied. `changed_next_action=3` and `correct_quiet_negative=1` remain different observed outcomes rather than points in one score.
+No weighting is applied. `changed_next_action=4` and `correct_quiet_negative=1` remain different observed outcomes rather than points in one score.
 
 ## Current retained Cultist corpus
 
-`research/behavioral-episodes/cultist-collaboration-v1.json` currently contains four unique episodes:
+`research/behavioral-episodes/cultist-collaboration-v1.json` currently contains five unique episodes:
 
 ```text
-3 surfaced
+4 surfaced
 1 quiet
-3 consulted
+4 consulted
 
-3 changed_next_action
+4 changed_next_action
 1 correct_quiet_negative
 ```
 
@@ -49,13 +49,16 @@ Evidence families remain separate:
 ```text
 active-work-heads-up
 concurrent-main-head-movement
+known-stale-observation-counterexample
 project-memory-contract-collision
 project-memory-relation-strengthening
 ```
 
-The new `project-memory-contract-collision` episode records a useful semantic-preflight species: #166 and #167 changed disjoint paths while tightening opposite sides of one project-memory packet contract. Current-main integration exposed the mismatch and #174 repaired the producer/consumer seam.
+The `project-memory-contract-collision` episode records a semantic-preflight species: #166 and #167 changed disjoint paths while tightening opposite sides of one project-memory packet contract. Current-main integration exposed the mismatch and #174 repaired the producer/consumer seam.
 
-This sample is deliberately tiny. The counts describe these four episodes only.
+The new `known-stale-observation-counterexample` episode records the #201 -> #210 research transition. #201 showed that the v1 observation/frontier composition could retain a known discriminator value while shared applicability was INVALID or UNKNOWN and still label the frontier CURRENT. That evidence changed the next action: Phase B acquisition work was deferred, and #210 split value knowledge from current applicability before the observation-to-probe bridge continued.
+
+This sample is deliberately tiny. The counts describe these five episodes only.
 
 ## Research command
 
@@ -73,7 +76,7 @@ The summary does not answer:
 - whether one evidence family is globally good or bad;
 - whether an action change improved the final task result;
 - whether a quiet negative is worth the same attention/cost as an action-changing positive;
-- whether a four-episode sample supports product promotion;
+- whether a five-episode sample supports product promotion;
 - whether one worker/model population generalizes to another;
 - whether two different tasks are comparable.
 

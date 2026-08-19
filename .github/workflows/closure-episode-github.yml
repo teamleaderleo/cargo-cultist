@@ -1,0 +1,164 @@
+name: GitHub issue-closure carrier
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Public GitHub owner/repository
+        required: true
+        default: anthropics/claude-code
+        type: string
+      later_issue:
+        description: Explicit re-report issue number
+        required: true
+        default: "57507"
+        type: string
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  closure-episode:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'research/issue-closure-evidence'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Run collector regression controls
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/closure_episode_github.py \
+            scripts/closure_episode_github_test.py
+          python scripts/closure_episode_github_test.py
+
+      - name: Resolve carrier inputs
+        id: carrier
+        env:
+          INPUT_REPOSITORY: ${{ inputs.repository }}
+          INPUT_LATER_ISSUE: ${{ inputs.later_issue }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            repository="anthropics/claude-code"
+            later_issue="57507"
+            carrier="true"
+          else
+            repository="$INPUT_REPOSITORY"
+            later_issue="$INPUT_LATER_ISSUE"
+            carrier="false"
+          fi
+          {
+            echo "repository=$repository"
+            echo "later_issue=$later_issue"
+            echo "carrier=$carrier"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect closure episode
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ steps.carrier.outputs.repository }}
+          TARGET_LATER_ISSUE: ${{ steps.carrier.outputs.later_issue }}
+        run: |
+          set -euo pipefail
+          python scripts/closure_episode_github.py \
+            --repository "$TARGET_REPOSITORY" \
+            --later-issue "$TARGET_LATER_ISSUE" \
+            --output closure-episode.json \
+            --receipt-output closure-episode-github-receipt.json \
+            > /tmp/closure-episode-github.stdout
+
+      - name: Validate through independent Rust evaluator
+        run: |
+          cargo run --quiet --example closure_episode \
+            < closure-episode.json \
+            > closure-episode-evaluation.json
+
+      - name: Assert Claude Code inactive-closure carrier
+        if: steps.carrier.outputs.carrier == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          episode = json.loads(Path("closure-episode.json").read_text())
+          receipt = json.loads(Path("closure-episode-github-receipt.json").read_text())
+          evaluation = json.loads(Path("closure-episode-evaluation.json").read_text())
+
+          assert episode["repository"] == "anthropics/claude-code", episode
+          assert episode["prior"]["number"] == 31294, episode
+          assert episode["later"]["number"] == 57507, episode
+          assert episode["prior"]["state"] == "closed", episode
+          assert episode["later"]["state"] == "closed", episode
+          assert episode["prior"]["state_reason"] == "not_planned", episode
+          assert episode["later"]["state_reason"] == "not_planned", episode
+          assert episode["closure"]["comment_id"] == 4230270046, episode
+          assert episode["closure"]["actor"] == "github-actions[bot]", episode
+          assert episode["closure"]["kind"] == "administrative_inactive", episode
+          assert "inactive for too long" in episode["closure"]["evidence"], episode
+          assert episode["re_report"]["relation"] == "re_report_of", episode
+          assert episode["re_report"]["from_issue"] == 57507, episode
+          assert episode["re_report"]["to_issue"] == 31294, episode
+          assert "not because it was fixed" in episode["re_report"]["evidence"], episode
+
+          challenge = episode["duplicate_challenge"]
+          assert challenge["suggestion_comment_id"] == 4008755017, challenge
+          assert challenge["rejection_comment_id"] == 4008815491, challenge
+          assert challenge["suggestion_actor"] == "github-actions[bot]", challenge
+          assert challenge["rejection_actor"] == "Mationetap", challenge
+
+          assert receipt["prior_comment_count"] == 5, receipt
+          assert receipt["pagination_complete"] is True, receipt
+          assert receipt["duplicate_challenge_retained"] is True, receipt
+
+          assert evaluation["prior_state"] == "closed", evaluation
+          assert evaluation["later_state"] == "closed", evaluation
+          assert evaluation["closure_kind"] == "administrative_inactive", evaluation
+          assert evaluation["re_report_observed"] is True, evaluation
+          assert evaluation["clearance"] == "unknown", evaluation
+          assert evaluation["disposition"] == "inspect_prior_failure", evaluation
+          PY
+
+      - name: Write job summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          episode = json.loads(Path("closure-episode.json").read_text())
+          receipt = json.loads(Path("closure-episode-github-receipt.json").read_text())
+          evaluation = json.loads(Path("closure-episode-evaluation.json").read_text())
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## GitHub issue closure episode\n\n")
+              out.write(
+                  f"Episode: `{episode['repository']}#{episode['later']['number']}` "
+                  f"re-reports `#{episode['prior']['number']}`\n\n"
+              )
+              out.write(
+                  f"Closure comment: `{episode['closure']['comment_id']}` · "
+                  f"kind: **{episode['closure']['kind']}**\n\n"
+              )
+              out.write(
+                  f"Prior comments scanned: **{receipt['prior_comment_count']}** · "
+                  f"clearance: **{evaluation['clearance']}** · "
+                  f"disposition: **{evaluation['disposition']}**\n"
+              )
+          PY
+
+      - name: Upload closure receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: closure-episode-${{ github.run_id }}
+          path: |
+            closure-episode.json
+            closure-episode-github-receipt.json
+            closure-episode-evaluation.json
+          if-no-files-found: error

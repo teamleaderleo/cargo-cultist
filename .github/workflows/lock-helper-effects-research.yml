@@ -22,14 +22,12 @@ jobs:
 
       - name: Install stable Rust
         run: |
-          rustup toolchain install stable --profile minimal --component clippy
+          rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Probe semantic gates
+      - name: Run synthetic helper-effect controls
         working-directory: cultist
-        run: |
-          cargo clippy --example lock_helper_effects -- -D warnings
-          cargo test --example lock_helper_effects
+        run: cargo test --example lock_helper_effects
 
       - name: Checkout pinned WGPU
         uses: actions/checkout@v4

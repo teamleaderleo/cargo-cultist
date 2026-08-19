@@ -6,7 +6,6 @@ use serde::de::DeserializeOwned;
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
 
-pub const COMPACT_GRAMMAR_VERSION: u32 = 1;
 const GRAMMAR_HEADER: &str = "C1";
 
 #[derive(Debug, Clone, Eq, PartialEq)]

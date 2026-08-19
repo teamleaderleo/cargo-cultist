@@ -21,7 +21,6 @@ pub struct PerfCounters {
     pub git_subprocesses: usize,
     pub rust_files_parsed: usize,
     pub rust_cache_hits: usize,
-    pub rust_source_bytes_read: u64,
 }
 
 pub fn init_from_environment() {
@@ -44,12 +43,11 @@ pub fn record_git_subprocess() {
     });
 }
 
-pub fn record_rust_scan(parsed: usize, cache_hits: usize, source_bytes_read: u64) {
+pub fn record_rust_scan(parsed: usize, cache_hits: usize) {
     STATE.with(|state| {
         if let Some(state) = state.borrow_mut().as_mut() {
             state.counters.rust_files_parsed += parsed;
             state.counters.rust_cache_hits += cache_hits;
-            state.counters.rust_source_bytes_read += source_bytes_read;
         }
     });
 }
@@ -100,7 +98,7 @@ mod tests {
     #[test]
     fn disabled_counters_are_inert() {
         record_git_subprocess();
-        record_rust_scan(3, 4, 500);
+        record_rust_scan(3, 4);
         assert_eq!(finish(), None);
     }
 
@@ -109,11 +107,10 @@ mod tests {
         let (_, counters) = capture(|| {
             record_git_subprocess();
             record_git_subprocess();
-            record_rust_scan(3, 7, 2048);
+            record_rust_scan(3, 7);
         });
         assert_eq!(counters.git_subprocesses, 2);
         assert_eq!(counters.rust_files_parsed, 3);
         assert_eq!(counters.rust_cache_hits, 7);
-        assert_eq!(counters.rust_source_bytes_read, 2048);
     }
 }

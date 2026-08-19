@@ -4,8 +4,8 @@
   "task_instruction": "Choose exactly one first justified action for this proposed Stensibly patch before writing review feedback.",
   "allowed_first_actions": [
     {
-      "id": "block_and_shorten_identifier",
-      "label": "Block this patch and shorten the proposed index identifier while preserving field order"
+      "id": "block_patch",
+      "label": "Block the patch as currently proposed"
     },
     {
       "id": "inspect_accepted_guard_detail",

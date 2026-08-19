@@ -6,10 +6,8 @@ use coordination_edges::{CoordinationKind, extract_snapshot};
 
 #[test]
 fn replays_public_preflight_748_hold_merge_clause() {
-    let report = extract_snapshot(include_str!(
-        "../research/fixtures/preflight-748-hold.json"
-    ))
-    .unwrap();
+    let report =
+        extract_snapshot(include_str!("../research/fixtures/preflight-748-hold.json")).unwrap();
 
     assert_eq!(report.coordination_edges.len(), 1);
     let edge = &report.coordination_edges[0];

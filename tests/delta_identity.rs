@@ -84,7 +84,10 @@ enum ApplyError {
     MissingTarget,
 }
 
-fn apply_position_unchecked(snapshot: &mut Snapshot, delta: &PositionalDelta) -> Result<(), ApplyError> {
+fn apply_position_unchecked(
+    snapshot: &mut Snapshot,
+    delta: &PositionalDelta,
+) -> Result<(), ApplyError> {
     let finding = snapshot
         .findings
         .get_mut(delta.index)
@@ -93,7 +96,10 @@ fn apply_position_unchecked(snapshot: &mut Snapshot, delta: &PositionalDelta) ->
     Ok(())
 }
 
-fn apply_position_checked(snapshot: &mut Snapshot, delta: &PositionalDelta) -> Result<(), ApplyError> {
+fn apply_position_checked(
+    snapshot: &mut Snapshot,
+    delta: &PositionalDelta,
+) -> Result<(), ApplyError> {
     if snapshot.fingerprint() != delta.base {
         return Err(ApplyError::BaseMismatch);
     }

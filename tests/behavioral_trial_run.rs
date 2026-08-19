@@ -20,8 +20,7 @@ const CONTROL_FILE_SHA: &str = "6a568aed1eb660141cd7e7759e47edeb10a5c759fe140268
 const TREATMENT_FILE_SHA: &str = "1063efc8ecdf0313b947923dad8216fb9fa43b2e8b8cafa7ab6b63d53eb65c7d";
 const SAMPLING_SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OUTPUT_SHA: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const OTHER_SAMPLING_SHA: &str =
-    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const OTHER_SAMPLING_SHA: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 type ReceiptMutation = fn(&mut BehavioralTrialRunReceipt);
 

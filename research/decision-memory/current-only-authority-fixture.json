@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "current-only-authority-fixture-v1",
+  "kind": "authority-provenance-fixture",
+  "scope": {
+    "path_prefix": "src/main.rs"
+  },
+  "reason": "This temporary fixture exists only on the research branch so accepted-reference provenance can distinguish current-only record content from records already present on the configured accepted Git reference.",
+  "authority": [
+    {
+      "kind": "research",
+      "reference": "#75"
+    }
+  ]
+}

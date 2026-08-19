@@ -1,9 +1,7 @@
 name: External dogfood carrier
 
 on:
-  push:
-    branches:
-      - dogfood/external-repo-harness
+  pull_request:
 
 permissions:
   contents: read

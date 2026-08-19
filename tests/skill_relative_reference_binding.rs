@@ -56,18 +56,10 @@ fn same_relative_reference_resolves_to_different_objects_under_two_ambient_roots
     let context = fixture_context("/workspace/repository-a");
     let reference = Path::new("scripts/fetch_comments.py");
 
-    let target_resolution = resolve_reference(
-        &context,
-        reference,
-        ReferenceResolution::AmbientTarget,
-    )
-    .unwrap();
-    let skill_resolution = resolve_reference(
-        &context,
-        reference,
-        ReferenceResolution::ExplicitSkillRoot,
-    )
-    .unwrap();
+    let target_resolution =
+        resolve_reference(&context, reference, ReferenceResolution::AmbientTarget).unwrap();
+    let skill_resolution =
+        resolve_reference(&context, reference, ReferenceResolution::ExplicitSkillRoot).unwrap();
 
     assert_eq!(
         target_resolution,
@@ -86,18 +78,10 @@ fn known_bundled_helper_is_recoverable_from_explicit_skill_root_but_not_target_c
     let reference = Path::new("scripts/fetch_comments.py");
     let known = bundled_skill_paths();
 
-    let target_resolution = resolve_reference(
-        &context,
-        reference,
-        ReferenceResolution::AmbientTarget,
-    )
-    .unwrap();
-    let skill_resolution = resolve_reference(
-        &context,
-        reference,
-        ReferenceResolution::ExplicitSkillRoot,
-    )
-    .unwrap();
+    let target_resolution =
+        resolve_reference(&context, reference, ReferenceResolution::AmbientTarget).unwrap();
+    let skill_resolution =
+        resolve_reference(&context, reference, ReferenceResolution::ExplicitSkillRoot).unwrap();
 
     assert!(!known.contains(&target_resolution));
     assert!(known.contains(&skill_resolution));
@@ -109,14 +93,14 @@ fn explicit_skill_root_resolution_is_invariant_to_target_repository_movement() {
     let second = fixture_context("/tmp/another-checkout");
     let reference = Path::new("scripts/fetch_comments.py");
 
-    let first_target = resolve_reference(&first, reference, ReferenceResolution::AmbientTarget)
-        .unwrap();
-    let second_target = resolve_reference(&second, reference, ReferenceResolution::AmbientTarget)
-        .unwrap();
-    let first_bound = resolve_reference(&first, reference, ReferenceResolution::ExplicitSkillRoot)
-        .unwrap();
-    let second_bound = resolve_reference(&second, reference, ReferenceResolution::ExplicitSkillRoot)
-        .unwrap();
+    let first_target =
+        resolve_reference(&first, reference, ReferenceResolution::AmbientTarget).unwrap();
+    let second_target =
+        resolve_reference(&second, reference, ReferenceResolution::AmbientTarget).unwrap();
+    let first_bound =
+        resolve_reference(&first, reference, ReferenceResolution::ExplicitSkillRoot).unwrap();
+    let second_bound =
+        resolve_reference(&second, reference, ReferenceResolution::ExplicitSkillRoot).unwrap();
 
     assert_ne!(first_target, second_target);
     assert_eq!(first_bound, second_bound);
@@ -129,12 +113,8 @@ fn explicit_root_binding_does_not_make_traversal_or_absolute_references_valid() 
     for invalid in ["../scripts/fetch_comments.py", "/tmp/fetch_comments.py", ""] {
         let reference = Path::new(invalid);
         assert!(
-            resolve_reference(
-                &context,
-                reference,
-                ReferenceResolution::ExplicitSkillRoot,
-            )
-            .is_none()
+            resolve_reference(&context, reference, ReferenceResolution::ExplicitSkillRoot,)
+                .is_none()
         );
     }
 }

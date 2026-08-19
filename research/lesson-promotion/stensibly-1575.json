@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/stensibly",
+  "candidate_id": "stensibly-convex-index-limit-guard-promotion",
+  "candidate_discriminator_id": "convex_production_failure_class",
+  "candidate_value_ref": "index_identifier_limit",
+  "repair_marker": "64-character identifier limit",
+  "repair_evidence": [
+    {
+      "artifact": {
+        "kind": "pull_request",
+        "number": 1571
+      },
+      "source_evidence": "After #1569 cleared the `node:crypto` Convex bundle failure, production schema evaluation exposed the next blocker: one Gmail semantic-admission index name exceeds Convex's 64-character identifier limit, so the real Convex deployment still never runs."
+    },
+    {
+      "artifact": {
+        "kind": "pull_request",
+        "number": 1573
+      },
+      "source_evidence": "Production Convex analysis now gets past the outbound runtime and semantic-admission blockers, then rejects the merged #1522 exact-message disposition lane because its six-field index name exceeds Convex's 64-character identifier limit. This packet changes only that identifier so the already-merged semantics can deploy."
+    }
+  ],
+  "adjacent_predecessors": [
+    {
+      "artifact": {
+        "kind": "pull_request",
+        "number": 1569
+      },
+      "discriminator_id": "convex_production_failure_class",
+      "value_ref": "node_runtime_bundle",
+      "marker": "`node:crypto`",
+      "source_evidence": "Repair the production Convex deployment failure exposed after #1524. Ordinary Convex mail functions import the shared mail-thread contract; that contract imported `node:crypto`, so production `convex codegen --dry-run --typecheck enable` could not bundle the hosted outbound functions and the actual Convex deploy step never ran."
+    }
+  ],
+  "guard": {
+    "artifact": {
+      "kind": "pull_request",
+      "number": 1575
+    },
+    "discriminator_id": "convex_production_failure_class",
+    "value_ref": "index_identifier_limit",
+    "marker": "two historical mail index names",
+    "source_evidence": "Prevent the same class of production-only Convex failure from merging again. Ordinary CI previously accepted two `by_*` index identifiers over Convex's 64-character limit; protected production schema analysis caught them only after merge.\n\nAdd one Bun regression that scans retained `convex/**/*.ts` string literals matching `by_*` and fails when any exceed 64 characters. Generated Convex files are excluded. The test also reconstructs the two historical mail index names from fragments and proves both exceed the production limit.",
+    "enforcement_kind": "regression_test",
+    "enforcement_path": "test/convex-index-identifier-limit.test.ts",
+    "scope_ref": "convex/**/*.ts",
+    "covered_repairs": [
+      {
+        "kind": "pull_request",
+        "number": 1571
+      },
+      {
+        "kind": "pull_request",
+        "number": 1573
+      }
+    ]
+  }
+}

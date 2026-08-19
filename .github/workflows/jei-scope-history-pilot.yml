@@ -1,0 +1,154 @@
+name: JEI explicit scope-history pilot
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/jei-scope-history-pilot.yml"
+      - "scripts/jei_scope_history_pilot.py"
+
+permissions:
+  contents: read
+
+jobs:
+  stensibly-explicit-convex-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Resolve pinned Stensibly case
+        id: target
+        run: |
+          python cultist/scripts/external_dogfood_case.py \
+            --registry cultist/research/external-dogfood-cases.json \
+            --case stensibly-1575-pre-guard-jei \
+            --github-output "$GITHUB_OUTPUT" \
+            > resolved-target.json
+          cat resolved-target.json
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build file-local agent context packet
+        run: cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
+
+      - name: Checkout exact pre-guard Stensibly state
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.target.outputs.repository }}
+          ref: ${{ steps.target.outputs.ref }}
+          fetch-depth: ${{ steps.target.outputs.fetch_depth }}
+          persist-credentials: false
+          path: target
+
+      - name: Verify exact historical coordinate
+        env:
+          EXPECTED_HEAD: ${{ steps.target.outputs.ref }}
+          TARGET_FILE: ${{ steps.target.outputs.history_file }}
+        run: |
+          set -euo pipefail
+          test "$(git -C target rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -f "target/$TARGET_FILE"
+          test -d target/convex
+
+          scope_history="$(git -C target log --no-merges --format='%s' -n 20 -- convex)"
+          printf '%s\n' "$scope_history"
+          grep -F "Keep Gmail semantic-admission indexes deployable (#1571)" <<<"$scope_history"
+          grep -F "Keep Gmail mailbox-disposition indexes deployable (#1573)" <<<"$scope_history"
+
+      - name: Compile explicit scope-history envelopes
+        env:
+          TARGET_FILE: ${{ steps.target.outputs.history_file }}
+          TARGET_REPOSITORY: ${{ steps.target.outputs.repository }}
+          TARGET_SOURCE: ${{ steps.target.outputs.source }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python cultist/scripts/jei_scope_history_pilot.py \
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet" \
+            --repo "$PWD/target" \
+            --target "$TARGET_FILE" \
+            --scope convex \
+            --repository-label "$TARGET_REPOSITORY" \
+            --source "$TARGET_SOURCE / explicit-scope convex" \
+            --budget 1048576 \
+            --budget 32768 \
+            --control-budget 1048576 \
+            --acceptance-budget 32768 \
+            --history-limit 20 \
+            --required-subject "Keep Gmail semantic-admission indexes deployable (#1571)" \
+            --required-subject "Keep Gmail mailbox-disposition indexes deployable (#1573)" \
+            --output "$PWD/artifacts/stensibly-explicit-convex-scope.json"
+
+      - name: Reject invalid and non-containing scopes
+        env:
+          TARGET_FILE: ${{ steps.target.outputs.history_file }}
+          TARGET_REPOSITORY: ${{ steps.target.outputs.repository }}
+          TARGET_SOURCE: ${{ steps.target.outputs.source }}
+        run: |
+          set -euo pipefail
+          common=(
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet"
+            --repo "$PWD/target"
+            --target "$TARGET_FILE"
+            --repository-label "$TARGET_REPOSITORY"
+            --source "$TARGET_SOURCE / scope-validation"
+            --budget 32768
+            --control-budget 32768
+            --acceptance-budget 32768
+            --required-subject "Keep Gmail semantic-admission indexes deployable (#1571)"
+            --output "$PWD/artifacts/invalid-scope.json"
+          )
+
+          if python cultist/scripts/jei_scope_history_pilot.py "${common[@]}" --scope ../; then
+            echo "traversing scope unexpectedly accepted" >&2
+            exit 1
+          fi
+
+          if python cultist/scripts/jei_scope_history_pilot.py "${common[@]}" --scope src; then
+            echo "non-containing scope unexpectedly accepted" >&2
+            exit 1
+          fi
+
+      - name: Write scope pilot summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("artifacts/stensibly-explicit-convex-scope.json")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Stensibly explicit `convex/` scope pilot\n\n")
+              if not path.is_file():
+                  out.write("Scope pilot receipt unavailable.\n")
+                  raise SystemExit(0)
+              receipt = json.loads(path.read_text(encoding="utf-8"))
+              passed = receipt["acceptance"]["passed"]
+              out.write(f"Result: `{'PASS' if passed else 'FAIL'}`  \n")
+              out.write(f"Pinned revision: `{receipt['revision']}`  \n")
+              out.write(f"Target: `{receipt['target']}` · explicit scope: `{receipt['scope']}`\n\n")
+              out.write("| budget | file packet | scope history | combined | fits | lessons |\n")
+              out.write("|---:|---:|---:|---:|---|---|\n")
+              for result in receipt["results"]:
+                  out.write(
+                      f"| {result['budget']} | {result['file_packet_serialized_bytes']} | "
+                      f"{result['scope_history_serialized_bytes']} | {result['combined_serialized_bytes']} | "
+                      f"{'yes' if result['combined_fits_budget'] else 'no'} | "
+                      f"{'yes' if result['preserves_all_required'] else 'no'} |\n"
+                  )
+          PY
+
+      - name: Upload scope-history receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jei-scope-history-stensibly-${{ github.run_id }}
+          path: artifacts/stensibly-explicit-convex-scope.json
+          if-no-files-found: error

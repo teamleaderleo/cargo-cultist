@@ -1,0 +1,81 @@
+name: CI test selection listing research
+
+on:
+  push:
+    branches:
+      - experiment/ci-test-selection-listing
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  listing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+      - name: Probe quality gates
+        run: |
+          cargo fmt --check
+          cargo clippy --example ci_test_selection_listing -- -D warnings
+          cargo test --example ci_test_selection_listing
+      - name: Build disposable selector fixture
+        run: |
+          set -euo pipefail
+          fixture="$(mktemp -d)"
+          echo "$fixture" > /tmp/cultist-selector-fixture
+          mkdir -p "$fixture/src" "$fixture/.github/workflows"
+          git -C "$fixture" init -q
+
+          cat > "$fixture/Cargo.toml" <<'EOF'
+          [package]
+          name = "selector-fixture"
+          version = "0.1.0"
+          edition = "2024"
+          EOF
+
+          cat > "$fixture/src/lib.rs" <<'EOF'
+          #[cfg(test)]
+          mod tests {
+              #[test]
+              fn existing_test() {}
+          }
+          EOF
+
+          cat > "$fixture/.github/workflows/test.yml" <<'EOF'
+          name: fixture
+          on: [push]
+          jobs:
+            test:
+              runs-on: ubuntu-latest
+              steps:
+                - run: cargo test --lib stale_filter
+          EOF
+      - name: Prove stale filter exits green
+        run: |
+          set -euo pipefail
+          fixture="$(cat /tmp/cultist-selector-fixture)"
+          cargo test --manifest-path "$fixture/Cargo.toml" --lib stale_filter | tee /tmp/stale-cargo-test.txt
+          grep -q '0 passed' /tmp/stale-cargo-test.txt
+      - name: Prove listing sees zero selected tests
+        run: |
+          set -euo pipefail
+          fixture="$(cat /tmp/cultist-selector-fixture)"
+          cargo run --quiet --example ci_test_selection_listing -- "$fixture" | tee /tmp/stale-listing.txt
+          grep -q 'filter `stale_filter`' /tmp/stale-listing.txt
+          grep -q 'listed selections: 0' /tmp/stale-listing.txt
+      - name: Prove matching control selects one test
+        run: |
+          set -euo pipefail
+          fixture="$(cat /tmp/cultist-selector-fixture)"
+          sed -i 's/stale_filter/existing_test/' "$fixture/.github/workflows/test.yml"
+          cargo run --quiet --example ci_test_selection_listing -- "$fixture" | tee /tmp/matching-listing.txt
+          grep -q 'filter `existing_test`' /tmp/matching-listing.txt
+          grep -q 'listed selections: 1' /tmp/matching-listing.txt
+          grep -q 'tests::existing_test' /tmp/matching-listing.txt

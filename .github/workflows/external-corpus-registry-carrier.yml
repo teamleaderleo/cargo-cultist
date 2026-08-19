@@ -31,26 +31,25 @@ jobs:
           cases = json.loads(Path("registry.json").read_text())
           by_id = {case["id"]: case for case in cases}
           assert by_id["smolrunner-disposable-clone-history"]["status"] == "replayable"
-          assert by_id["cloud-hypervisor-8734-current-vfio"]["status"] == "replayable"
-          assert by_id["cloud-hypervisor-8734-legacy-precedent-tension"]["status"] == "needs_pin"
+          assert by_id["cloud-hypervisor-8734-precedent-tension"]["status"] == "replayable"
           assert by_id["stensibly-1575-guard-promotion"]["status"] == "adapter_gap"
           assert by_id["linux-fieldwork-bestiary-675"]["status"] == "adapter_gap"
           PY
           set +e
           python cultist/scripts/external_dogfood_case.py \
             --registry cultist/research/external-dogfood-cases.json \
-            --case cloud-hypervisor-8734-legacy-precedent-tension >/tmp/blocked.out 2>/tmp/blocked.err
+            --case stensibly-1575-guard-promotion >/tmp/blocked.out 2>/tmp/blocked.err
           blocked_status=$?
           set -e
           test "$blocked_status" -eq 2
-          grep -q "needs_pin" /tmp/blocked.err
+          grep -q "adapter_gap" /tmp/blocked.err
 
-      - name: Resolve current Cloud Hypervisor case
+      - name: Resolve canonical Cloud Hypervisor case
         id: cloud
         run: |
           python cultist/scripts/external_dogfood_case.py \
             --registry cultist/research/external-dogfood-cases.json \
-            --case cloud-hypervisor-8734-current-vfio \
+            --case cloud-hypervisor-8734-precedent-tension \
             --github-output "$GITHUB_OUTPUT" \
             > cloud-case.json
 
@@ -62,7 +61,7 @@ jobs:
       - name: Build Cultist
         run: cargo build --release --manifest-path cultist/Cargo.toml
 
-      - name: Checkout current Cloud Hypervisor case
+      - name: Checkout canonical Cloud Hypervisor case
         uses: actions/checkout@v4
         with:
           repository: ${{ steps.cloud.outputs.repository }}
@@ -83,7 +82,7 @@ jobs:
             git -C cloud-hypervisor fetch --no-tags --depth="$FETCH_DEPTH" origin "$BASE"
           fi
 
-      - name: Run current Cloud Hypervisor replay
+      - name: Run canonical Cloud Hypervisor replay
         env:
           HISTORY_FILE: ${{ steps.cloud.outputs.history_file }}
           HISTORY_MAX: ${{ steps.cloud.outputs.history_max }}
@@ -121,6 +120,11 @@ jobs:
           history = json.loads((root / "history.json").read_text())
           assert history["anchor"] == "pci/src/vfio.rs", history
           assert history["considered_commits"] > 0, history
+          diff = json.loads((root / "diff.json").read_text())
+          assert any(
+              finding.get("kind") == "test-module-precedent-tension"
+              for finding in diff.get("findings", [])
+          ), diff
           PY
 
       - name: Checkout current Stensibly

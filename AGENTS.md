@@ -44,6 +44,27 @@ When proposing a Cultist improvement from dogfood:
 
 A successful task can still expose a product problem. A failed task can still produce useful evidence. Neither automatically proves a general rule.
 
+## Promote concurrent work from evidence, not main-SHA churn
+
+This repository often has several workers landing changes at once. Do not treat every new `main` SHA as an automatic invalidation of a successful branch receipt.
+
+For an open pull request, the normal compatibility authority is the **current GitHub merge view plus its successful required checks**.
+
+When `main` advances after a successful run:
+
+1. inspect the intervening change;
+2. rerun when it touches a branch path, a directly consumed contract/module/schema/fixture/generated relation, an applicable policy/CI gate, changes mergeability, or otherwise changes a compatibility input;
+3. preserve the existing receipt when the branch semantic tree is unchanged and the intervening change is demonstrably irrelevant to its compatibility inputs;
+4. use `UNKNOWN` for semantic independence when evidence is insufficient, then inspect further instead of automatically declaring either safety or failure.
+
+Direct path disjointness is useful evidence, but it does not prove semantic independence. Producer/consumer contracts can collide across different files.
+
+If a branch commit SHA changes while its repository tree remains byte-identical, compare tree identity before triggering another expensive run. Do not reanchor byte-identical work solely to chase the newest `main` coordinate.
+
+For broad instructions such as “keep working,” proceed in coherent milestones. After one bug repair, research discriminator, promotion, external replay, or cleanup reaches a durable boundary, record the result and leave an exact next handoff. Avoid recursively promoting every adjacent descendant unless the requested task still requires it or the user explicitly wants a sustained sweep.
+
+See `docs/concurrent-work-promotion.md` for the durable promotion/reanchoring policy and examples.
+
 ## Prevent third-party GitHub backlinks before writing
 
 Cultist frequently studies public GitHub issues, pull requests, reviews, discussions, commits, and source. Internal research can churn aggressively. Human-facing third-party references require a stricter rule because an accidental GitHub cross-reference cannot be undone after the write has been processed.

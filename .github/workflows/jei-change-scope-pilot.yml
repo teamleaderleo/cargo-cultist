@@ -42,13 +42,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C target-stensibly rev-parse HEAD)" = "ca5d2c7fdf89666e523972ab6e81610d17b9611b"
-          for path in \
-            convex/gmailMailboxDisposition.ts \
-            convex/gmailMailboxDispositionIndexes.test.ts \
-            convex/gmailMailboxDispositionSchema.ts
-          do
-            test -f "target-stensibly/$path"
-          done
+          test -f target-stensibly/convex/gmailMailboxDisposition.ts
+          test -f target-stensibly/convex/gmailMailboxDispositionSchema.ts
+          test ! -e target-stensibly/convex/gmailMailboxDispositionIndexes.test.ts
 
           target_history="$(git -C target-stensibly log --no-merges --format='%s' -n 20 -- convex/gmailMailboxDispositionSchema.ts)"
           if grep -F "Keep Gmail semantic-admission indexes deployable (#1571)" <<<"$target_history"; then
@@ -81,6 +77,17 @@ jobs:
             --source "stensibly#1573 review base" \
             --required-subject "Keep Gmail semantic-admission indexes deployable (#1571)" \
             --output "$PWD/artifacts/stensibly-1573-change-scope.json"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          receipt = json.loads(Path("artifacts/stensibly-1573-change-scope.json").read_text())
+          assert receipt["task_path_base_presence"] == {
+              "convex/gmailMailboxDisposition.ts": True,
+              "convex/gmailMailboxDispositionIndexes.test.ts": False,
+              "convex/gmailMailboxDispositionSchema.ts": True,
+          }
+          PY
 
       - name: Checkout SmolRunner #540 base
         uses: actions/checkout@v4
@@ -138,18 +145,20 @@ jobs:
           ]
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
               out.write("## Change-set-driven scope pilot\n\n")
-              out.write("| case | decision | common scope | file bytes | scoped bytes | overhead | scope rows | novel required | result |\n")
-              out.write("|---|---|---|---:|---:|---:|---:|---:|---|\n")
+              out.write("| case | decision | common scope | file bytes | scoped bytes | overhead | scope rows | novel required | base-present task paths | result |\n")
+              out.write("|---|---|---|---:|---:|---:|---:|---:|---:|---|\n")
               for title, path in cases:
                   if not path.is_file():
-                      out.write(f"| {title} | — | — | — | — | — | — | — | missing receipt |\n")
+                      out.write(f"| {title} | — | — | — | — | — | — | — | — | missing receipt |\n")
                       continue
                   receipt = json.loads(path.read_text(encoding="utf-8"))
+                  base_present = sum(receipt["task_path_base_presence"].values())
                   out.write(
                       f"| {title} | `{receipt['decision']}` | `{receipt.get('common_scope')}` | "
                       f"{receipt['file_packet_serialized_bytes']} | {receipt.get('scoped_packet_serialized_bytes') or '—'} | "
                       f"{receipt['selected_byte_overhead']} | {receipt['scope_history_count']} | "
-                      f"{receipt['novel_required_count']} | {'PASS' if receipt['acceptance']['passed'] else 'FAIL'} |\n"
+                      f"{receipt['novel_required_count']} | {base_present}/{len(receipt['task_paths'])} | "
+                      f"{'PASS' if receipt['acceptance']['passed'] else 'FAIL'} |\n"
                   )
           PY
 

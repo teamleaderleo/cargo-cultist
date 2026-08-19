@@ -233,3 +233,8 @@ This also keeps provider credentials, billing, retry policy, and model-routing a
 North star:
 
 > Make a worker A/B replay easy to audit and hard to accidentally confound before spending any interpretation on the result.
+
+
+## Frozen-spec binding
+
+Receipt admission binds exact trial bytes to the materialized manifest and each worker receipt through `trial_spec_sha256`. The evaluator also recomputes the canonical task, patch, and evaluator-oracle artifact digests from the frozen spec. Manifest condition entries retain and must exactly match packet kind, byte budget, scope, decisive-evidence state, and decisive refs. A substituted manifest therefore fails before pair semantics even when both run receipts drift with it. Generated packet bytes remain an executed materializer receipt whose SHA-256 is bound from the admitted manifest into the corresponding run receipt.

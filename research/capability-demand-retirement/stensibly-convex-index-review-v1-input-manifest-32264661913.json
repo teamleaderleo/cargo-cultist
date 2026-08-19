@@ -1,13 +1,17 @@
 {
   "conditions": {
     "file_local_jei": {
+      "budget_bytes": 32768,
       "decisive_evidence_present": false,
       "packet": {
         "bytes": 14086,
         "sha256": "e4549a10f86448779a21307d97ea75f2ae1acfd15b43099cbca6f600f0781bdf"
-      }
+      },
+      "packet_kind": "file_local",
+      "scope": null
     },
     "scoped_jei": {
+      "budget_bytes": 32768,
       "decisive_evidence_present": true,
       "decisive_evidence_refs": [
         "ca5d2c7fdf89666e523972ab6e81610d17b9611b",
@@ -16,7 +20,9 @@
       "packet": {
         "bytes": 18795,
         "sha256": "2e6acd81e324f3b290b9f93c5bf0ec3d9a66004bd44a855069cc65802f94af46"
-      }
+      },
+      "packet_kind": "scoped",
+      "scope": "convex"
     }
   },
   "evaluator_only": {
@@ -31,6 +37,7 @@
   "target_blob_sha": "7fdd51e2f9fba80d1c0a814cea708d601a7b9925",
   "target_path": "convex/schema.ts",
   "trial_id": "stensibly-convex-index-review-v1",
+  "trial_spec_sha256": "296e575ad228b3b82adcf2d0d2f13c2e39cc0157cc0a322e02630b5eadbceb1e",
   "worker_visible_common": {
     "patch": {
       "bytes": 321,

@@ -1,0 +1,137 @@
+name: Decision memory rename lineage research
+
+on:
+  pull_request:
+    paths:
+      - examples/decision_memory.rs
+      - research/decision-memory-fixtures/rename/**
+      - .github/workflows/decision-memory-rename-lineage-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rename-lineage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current research code
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Quality gates
+        working-directory: cultist
+        run: |
+          cargo fmt --check
+          cargo clippy --example decision_memory -- -D warnings
+          cargo test --example decision_memory
+          cargo build --example decision_memory
+
+      - name: Checkout direct pre-rename state
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/cargo-cultist
+          ref: d7569e035cfe805f12d77b75ebab35542aa2883f
+          path: corpus/direct
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve original path directly
+        run: |
+          set -euo pipefail
+          mkdir -p research-output
+          cultist/target/debug/examples/decision_memory \
+            corpus/direct/research/decision-memory-fixtures/rename/records \
+            corpus/direct/research/decision-memory-fixtures/rename/original.rs \
+            | tee research-output/direct.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/direct.json').read_text())
+          assert len(report['decisions']) == 1, report
+          decision = report['decisions'][0]
+          assert decision['record']['id'] == 'rename-lineage-fixture-v1', decision
+          assert decision['matched_via'] == 'direct', decision
+          assert decision['matched_path'] == 'research/decision-memory-fixtures/rename/original.rs', decision
+          PY
+
+      - name: Checkout exact post-rename semantic state
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/cargo-cultist
+          ref: 7e271e1e4802badfd5a209f08fa9c536b6f8048b
+          path: corpus/renamed
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove actual Git rename lineage
+        run: |
+          set -euo pipefail
+          test ! -e corpus/renamed/research/decision-memory-fixtures/rename/original.rs
+          test -f corpus/renamed/research/decision-memory-fixtures/rename/renamed.rs
+          old_blob=$(git -C corpus/direct rev-parse HEAD:research/decision-memory-fixtures/rename/original.rs)
+          new_blob=$(git -C corpus/renamed rev-parse HEAD:research/decision-memory-fixtures/rename/renamed.rs)
+          test "$old_blob" = "$new_blob"
+          git -C corpus/renamed -c core.quotepath=false log --follow --name-status --format= -- \
+            research/decision-memory-fixtures/rename/renamed.rs \
+            | tee research-output/git-lineage.txt
+          grep -F 'research/decision-memory-fixtures/rename/original.rs' research-output/git-lineage.txt
+          grep -F 'research/decision-memory-fixtures/rename/renamed.rs' research-output/git-lineage.txt
+
+      - name: Recover stale scope through file lineage
+        run: |
+          set -euo pipefail
+          cultist/target/debug/examples/decision_memory \
+            corpus/renamed/research/decision-memory-fixtures/rename/records \
+            corpus/renamed/research/decision-memory-fixtures/rename/renamed.rs \
+            | tee research-output/renamed.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/renamed.json').read_text())
+          assert report['target'] == 'research/decision-memory-fixtures/rename/renamed.rs', report
+          assert len(report['decisions']) == 1, report
+          decision = report['decisions'][0]
+          assert decision['record']['id'] == 'rename-lineage-fixture-v1', decision
+          assert decision['record']['scope']['path_prefix'] == 'research/decision-memory-fixtures/rename/original.rs', decision
+          assert decision['matched_via'] == 'git_file_lineage', decision
+          assert decision['matched_path'] == 'research/decision-memory-fixtures/rename/original.rs', decision
+          assert not report['target'].startswith(decision['record']['scope']['path_prefix']), decision
+          PY
+
+      - name: Keep ordinary current-path memory direct
+        run: |
+          set -euo pipefail
+          cultist/target/debug/examples/decision_memory \
+            corpus/renamed/research/decision-memory \
+            corpus/renamed/src/history.rs \
+            | tee research-output/history-direct.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/history-direct.json').read_text())
+          decisions = [
+              item for item in report['decisions']
+              if item['record']['id'] == 'history-cochange-remains-association-v1'
+          ]
+          assert len(decisions) == 1, report
+          assert decisions[0]['matched_via'] == 'direct', decisions[0]
+          assert decisions[0]['matched_path'] == 'src/history.rs', decisions[0]
+          PY
+
+      - name: Upload rename lineage receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: decision-memory-rename-lineage
+          path: research-output/
+          if-no-files-found: error

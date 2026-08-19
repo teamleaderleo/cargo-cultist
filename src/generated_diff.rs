@@ -542,7 +542,7 @@ fn read_git_blobs(
         reader.read_exact(&mut bytes)?;
         let mut terminator = [0_u8; 1];
         reader.read_exact(&mut terminator)?;
-        if terminator != [b'\n'] {
+        if terminator != *b"\n" {
             return Err(format!("invalid git cat-file payload terminator for `{spec}`").into());
         }
 

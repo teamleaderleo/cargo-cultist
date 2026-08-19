@@ -85,7 +85,7 @@ pub enum PriorEpisodeNextAction {
     ProduceRequiredProofArtifact,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PriorEpisodeFrontItem {
     Review {
@@ -136,7 +136,7 @@ pub struct PriorEpisodeQuietReceipt {
     pub evaluation: ReviewMemoryEvaluation,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PriorEpisodeFront {
     pub schema_version: u32,

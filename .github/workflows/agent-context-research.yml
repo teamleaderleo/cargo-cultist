@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - research/agent-context-packet
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read

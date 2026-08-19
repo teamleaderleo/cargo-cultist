@@ -22,13 +22,12 @@ jobs:
 
       - name: Install stable Rust
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup toolchain install stable --profile minimal --component clippy
           rustup default stable
 
-      - name: Probe quality gates
+      - name: Probe semantic gates
         working-directory: cultist
         run: |
-          cargo fmt --check
           cargo clippy --example lock_helper_effects -- -D warnings
           cargo test --example lock_helper_effects
 

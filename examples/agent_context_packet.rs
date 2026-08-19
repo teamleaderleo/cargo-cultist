@@ -103,6 +103,13 @@ struct HistoricalCommit {
     paths: Vec<PathBuf>,
 }
 
+#[derive(Debug)]
+struct CompanionAnalysis {
+    companions: Vec<HistoricalCompanion>,
+    omitted_companions: usize,
+    exclusions: Vec<ExcludedCommit>,
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("agent-context-packet: {error}");
@@ -139,8 +146,11 @@ fn run() -> Result<(), Box<dyn Error>> {
     let guidance = applicable_guidance(&root, &target)?;
     let (recent_history, history_truncated) =
         recent_commits(&root, &relative_target, budget.max_history_commits)?;
-    let (historical_companions, companion_truncated, companion_exclusions) =
-        historical_companions(&root, &relative_target, &recent_history, budget)?;
+    let CompanionAnalysis {
+        companions: historical_companions,
+        omitted_companions,
+        exclusions: companion_exclusions,
+    } = historical_companions(&root, &relative_target, &recent_history, budget)?;
 
     let mut truncation = Vec::new();
     if history_truncated {
@@ -149,9 +159,9 @@ fn run() -> Result<(), Box<dyn Error>> {
             budget.max_history_commits
         ));
     }
-    if companion_truncated > 0 {
+    if omitted_companions > 0 {
         truncation.push(format!(
-            "{companion_truncated} additional historical companion path(s) were omitted by max_companions={}.",
+            "{omitted_companions} additional historical companion path(s) were omitted by max_companions={}.",
             budget.max_companions
         ));
     }
@@ -296,14 +306,14 @@ fn historical_companions(
     target: &Path,
     recent: &[CommitSummary],
     budget: PacketBudget,
-) -> Result<(Vec<HistoricalCompanion>, usize, Vec<ExcludedCommit>), Box<dyn Error>> {
+) -> Result<CompanionAnalysis, Box<dyn Error>> {
     let mut considered = Vec::new();
-    let mut excluded = Vec::new();
+    let mut exclusions = Vec::new();
 
     for summary in recent {
         let commit = read_commit_paths(root, summary)?;
         if is_revert_subject(&summary.subject) {
-            excluded.push(ExcludedCommit {
+            exclusions.push(ExcludedCommit {
                 commit: summary.clone(),
                 reason: "revert commit".to_string(),
                 changed_paths: commit.paths.len(),
@@ -311,7 +321,7 @@ fn historical_companions(
             continue;
         }
         if commit.paths.len() > budget.max_paths_per_companion_commit {
-            excluded.push(ExcludedCommit {
+            exclusions.push(ExcludedCommit {
                 commit: summary.clone(),
                 reason: format!(
                     "broad commit changed more than {} paths",
@@ -368,9 +378,14 @@ fn historical_companions(
         .collect::<Vec<_>>();
 
     companions.sort_by(|a, b| b.support.cmp(&a.support).then_with(|| a.path.cmp(&b.path)));
-    let omitted = companions.len().saturating_sub(budget.max_companions);
+    let omitted_companions = companions.len().saturating_sub(budget.max_companions);
     companions.truncate(budget.max_companions);
-    Ok((companions, omitted, excluded))
+
+    Ok(CompanionAnalysis {
+        companions,
+        omitted_companions,
+        exclusions,
+    })
 }
 
 fn read_commit_paths(

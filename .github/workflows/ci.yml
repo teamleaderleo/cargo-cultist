@@ -45,6 +45,12 @@ jobs:
             scripts/closure_episode_github.py \
             scripts/closure_episode_github_test.py
           python scripts/closure_episode_github_test.py
+      - name: External GitHub reference controls
+        run: |
+          python -m py_compile \
+            scripts/github_reference_url.py \
+            scripts/github_reference_url_test.py
+          python scripts/github_reference_url_test.py
       - name: Active work heads-up
         if: github.event_name == 'pull_request'
         continue-on-error: true

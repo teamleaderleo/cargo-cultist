@@ -311,7 +311,7 @@ fn parse_dirty_paths(output: &[u8]) -> Option<BTreeSet<PathBuf>> {
             .any(|byte| matches!(byte, b'R' | b'C'))
         {
             index += 1;
-            let other = std::str::from_utf8(*records.get(index)?).ok()?;
+            let other = std::str::from_utf8(records.get(index)?).ok()?;
             dirty.insert(PathBuf::from(other));
         }
         index += 1;

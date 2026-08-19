@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::process::Command;
 
 use serde::Serialize;

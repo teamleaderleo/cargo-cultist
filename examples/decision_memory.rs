@@ -72,7 +72,11 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let requested_target = absolute_from(&cwd, Path::new(&target_arg)).canonicalize()?;
     if !requested_target.is_file() {
-        return Err(format!("target must be an existing file: {}", requested_target.display()).into());
+        return Err(format!(
+            "target must be an existing file: {}",
+            requested_target.display()
+        )
+        .into());
     }
 
     let root = git_repo_root(
@@ -144,9 +148,8 @@ fn resolve_decisions(
     let mut resolved = Vec::new();
     for path in files {
         let bytes = fs::read(&path)?;
-        let record: DecisionRecord = serde_json::from_slice(&bytes).map_err(|error| {
-            format!("invalid decision record {}: {error}", path.display())
-        })?;
+        let record: DecisionRecord = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("invalid decision record {}: {error}", path.display()))?;
         validate_record(&record, &path)?;
 
         let scope = Path::new(&record.scope.path_prefix);
@@ -211,7 +214,11 @@ fn validate_record(record: &DecisionRecord, path: &Path) -> Result<(), Box<dyn E
         .iter()
         .any(|item| item.kind.trim().is_empty() || item.reference.trim().is_empty())
     {
-        return Err(format!("decision authority contains an empty field in {}", path.display()).into());
+        return Err(format!(
+            "decision authority contains an empty field in {}",
+            path.display()
+        )
+        .into());
     }
     Ok(())
 }

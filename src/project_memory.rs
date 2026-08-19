@@ -175,7 +175,7 @@ impl ProjectMemoryPacket {
                 &edge.evidence,
                 "edge evidence",
                 MAX_EDGE_EVIDENCE_BYTES,
-                false,
+                true,
             )?;
             if !source.evidence_text.contains(&edge.evidence) {
                 return Err(format!(
@@ -184,7 +184,7 @@ impl ProjectMemoryPacket {
                     display_ref(edge.to)
                 ));
             }
-            validate_edge_semantics(edge)?;
+            validate_edge_semantics(&self.repository, edge)?;
         }
 
         Ok(())
@@ -325,7 +325,15 @@ fn valid_repository_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
 }
 
-fn validate_edge_semantics(edge: &ProjectMemoryEdge) -> Result<(), String> {
+fn validate_edge_semantics(repository: &str, edge: &ProjectMemoryEdge) -> Result<(), String> {
+    if edge
+        .evidence
+        .bytes()
+        .any(|byte| matches!(byte, b'\n' | b'\r'))
+    {
+        return validate_primary_case_edge(repository, edge);
+    }
+
     let Some(classified) = classify_relation(&edge.evidence) else {
         return Err(format!(
             "edge evidence for {} -> {} is not an admitted explicit relationship line",
@@ -346,6 +354,73 @@ fn validate_edge_semantics(edge: &ProjectMemoryEdge) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn validate_primary_case_edge(repository: &str, edge: &ProjectMemoryEdge) -> Result<(), String> {
+    let Some(target) = primary_case_target(repository, &edge.evidence) else {
+        return Err(format!(
+            "multiline edge evidence for {} -> {} is not an admitted Primary case block",
+            display_ref(edge.from),
+            display_ref(edge.to)
+        ));
+    };
+    if edge.relation != MemoryRelation::Related {
+        return Err("Primary case evidence must use relation=related".to_string());
+    }
+    if target != edge.to.number {
+        return Err(format!(
+            "Primary case evidence names issue #{target}, not declared target {}",
+            display_ref(edge.to)
+        ));
+    }
+    Ok(())
+}
+
+fn primary_case_target(repository: &str, evidence: &str) -> Option<u64> {
+    let mut lines = evidence
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    if !lines.next()?.eq_ignore_ascii_case("Primary case:") {
+        return None;
+    }
+    let target = lines.next()?;
+    if lines.next().is_some() {
+        return None;
+    }
+    repository_issue_url_target(repository, target)
+}
+
+fn repository_issue_url_target(repository: &str, url: &str) -> Option<u64> {
+    let normalized = url.to_ascii_lowercase();
+    let repository = repository.to_ascii_lowercase();
+    for origin in ["https://github.com/", "https://redirect.github.com/"] {
+        let prefix = format!("{origin}{repository}/issues/");
+        if let Some(rest) = normalized.strip_prefix(&prefix) {
+            return positive_decimal_prefix(rest);
+        }
+    }
+    None
+}
+
+fn positive_decimal_prefix(value: &str) -> Option<u64> {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() || bytes[0] == b'0' || !bytes[0].is_ascii_digit() {
+        return None;
+    }
+
+    let mut number = 0u64;
+    let mut cursor = 0usize;
+    while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
+        number = number
+            .checked_mul(10)?
+            .checked_add((bytes[cursor] - b'0') as u64)?;
+        cursor += 1;
+    }
+    if cursor < bytes.len() && !matches!(bytes[cursor], b'/' | b'?' | b'#') {
+        return None;
+    }
+    Some(number)
 }
 
 fn classify_relation(evidence: &str) -> Option<MemoryRelation> {

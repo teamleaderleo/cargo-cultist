@@ -52,8 +52,9 @@ jobs:
             compact_blas_inner \
             | tee research-output/wgpu-trunk-lock-order.txt
           grep -F 'FINDING: declared lock-rank order contradicted by lexical acquisition' research-output/wgpu-trunk-lock-order.txt
-          grep -F '`pending_writes` (QUEUE_PENDING_WRITES) is still held when `command_indices` (DEVICE_COMMAND_INDICES) is acquired.' research-output/wgpu-trunk-lock-order.txt
+          grep -F '`pending_writes` (QUEUE_PENDING_WRITES) is the most recently acquired supported lock still held when `command_indices` (DEVICE_COMMAND_INDICES) is acquired.' research-output/wgpu-trunk-lock-order.txt
           grep -F 'The rank DAG does not list `DEVICE_COMMAND_INDICES` as an allowed follower of `QUEUE_PENDING_WRITES`.' research-output/wgpu-trunk-lock-order.txt
+          grep -F 'acquisition lines: 1910 -> 1943' research-output/wgpu-trunk-lock-order.txt
 
       - name: Checkout exact public repair head
         uses: actions/checkout@v4
@@ -74,7 +75,7 @@ jobs:
             | tee research-output/wgpu-repair-lock-order.txt
           grep -F 'guard `command_indices_lock` acquires `command_indices` as rank `DEVICE_COMMAND_INDICES`' research-output/wgpu-repair-lock-order.txt
           grep -F 'guard `pending_writes` acquires `pending_writes` as rank `QUEUE_PENDING_WRITES`' research-output/wgpu-repair-lock-order.txt
-          grep -F 'Every supported acquisition made while another named guard remained held is permitted by the declared rank DAG.' research-output/wgpu-repair-lock-order.txt
+          grep -F "Every supported acquisition follows the repository's declared successor rule for the most recently acquired lock still held." research-output/wgpu-repair-lock-order.txt
           if grep -Fq 'FINDING: declared lock-rank order contradicted' research-output/wgpu-repair-lock-order.txt; then
             echo 'repaired WGPU order still emitted a rank contradiction' >&2
             exit 1

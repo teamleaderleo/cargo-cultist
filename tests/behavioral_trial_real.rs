@@ -4,7 +4,8 @@
 mod behavioral_trial;
 
 use behavioral_trial::{
-    BehavioralTrialArmKind, fingerprint_plan, materialize_worker_packet, parse_behavioral_trial_plan,
+    BehavioralTrialArmKind, fingerprint_plan, materialize_worker_packet,
+    parse_behavioral_trial_plan,
 };
 
 #[test]
@@ -32,7 +33,11 @@ fn stale_review_trial_has_stable_registered_packets() {
     );
     assert!(treatment.context.starts_with(&control.context));
     assert!(!control.context.contains("Cultist prior-episode front:"));
-    assert!(treatment.context.contains("old outcome applicability: INVALID"));
+    assert!(
+        treatment
+            .context
+            .contains("old outcome applicability: INVALID")
+    );
     assert!(
         treatment
             .context

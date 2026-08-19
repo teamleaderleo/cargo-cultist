@@ -100,8 +100,7 @@ fn assess_episode(facts: EpisodeFacts) -> EpisodeAssessment {
                 | FailureBoundary::EvidenceAbsent
                 | FailureBoundary::SelectionMiss
                 | FailureBoundary::AffordanceMiss
-        )
-    {
+        ) {
         ResponseQuality::CorrectEscalation
     } else {
         ResponseQuality::Failed
@@ -243,7 +242,10 @@ fn selection_miss_can_precede_a_downstream_worker_failure_after_manual_recovery(
 
     assert_eq!(
         boundary_chain(facts),
-        vec![FailureBoundary::SelectionMiss, FailureBoundary::ValidationMiss]
+        vec![
+            FailureBoundary::SelectionMiss,
+            FailureBoundary::ValidationMiss
+        ]
     );
 }
 

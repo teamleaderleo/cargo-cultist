@@ -4,6 +4,7 @@ mod diff;
 mod finding;
 mod generated_diff;
 mod history;
+mod performance;
 mod preflight;
 mod render;
 mod report;
@@ -64,8 +65,13 @@ struct HistoryArgs {
 }
 
 fn main() {
-    if let Err(error) = run() {
+    performance::init_from_environment();
+    let result = run();
+    if let Err(error) = &result {
         eprintln!("cargo-cultist: {error}");
+    }
+    performance::emit_if_enabled();
+    if result.is_err() {
         process::exit(1);
     }
 }

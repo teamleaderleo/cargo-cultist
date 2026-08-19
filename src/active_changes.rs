@@ -287,7 +287,7 @@ fn analyze_inventory(
 }
 
 fn same_work(current: &WorkItem, other: &WorkItem) -> bool {
-    current.id == other.id || current.head_sha == other.head_sha
+    current.id == other.id
 }
 
 fn pair_has_scoped_overlap(current: &WorkItem, other: &WorkItem, scope: Option<&Path>) -> bool {
@@ -562,6 +562,39 @@ mod tests {
                 .claims
                 .iter()
                 .any(|claim| { claim.message.contains("excluded 1 self candidate") })
+        );
+    }
+
+    #[test]
+    fn distinct_work_ids_remain_distinct_when_their_heads_match() {
+        let current = work("#1", "shared", &["src/a.rs"]);
+        let other = work("#2", "shared", &["src/a.rs"]);
+        let edge = serde_json::json!({
+            "kind": "depends_on",
+            "from": "#1",
+            "to": "#2",
+            "source": "provider:shared-head"
+        });
+        let inventory = parse(document(current, vec![other], vec![edge])).unwrap();
+        let analysis = analyze_inventory(Path::new("/repo"), &inventory, None);
+
+        assert!(
+            analysis
+                .findings
+                .iter()
+                .any(|finding| { finding.kind == "preflight-inventory-path-overlap" })
+        );
+        assert!(
+            analysis
+                .findings
+                .iter()
+                .any(|finding| { finding.kind == "preflight-explicit-coordination" })
+        );
+        assert!(
+            analysis
+                .claims
+                .iter()
+                .any(|claim| { claim.message.contains("excluded 0 self candidate") })
         );
     }
 

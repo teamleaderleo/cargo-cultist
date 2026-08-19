@@ -44,6 +44,21 @@
         "outcome": "changed_next_action",
         "action": "open issue 163 and implement pull request 166 so the Rust project-memory boundary validates relation meaning and target mention"
       }
+    },
+    {
+      "episode_id": "project-memory:primary-case-contract-collision:9792bfe->df5ae59",
+      "receipt": {
+        "schema_version": 1,
+        "repository": "teamleaderleo/cultist",
+        "revision": "9792bfeeb08404f9b798be42df61d2b950c58e62",
+        "task": "project-memory-producer-consumer-integration",
+        "evidence_kind": "project-memory-contract-collision",
+        "evidence_ref": "github:main@9792bfeeb08404f9b798be42df61d2b950c58e62:#166+#167",
+        "delivery": "surfaced",
+        "consulted": true,
+        "outcome": "changed_next_action",
+        "action": "open issue 172 and implement pull request 174 so strict project-memory relation admission composes with Primary case issue evidence"
+      }
     }
   ]
 }

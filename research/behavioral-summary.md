@@ -1,6 +1,6 @@
 # Descriptive behavioral summary
 
-Tracking: #137, building on merged #157 / #165 / #169.
+Tracking: #137, building on merged #157 / #165 / #169 / #175.
 
 Cultist now has a small retained set of uniquely identified behavioral evidence episodes. Before using those episodes to promote, demote, or rank anything, this experiment asks a narrower question:
 
@@ -29,18 +29,18 @@ episode_ids[]
 
 so a consumer can always inspect exactly which retained episodes produced the number.
 
-No weighting is applied. `changed_next_action=2` and `correct_quiet_negative=1` remain different observed outcomes rather than points in one score.
+No weighting is applied. `changed_next_action=3` and `correct_quiet_negative=1` remain different observed outcomes rather than points in one score.
 
 ## Current retained Cultist corpus
 
-`research/behavioral-episodes/cultist-collaboration-v1.json` currently contains three unique episodes:
+`research/behavioral-episodes/cultist-collaboration-v1.json` currently contains four unique episodes:
 
 ```text
-2 surfaced
+3 surfaced
 1 quiet
-2 consulted
+3 consulted
 
-2 changed_next_action
+3 changed_next_action
 1 correct_quiet_negative
 ```
 
@@ -49,10 +49,13 @@ Evidence families remain separate:
 ```text
 active-work-heads-up
 concurrent-main-head-movement
+project-memory-contract-collision
 project-memory-relation-strengthening
 ```
 
-This sample is deliberately tiny. The counts describe these three episodes only.
+The new `project-memory-contract-collision` episode records a useful semantic-preflight species: #166 and #167 changed disjoint paths while tightening opposite sides of one project-memory packet contract. Current-main integration exposed the mismatch and #174 repaired the producer/consumer seam.
+
+This sample is deliberately tiny. The counts describe these four episodes only.
 
 ## Research command
 
@@ -70,7 +73,7 @@ The summary does not answer:
 - whether one evidence family is globally good or bad;
 - whether an action change improved the final task result;
 - whether a quiet negative is worth the same attention/cost as an action-changing positive;
-- whether a three-episode sample supports product promotion;
+- whether a four-episode sample supports product promotion;
 - whether one worker/model population generalizes to another;
 - whether two different tasks are comparable.
 

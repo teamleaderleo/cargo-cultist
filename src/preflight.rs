@@ -1,9 +1,11 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::process::Command;
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
+use crate::performance;
 
 pub fn build_preflight_analysis_report(
     root: &Path,
@@ -75,7 +77,7 @@ fn changed_paths(
     target: Option<&str>,
     scope: Option<&Path>,
 ) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {
-    let mut command = Command::new("git");
+    let mut command = performance::git_command();
     command.arg("-C").arg(root).args([
         "-c",
         "core.quotepath=false",
@@ -113,7 +115,7 @@ fn changed_paths(
 }
 
 fn merge_base(root: &Path, against: &str) -> Result<String, Box<dyn Error>> {
-    let output = Command::new("git")
+    let output = performance::git_command()
         .arg("-C")
         .arg(root)
         .args(["merge-base", against, "HEAD"])

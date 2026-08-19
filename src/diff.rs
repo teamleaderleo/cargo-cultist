@@ -2,10 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+
+#[cfg(test)]
+use std::process::Command;
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
 use crate::generated_diff::add_generated_companion_findings;
+use crate::performance;
 use crate::test_modules::{
     TestModuleOccurrence, TestModuleReport, analyze_test_module_files,
     analyze_test_modules_excluding,
@@ -63,7 +67,7 @@ impl ChangedLines {
 }
 
 pub fn git_repo_root(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
-    let output = Command::new("git")
+    let output = performance::git_command()
         .arg("-C")
         .arg(path)
         .args(["rev-parse", "--show-toplevel"])
@@ -282,7 +286,7 @@ fn git_diff_changed_lines(root: &Path, base: Option<&str>) -> Result<ChangedLine
         None => "HEAD".to_string(),
     };
 
-    let mut child = Command::new("git")
+    let mut child = performance::git_command()
         .arg("-C")
         .arg(root)
         .args([
@@ -315,7 +319,7 @@ fn git_diff_changed_lines(root: &Path, base: Option<&str>) -> Result<ChangedLine
 }
 
 fn merge_base(root: &Path, base: &str) -> Result<String, Box<dyn Error>> {
-    let output = Command::new("git")
+    let output = performance::git_command()
         .arg("-C")
         .arg(root)
         .args(["merge-base", base, "HEAD"])

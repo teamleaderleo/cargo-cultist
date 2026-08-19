@@ -25,7 +25,9 @@ def issue_payload(number: int, body: str, *, state: str = "closed") -> dict[str,
 
 def pr_issue_payload(number: int, body: str) -> dict[str, Any]:
     payload = issue_payload(number, body)
-    payload["pull_request"] = {"url": f"https://api.github.com/repos/{REPOSITORY}/pulls/{number}"}
+    payload["pull_request"] = {
+        "url": f"https://api.github.com/repos/{REPOSITORY}/pulls/{number}"
+    }
     return payload
 
 
@@ -90,6 +92,8 @@ class ProjectMemoryGithubLineageTests(unittest.TestCase):
         self.assertEqual(
             receipt["depth_frontier"], [{"kind": "issue", "number": 1}]
         )
+        self.assertEqual(receipt["incomplete_evidence_artifacts"], [])
+        self.assertTrue(receipt["complete_within_requested_depth"])
 
     def test_depth_limit_keeps_unexpanded_frontier_visible(self) -> None:
         client = FakeGitHubClient(
@@ -202,7 +206,9 @@ class ProjectMemoryGithubLineageTests(unittest.TestCase):
             lineage.collect(REPOSITORY, "issue", 3, 2, 2, client=client)
 
     def test_unrelated_anchor_stays_anchor_only(self) -> None:
-        client = FakeGitHubClient(issue_responses({3: "Observed failure without an explicit relationship."}))
+        client = FakeGitHubClient(
+            issue_responses({3: "Observed failure without an explicit relationship."})
+        )
 
         packet, receipt = lineage.collect(
             REPOSITORY, "issue", 3, 2, 8, client=client
@@ -211,6 +217,23 @@ class ProjectMemoryGithubLineageTests(unittest.TestCase):
         self.assertEqual(len(packet["artifacts"]), 1)
         self.assertEqual(packet["edges"], [])
         self.assertEqual(receipt["depth_frontier"], [])
+        self.assertEqual(receipt["incomplete_evidence_artifacts"], [])
+        self.assertTrue(receipt["complete_within_requested_depth"])
+
+    def test_missing_body_marks_lineage_evidence_incomplete(self) -> None:
+        client = FakeGitHubClient(issue_responses({3: ""}))
+
+        packet, receipt = lineage.collect(
+            REPOSITORY, "issue", 3, 2, 8, client=client
+        )
+
+        self.assertEqual(packet["edges"], [])
+        self.assertFalse(packet["artifacts"][0]["evidence_complete"])
+        self.assertEqual(
+            receipt["incomplete_evidence_artifacts"],
+            [{"kind": "issue", "number": 3}],
+        )
+        self.assertFalse(receipt["complete_within_requested_depth"])
 
     def test_self_reference_fails_closed(self) -> None:
         client = FakeGitHubClient(issue_responses({3: "Follow-up to #3"}))

@@ -1,0 +1,83 @@
+name: Numeric lock order policy research
+
+on:
+  push:
+    branches:
+      - experiment/numeric-lock-order-policy
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  asupersync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Probe quality gates
+        working-directory: cultist
+        run: |
+          cargo fmt --check
+          cargo clippy --example numeric_lock_order_policy -- -D warnings
+          cargo test --example numeric_lock_order_policy
+
+      - name: Checkout exact asupersync source
+        uses: actions/checkout@v4
+        with:
+          repository: Dicklesworthstone/asupersync
+          ref: c059250ddbe775e78cf8edde57ac78a2a3e4c618
+          path: corpus/asupersync
+          persist-credentials: false
+
+      - name: Keep repository good-order oracle clean
+        run: |
+          set -euo pipefail
+          mkdir -p research-output
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example numeric_lock_order_policy -- \
+            corpus/asupersync \
+            artifacts/lock_order_inventory_v1.json \
+            src/sync/lock_ordering_test.rs \
+            test_correct_lock_ordering \
+            | tee research-output/asupersync-good-order.txt
+          grep -F 'guard `_config_guard` acquires `config_cache` rank 10' research-output/asupersync-good-order.txt
+          grep -F 'guard `_regions_guard` acquires `regions_table` rank 30' research-output/asupersync-good-order.txt
+          grep -F 'guard `_tasks_guard` acquires `tasks_queue` rank 40' research-output/asupersync-good-order.txt
+          grep -F 'Supported acquisitions are nondecreasing by numeric rank' research-output/asupersync-good-order.txt
+          if grep -Fq 'FINDING: numeric lock-rank order contradicted' research-output/asupersync-good-order.txt; then
+            echo 'good-order oracle emitted a contradiction' >&2
+            exit 1
+          fi
+
+      - name: Detect repository bad-order oracle
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example numeric_lock_order_policy -- \
+            corpus/asupersync \
+            artifacts/lock_order_inventory_v1.json \
+            src/sync/lock_ordering_test.rs \
+            test_lock_ordering_violation \
+            | tee research-output/asupersync-bad-order.txt
+          grep -F 'guard `_tasks_guard` acquires `tasks_queue` rank 40' research-output/asupersync-bad-order.txt
+          grep -F 'guard `_config_guard` acquires `config_cache` rank 10' research-output/asupersync-bad-order.txt
+          grep -F 'FINDING: numeric lock-rank order contradicted by lexical acquisition' research-output/asupersync-bad-order.txt
+          grep -F '`tasks_queue` (rank 40) is held when `config_cache` (rank 10) is acquired.' research-output/asupersync-bad-order.txt
+          grep -F 'The acquired rank 10 is lower than the highest supported rank 40 already held.' research-output/asupersync-bad-order.txt
+
+      - name: Upload research receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: numeric-lock-order-policy-research
+          path: research-output/
+          if-no-files-found: error

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "smolrunner-disposable-clone-history",
+      "status": "replayable",
+      "repository": "teamleaderleo/smolrunner",
+      "ref": "ed3b70e375a57eabce26f2311f798f75b33bdeb0",
+      "fetch_depth": 256,
+      "history_file": "src/disposable_clone_runtime.rs",
+      "history_max": 100,
+      "base": null,
+      "repeat_scan": true,
+      "source": "cultist#62",
+      "question": "Does bounded local history recover the earned disposable-clone companion evidence and counterexamples?"
+    },
+    {
+      "id": "cloud-hypervisor-8734-current-vfio",
+      "status": "replayable",
+      "repository": "teamleaderleo/cloud-hypervisor",
+      "ref": "439ff52249e819f41570a5f3f3bf535d4bfb3e6e",
+      "fetch_depth": 256,
+      "history_file": "pci/src/vfio.rs",
+      "history_max": 100,
+      "base": "1b004a7459ac752e1d7ad5a48237a1cb8608003b",
+      "repeat_scan": true,
+      "source": "cloud-hypervisor/cloud-hypervisor#8734@439ff52249e819f41570a5f3f3bf535d4bfb3e6e",
+      "question": "What does current Cultist surface on the exact live VFIO sparse-DMA change, independently of the older #8734 precedent-tension story?"
+    },
+    {
+      "id": "cloud-hypervisor-8734-legacy-precedent-tension",
+      "status": "needs_pin",
+      "repository": "cloud-hypervisor/cloud-hypervisor",
+      "ref": null,
+      "fetch_depth": 256,
+      "history_file": null,
+      "history_max": 100,
+      "base": null,
+      "repeat_scan": false,
+      "source": "cultist#16 / historical cloud-hypervisor#8734",
+      "question": "Does a changed test-module name expose repository-wide unit_tests precedent while the same file carries tests precedent?",
+      "reason": "The live PR number now points at a different VFIO change/head. Recover the original exact head/base/file coordinate before treating this as a replay fixture."
+    },
+    {
+      "id": "stensibly-1575-guard-promotion",
+      "status": "adapter_gap",
+      "repository": "teamleaderleo/stensibly",
+      "ref": "78a9061b2feebe71211f0034ff2705b7143f6ce9",
+      "fetch_depth": 256,
+      "history_file": null,
+      "history_max": 100,
+      "base": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+      "repeat_scan": false,
+      "source": "stensibly#1575",
+      "question": "Can repository evidence recover failure -> generalized executable guard promotion for the overlong Convex index class?",
+      "reason": "The exact case is pinned, but today's Rust/local analyzers do not recover the TypeScript/provider/PR lineage needed to evaluate the lesson-promotion claim."
+    },
+    {
+      "id": "linux-fieldwork-bestiary-675",
+      "status": "adapter_gap",
+      "repository": "teamleaderleo/linux-fieldwork",
+      "ref": "b835ed842299f7654afc00f4988f7586e0be63bc",
+      "fetch_depth": 256,
+      "history_file": null,
+      "history_max": 100,
+      "base": null,
+      "repeat_scan": false,
+      "source": "linux-fieldwork#675 / cultist#29",
+      "question": "Which retained bug species can graduate from case evidence into deterministic Cultist questions, and which should remain research/evaluation only?",
+      "reason": "This is a synthesis corpus spanning issues, investigations, notes, and counterexamples. Current Rust source scans alone are insufficient; it needs project-memory/corpus intake evidence."
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/cultist",
+  "revision": "48839f625721ba595b063fc8dfd21e365e6f24dc",
+  "task": "project-memory-relation-admission-review",
+  "evidence_kind": "project-memory-relation-strengthening",
+  "evidence_ref": "github:main@48839f625721ba595b063fc8dfd21e365e6f24dc:src/project_memory.rs",
+  "delivery": "surfaced",
+  "consulted": true,
+  "outcome": "changed_next_action",
+  "action": "open issue 163 and implement pull request 166 so the Rust project-memory boundary validates relation meaning and target mention"
+}

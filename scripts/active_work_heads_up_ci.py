@@ -193,11 +193,10 @@ def potential_direct_overlap(inventory: dict[str, object]) -> bool:
 
     current_paths = {str(path) for path in current["changed_paths"]}
     current_id = str(current["id"])
-    current_sha = str(current["head_sha"])
     for work in active_work:
         if not isinstance(work, dict):
             continue
-        if str(work["id"]) == current_id or str(work["head_sha"]) == current_sha:
+        if str(work["id"]) == current_id:
             continue
         if current_paths.intersection(str(path) for path in work["changed_paths"]):
             return True

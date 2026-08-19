@@ -1,5 +1,7 @@
+#[allow(dead_code)]
 #[path = "../src/ci_test_filters.rs"]
 mod ci_test_filters;
+#[allow(dead_code)]
 #[path = "../src/finding.rs"]
 mod finding;
 

@@ -8,7 +8,7 @@ use crate::refinement_candidate_readiness::{
     CandidateEvidenceStatus, RefinementCandidateReadinessRequest,
     evaluate_refinement_candidate_readiness,
 };
-use crate::refinement_episode::RefinementStatus;
+use crate::refinement_episode::{RefinementStatus, ReplayResult};
 
 pub const REFINEMENT_INVESTIGATION_DEMAND_SCHEMA_VERSION: u32 = 1;
 
@@ -29,6 +29,7 @@ pub struct RefinementInvestigationDisposition {
     pub candidate_id: String,
     pub is_selected_transition: bool,
     pub replay_status: RefinementStatus,
+    pub replay_result: ReplayResult,
     pub evidence_status: CandidateEvidenceStatus,
     pub disposition: RefinementInvestigationDispositionStatus,
     pub missing_requirement_mappings: Vec<String>,
@@ -125,6 +126,7 @@ pub fn evaluate_refinement_investigation_demand(
             candidate_id: candidate.candidate_id,
             is_selected_transition: candidate.is_selected_transition,
             replay_status: candidate.replay_status,
+            replay_result: candidate.replay_result,
             evidence_status: candidate.evidence_status,
             disposition,
             missing_requirement_mappings: candidate.missing_requirement_mappings,

@@ -10,66 +10,177 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+PR_PAGE_QUERY = r"""
+query($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(
+      states: OPEN
+      first: 100
+      after: $after
+      orderBy: {field: UPDATED_AT, direction: DESC}
+    ) {
+      nodes {
+        number
+        title
+        url
+        headRefName
+        headRefOid
+        updatedAt
+        isDraft
+        files(first: 100) {
+          nodes { path }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
+
+PR_FILES_QUERY = r"""
+query($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      files(first: 100, after: $after) {
+        nodes { path }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
+
 
 def gh_json(args: list[str]) -> object:
     output = subprocess.check_output(["gh", *args], text=True)
     return json.loads(output)
 
 
-def paginated_list(repo: str, endpoint: str) -> list[dict[str, object]]:
-    pages = gh_json(
-        [
-            "api",
-            "--paginate",
-            "--slurp",
-            f"repos/{repo}/{endpoint}",
-        ]
-    )
-    if not isinstance(pages, list):
-        raise RuntimeError(f"unexpected paginated response for {endpoint}")
-    return [item for page in pages for item in page]
+def graphql(query: str, variables: dict[str, object]) -> dict[str, object]:
+    args = ["api", "graphql", "-f", f"query={query}"]
+    for key, value in variables.items():
+        if value is None:
+            continue
+        args.extend(["-F", f"{key}={value}"])
+    result = gh_json(args)
+    if not isinstance(result, dict):
+        raise RuntimeError("unexpected GitHub GraphQL response")
+    return result
 
 
-def changed_paths(repo: str, number: int) -> list[str]:
-    files = paginated_list(repo, f"pulls/{number}/files?per_page=100")
-    return sorted({str(item["filename"]) for item in files})
+def page_info(connection: dict[str, object]) -> tuple[bool, str | None]:
+    info = connection.get("pageInfo")
+    if not isinstance(info, dict):
+        raise RuntimeError("GitHub connection is missing pageInfo")
+    cursor = info.get("endCursor")
+    return bool(info.get("hasNextPage", False)), str(cursor) if cursor else None
 
 
-def work_item(repo: str, pr: dict[str, object]) -> dict[str, object]:
-    number = int(pr["number"])
-    head = pr["head"]
-    if not isinstance(head, dict):
-        raise RuntimeError(f"PR #{number} has no readable head object")
+def file_paths_from_connection(connection: dict[str, object]) -> list[str]:
+    nodes = connection.get("nodes")
+    if not isinstance(nodes, list):
+        raise RuntimeError("GitHub files connection is missing nodes")
+    return [str(node["path"]) for node in nodes if isinstance(node, dict)]
+
+
+def remaining_file_paths(
+    owner: str,
+    name: str,
+    number: int,
+    after: str | None,
+) -> list[str]:
+    paths: list[str] = []
+    cursor = after
+    while cursor is not None:
+        result = graphql(
+            PR_FILES_QUERY,
+            {"owner": owner, "name": name, "number": number, "after": cursor},
+        )
+        data = result.get("data")
+        repository = data.get("repository") if isinstance(data, dict) else None
+        pull_request = (
+            repository.get("pullRequest") if isinstance(repository, dict) else None
+        )
+        files = pull_request.get("files") if isinstance(pull_request, dict) else None
+        if not isinstance(files, dict):
+            raise RuntimeError(f"could not paginate files for PR #{number}")
+        paths.extend(file_paths_from_connection(files))
+        has_next, cursor = page_info(files)
+        if not has_next:
+            break
+    return paths
+
+
+def work_item(
+    owner: str,
+    name: str,
+    node: dict[str, object],
+) -> dict[str, object]:
+    number = int(node["number"])
+    files = node.get("files")
+    if not isinstance(files, dict):
+        raise RuntimeError(f"PR #{number} has no readable files connection")
+
+    paths = file_paths_from_connection(files)
+    has_next, cursor = page_info(files)
+    if has_next:
+        paths.extend(remaining_file_paths(owner, name, number, cursor))
+
     return {
         "id": f"#{number}",
         "kind": "pull_request",
-        "title": str(pr["title"]),
-        "url": str(pr["html_url"]),
-        "head_ref": str(head["ref"]),
-        "head_sha": str(head["sha"]),
-        "updated_at": str(pr["updated_at"]),
-        "draft": bool(pr.get("draft", False)),
-        "changed_paths": changed_paths(repo, number),
+        "title": str(node["title"]),
+        "url": str(node["url"]),
+        "head_ref": str(node["headRefName"]),
+        "head_sha": str(node["headRefOid"]),
+        "updated_at": str(node["updatedAt"]),
+        "draft": bool(node.get("isDraft", False)),
+        "changed_paths": sorted(set(paths)),
     }
 
 
 def build_inventory(repo: str, current_number: int) -> dict[str, object]:
-    prs = paginated_list(repo, "pulls?state=open&per_page=100")
-    current = next((pr for pr in prs if int(pr["number"]) == current_number), None)
+    owner, name = repo.split("/", 1)
+    work: list[dict[str, object]] = []
+    cursor: str | None = None
+
+    while True:
+        result = graphql(
+            PR_PAGE_QUERY,
+            {"owner": owner, "name": name, "after": cursor},
+        )
+        data = result.get("data")
+        repository = data.get("repository") if isinstance(data, dict) else None
+        pull_requests = (
+            repository.get("pullRequests") if isinstance(repository, dict) else None
+        )
+        if not isinstance(pull_requests, dict):
+            raise RuntimeError("could not retrieve open pull requests")
+        nodes = pull_requests.get("nodes")
+        if not isinstance(nodes, list):
+            raise RuntimeError("open pull-request connection is missing nodes")
+        work.extend(
+            work_item(owner, name, node) for node in nodes if isinstance(node, dict)
+        )
+        has_next, cursor = page_info(pull_requests)
+        if not has_next:
+            break
+        if cursor is None:
+            raise RuntimeError("pull-request pagination promised another page without cursor")
+
+    current = next((item for item in work if item["id"] == f"#{current_number}"), None)
     if current is None:
-        fetched = gh_json(["api", f"repos/{repo}/pulls/{current_number}"])
-        if not isinstance(fetched, dict):
-            raise RuntimeError(f"could not fetch current PR #{current_number}")
-        current = fetched
+        raise RuntimeError(f"current PR #{current_number} was absent from open inventory")
 
     return {
         "schema_version": 1,
-        "source": "github_pull_requests",
+        "source": "github_pull_requests_graphql",
         "observed_at": datetime.datetime.now(datetime.timezone.utc)
         .isoformat()
         .replace("+00:00", "Z"),
-        "current": work_item(repo, current),
-        "active_work": [work_item(repo, pr) for pr in prs],
+        "current": current,
+        "active_work": work,
     }
 
 

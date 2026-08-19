@@ -14,10 +14,12 @@ fn finding_with_hidden_limit() -> AnalysisReport {
         analysis: "terse-existing-primitives".to_string(),
         repository: "/repo".to_string(),
         claims: Vec::new(),
-        findings: vec![Finding::new("execution", "Target execution").with_claim(
-            Claim::new(ClaimKind::Proven, "target test passed")
-                .with_evidence(Evidence::new("execution covered Linux only")),
-        )],
+        findings: vec![
+            Finding::new("execution", "Target execution").with_claim(
+                Claim::new(ClaimKind::Proven, "target test passed")
+                    .with_evidence(Evidence::new("execution covered Linux only")),
+            ),
+        ],
     }
 }
 
@@ -78,10 +80,12 @@ fn blocked_without_question() -> AnalysisReport {
         analysis: "terse-existing-primitives".to_string(),
         repository: "/repo".to_string(),
         claims: Vec::new(),
-        findings: vec![Finding::new("execution", "Merge eligibility").with_claim(Claim::new(
-            ClaimKind::Unknown,
-            "exact-head target execution is missing",
-        ))],
+        findings: vec![
+            Finding::new("execution", "Merge eligibility").with_claim(Claim::new(
+                ClaimKind::Unknown,
+                "exact-head target execution is missing",
+            )),
+        ],
     }
 }
 

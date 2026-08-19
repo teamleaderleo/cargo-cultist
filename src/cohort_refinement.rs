@@ -192,6 +192,8 @@ fn evaluate_discriminator(
         RefinementStatus::NoImprovement
     } else if current_cohort.support < request.min_support {
         RefinementStatus::Overfit
+    } else if !counterexample_rate_strictly_improves(current_cohort, baseline) {
+        RefinementStatus::NoImprovement
     } else {
         RefinementStatus::Candidate
     };
@@ -206,6 +208,16 @@ fn evaluate_discriminator(
         excluded_counterexamples: Some(excluded_counterexamples),
         partitions,
     }
+}
+
+fn counterexample_rate_strictly_improves(current: CohortCounts, baseline: CohortCounts) -> bool {
+    let current_counterexamples = current.counterexamples as u128;
+    let current_opportunities = current.opportunities() as u128;
+    let baseline_counterexamples = baseline.counterexamples as u128;
+    let baseline_opportunities = baseline.opportunities() as u128;
+
+    current_counterexamples * baseline_opportunities
+        < baseline_counterexamples * current_opportunities
 }
 
 fn count_observations(observations: &[CohortObservation]) -> CohortCounts {

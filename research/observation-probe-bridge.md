@@ -119,7 +119,28 @@ The reader revalidates the bounded request before planning.
 
 ## Execution receipt
 
-Pending the first GitHub CI run on the combined Phase B carrier.
+The explicit composition base was created by merging green #164 evidence-planner head `3284895e50831811af53d60a9436e0d4ffb3c267` into a branch pinned to #210 v2 frontier head `7b5c4e5add71356e2d58ac234680e26ed0fc8ba9`. The merge commit is `32cef81ac5e57c4d8285cce00fd644265a67e5fd`.
+
+The first Phase B CI attempt stopped only at `cargo fmt --check`; the formatter delta changed line wrapping and module ordering only.
+
+Formatted semantic head:
+
+```text
+959d1712235a4f7c7e1f48e524baeecbcf1df0a3
+```
+
+GitHub Actions CI run `32256195538` / run number `1453` completed successfully. It passed:
+
+- `cargo fmt --check`;
+- strict Clippy;
+- active-work preflight;
+- full `cargo test`, including mapped/unmapped/wrong-subject/current/UNKNOWN/INVALID/missing-context/effect-authority bridge controls;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON and positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+Main advanced independently while this ran, but the intervening five main commits changed only CI/reference-policy tooling and `AGENTS.md`; they did not touch the observation/frontier/planner/bridge files.
 
 North star:
 

@@ -4,7 +4,7 @@ Date: 2026-08-19
 
 ## Question
 
-Can Cargo Cultist cheaply surface live concurrent work that a coding agent would reasonably want to know about, without becoming a scheduler, lock manager, or GitHub-dependent core?
+Can Cultist cheaply surface live concurrent work that a coding agent would reasonably want to know about, without becoming a scheduler, lock manager, or GitHub-dependent core?
 
 The first experiment asks only:
 
@@ -20,23 +20,23 @@ Remote project state and local evidence analysis stay separate:
 GitHub / orchestrator / other provider
   -> active-work inventory JSON
 
-Cargo Cultist research analyzer
+Cultist research analyzer
   -> validate + normalize inventory
   -> exact path intersection
   -> advisory heads-ups
 ```
 
-The core analyzer does not call GitHub and does not need credentials or network access.
+The Rust analyzer does not call GitHub and does not need credentials or network access.
 
-The current GitHub Actions research adapter records, for each open PR:
+The GitHub adapter records, for each open PR:
 
 - PR identity, title, and URL;
 - exact head ref and head SHA;
 - GitHub `updated_at` freshness receipt;
 - draft state;
-- complete changed-path inventory retrieved through paginated PR-files API calls.
+- complete changed-path inventory.
 
-The supplying adapter's completeness and freshness remain separate evidence from the overlap result.
+The common case is retrieved in one GraphQL request: up to 100 open PRs and the first 100 files per PR. Additional requests happen only when those explicit pagination bounds are exceeded. The supplying adapter's completeness and freshness remain separate evidence from the overlap result.
 
 ## Current and intended paths remain distinct
 
@@ -87,7 +87,7 @@ A heads-up asks only:
 
 No overlap means no heads-up entry.
 
-The machine report still preserves explicit `UNKNOWN` boundaries, but the workflow's normal human-facing line is simply:
+The normal human-facing result is simply:
 
 ```text
 No direct active-work path overlap worth surfacing.
@@ -95,13 +95,15 @@ No direct active-work path overlap worth surfacing.
 
 The first experiment caps returned heads-ups and reports omissions so a busy repository cannot silently turn into an unbounded context dump.
 
+For CI, quiet runs use an even cheaper demand-driven path: GitHub's provider-normalized repository paths are intersected first. If those exact sets are disjoint, the Rust analyzer is skipped. A possible overlap still goes through the Rust evidence model before any heads-up is rendered.
+
 ## Why PR-relative paths instead of `preflight --against` every PR head?
 
 PR comparison and arbitrary-ref comparison are related but not identical evidence problems.
 
 `cargo cultist preflight --against REF` compares two Git change sets from their common merge base. That is the right deterministic local primitive for two refs whose relationship is the question.
 
-For live PR awareness, GitHub already exposes each PR's own changed-path set relative to its configured base. Using that metadata avoids accidentally treating unrelated base-branch movement as one worker's change when two PR heads have different freshness or ancestry.
+For live PR awareness, GitHub exposes each PR's own changed-path set relative to its configured base. Using that metadata avoids accidentally treating unrelated base-branch movement as one worker's change when two PR heads have different freshness or ancestry.
 
 The remote adapter therefore supplies PR-relative changed paths directly. Future adapters can supply equivalent work-item change sets from other systems.
 
@@ -157,9 +159,9 @@ heads-up surfaced active #95 at 7fbfd6ca
 
 This proves the pre-edit question against a real active work item without fabricating an overlapping PR.
 
-The positive control was then removed from the normal workflow after capture so routine dogfood measures natural signal rather than forced positives.
+The positive control was removed after capture so routine dogfood measures natural signal rather than forced positives.
 
-### Exact-head repository CI
+### Exact-head repository CI for the first slice
 
 Head:
 
@@ -167,31 +169,117 @@ Head:
 3173e650695e86eeb3e82f078504ed78dff10ed8
 ```
 
-CI run `32230688380` passed:
+CI run `32230688380` passed rustfmt, Clippy with warnings denied, full tests, repository/history/CI-test dogfood, and PR diff text + JSON dogfood.
 
-- rustfmt;
-- Clippy with warnings denied;
-- full tests;
-- repository text + JSON dogfood;
-- history text + JSON dogfood;
-- CI-test inventory and fixtures;
-- PR diff text + JSON dogfood.
+## Post-activation cost dogfood
 
-The active-work workflow on the same head also completed successfully.
+The first activation used a separate workflow and paid a cold Cargo build for a tiny advisory. That was useful for proving behavior, but too expensive to leave as the normal carrier.
+
+PR #100 moved the advisory into the existing PR CI job and then reduced the common-case cost in three steps.
+
+### Integrated, serial REST inventory
+
+Run `32231395340`, job `96001778887`:
+
+```text
+2 open PRs
+active-work step: about 7.84 seconds
+result: quiet
+```
+
+The same CI job passed all ordinary quality and dogfood gates.
+
+### Batched GraphQL inventory
+
+Run `32231795244`, job `96003016417`:
+
+```text
+4 open PRs
+active-work step: about 6.02 seconds
+result: quiet
+```
+
+The adapter retrieves the common inventory in one GraphQL call and paginates only explicit overflow cases.
+
+### Demand-driven quiet path
+
+Run `32231944337`, job `96003475258`:
+
+```text
+5 open PRs
+inventory: 1.87 seconds
+Rust analyzer: 0.00 seconds (skipped after exact provider-path prefilter)
+result: quiet
+```
+
+The exact head still passed the full CI and dogfood suite.
+
+This is the desired continuous-dogfood cost model: quiet runs pay for a bounded metadata snapshot and a set intersection; potential overlaps pay the additional deterministic analyzer cost.
+
+## Repository-coordinate freshness dogfood
+
+During this work the GitHub repository was renamed from:
+
+```text
+teamleaderleo/cargo-cultist
+```
+
+to:
+
+```text
+teamleaderleo/cultist
+```
+
+Old repository references redirected for many operations, but exact file access exposed the stale coordinate. The CI adapter remained correct because it reads `GITHUB_REPOSITORY` at execution time; subsequent runs checked out and queried `teamleaderleo/cultist` without a hard-coded repository identity.
+
+This is a useful future project-memory rule: repository/provider coordinates are freshness-sensitive evidence. A consumer should preserve the observed coordinate and refresh it rather than silently treating an old identifier as timeless truth.
+
+## Active branches: two useful controls
+
+PR inventory is only one live-work source. The checkout exposed active branch names too, but branch existence alone is not enough evidence for a heads-up.
+
+Negative control:
+
+```text
+feature/preflight-active-inventory
+  compared with main: identical
+  ahead: 0
+  behind: 0
+```
+
+Despite its relevant-looking name, it carries no divergent work and should not interrupt anyone.
+
+Positive inventory seed:
+
+```text
+rename/cultist-product-brand
+  compared with main: ahead by 3 commits
+  changed paths:
+    Cargo.toml
+    README.md
+    ROADMAP.md
+```
+
+That branch is genuine divergent work, but it is disjoint from the #100 CI/adapter lane, so even a future branch-aware heads-up should stay quiet for #100.
+
+A branch adapter therefore needs at least a divergent head/change-set plus freshness evidence; branch-name similarity is not authority or intent.
 
 ## Normal dogfood activation
 
-The research workflow is designed to run on PR open/synchronize/reopen/ready-for-review events.
+After #100, the advisory lives as one non-blocking step in the existing PR CI job rather than a separate workflow.
 
-It is intentionally advisory:
+Properties:
 
-- a heads-up never fails the job;
-- the job uses read-only GitHub permissions;
-- old runs for the same PR are cancelled when a new head appears;
-- the research job is marked `continue-on-error` so adapter/probe failure cannot block ordinary development;
-- only the raw inventory and natural advisory report are retained after the positive-control receipt.
+- PR-only;
+- read-only GitHub permissions;
+- adapter/analyzer failures use `continue-on-error` and cannot block ordinary development;
+- a heads-up itself never changes the job result;
+- quiet runs use the demand-driven prefilter and skip Rust;
+- possible overlaps are validated by the Rust analyzer;
+- results are printed in logs and rendered into the GitHub Actions job summary;
+- the adapter discovers the current repository coordinate from runtime metadata.
 
-This makes it cheap enough to leave enabled while signal quality is measured.
+The standalone research workflow was retired after its behavior receipts were captured.
 
 ## Evaluation labels
 
@@ -206,7 +294,8 @@ misleading
 
 Useful future enrichments should be added one evidence class at a time with negative controls:
 
-- exact issue / explicit intent references;
+- explicit coordination/intent references;
+- divergent active branches;
 - symbol overlap;
 - historical companions + counterexamples;
 - generated ownership relationships;
@@ -216,7 +305,7 @@ Useful future enrichments should be added one evidence class at a time with nega
 
 Do not collapse these into one hidden conflict score.
 
-Issue #99 now owns a real agent-heavy corpus for explicit coordination/intent relationships such as `depends on`, `blocks`, `supersedes`, and evidence-coordinate sequencing. Those relationships should remain a separate evidence layer from direct path overlap.
+Issue #99 owns a real agent-heavy corpus for explicit coordination/intent relationships such as `depends on`, `blocks`, `supersedes`, and evidence-coordinate sequencing. Those relationships should remain a separate evidence layer from direct path overlap.
 
 ## Success criterion
 

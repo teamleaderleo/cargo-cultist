@@ -45,9 +45,7 @@ struct PathBindings {
     paths: BTreeMap<String, String>,
 }
 
-pub fn discover_generator_relations(
-    root: &Path,
-) -> Result<Vec<GeneratorRelation>, Box<dyn Error>> {
+pub fn discover_generator_relations(root: &Path) -> Result<Vec<GeneratorRelation>, Box<dyn Error>> {
     let aliases = cargo_run_aliases(root);
     if aliases.is_empty() {
         return Ok(Vec::new());

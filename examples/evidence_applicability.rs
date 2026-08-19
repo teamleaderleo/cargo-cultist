@@ -5,9 +5,7 @@ mod applicability;
 use std::error::Error;
 use std::io::{self, Read};
 
-use applicability::{
-    ApplicabilityQuery, MAX_APPLICABILITY_QUERY_BYTES, evaluate_query,
-};
+use applicability::{ApplicabilityQuery, MAX_APPLICABILITY_QUERY_BYTES, evaluate_query};
 
 fn main() {
     if let Err(error) = run() {

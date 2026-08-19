@@ -21,7 +21,7 @@ MAX_CHANGED_PATHS = 512
 MAX_ARTIFACTS_HARD = 32
 MAX_EDGE_EVIDENCE_BYTES = 2 * 1024
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-REFERENCE_RE = re.compile(r"(?<![A-Za-z0-9_/])#([1-9][0-9]*)\b")
+REFERENCE_RE = re.compile(r"(?<![A-Za-z0-9_.-])#([1-9][0-9]*)\b")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 

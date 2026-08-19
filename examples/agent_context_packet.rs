@@ -7,7 +7,7 @@ use std::process::Command;
 
 use serde::Serialize;
 
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 const DEFAULT_MAX_HISTORY: usize = 20;
 const DEFAULT_MAX_COMPANIONS: usize = 8;
 const DEFAULT_MAX_EXAMPLES: usize = 2;
@@ -39,6 +39,7 @@ struct AgentContextPacket {
     repository: String,
     target: PacketTarget,
     budget: PacketBudget,
+    serialized_bytes: usize,
     direct_evidence: Vec<EvidenceItem>,
     guidance: Vec<GuidanceFile>,
     recent_history: Vec<CommitSummary>,
@@ -94,7 +95,9 @@ struct HistoricalCompanion {
     opportunities: usize,
     support_percent: f64,
     examples: Vec<CommitSummary>,
+    examples_omitted: usize,
     counterexamples: Vec<CommitSummary>,
+    counterexamples_omitted: usize,
 }
 
 #[derive(Debug)]
@@ -165,8 +168,19 @@ fn run() -> Result<(), Box<dyn Error>> {
             budget.max_companions
         ));
     }
+    let relations_with_omitted_examples = historical_companions
+        .iter()
+        .filter(|companion| {
+            companion.examples_omitted > 0 || companion.counterexamples_omitted > 0
+        })
+        .count();
+    if relations_with_omitted_examples > 0 {
+        truncation.push(format!(
+            "{relations_with_omitted_examples} returned companion relation(s) have omitted examples or counterexamples; exact omission counts are recorded on each relation."
+        ));
+    }
 
-    let packet = AgentContextPacket {
+    let mut packet = AgentContextPacket {
         schema_version: SCHEMA_VERSION,
         analysis: "agent_context",
         repository: root.display().to_string(),
@@ -174,6 +188,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             path: relative_target.display().to_string(),
         },
         budget,
+        serialized_bytes: 0,
         direct_evidence: vec![EvidenceItem {
             claim_kind: "proven",
             message: "The target resolves to this repository-relative file identity.".to_string(),
@@ -191,12 +206,26 @@ fn run() -> Result<(), Box<dyn Error>> {
             "Remote pull request, issue, and review rationale is unavailable in this local-only packet.".to_string(),
             "Chronological proximity between commits is not evidence that one change caused another.".to_string(),
             "Current Cargo Cultist analyzer findings are not yet composed into this standalone research example.".to_string(),
+            "This v2 research packet measures serialized bytes but does not yet enforce a hard byte budget or eviction policy.".to_string(),
         ],
         truncation,
     };
 
-    println!("{}", serde_json::to_string_pretty(&packet)?);
+    println!("{}", render_packet_with_exact_size(&mut packet)?);
     Ok(())
+}
+
+fn render_packet_with_exact_size(
+    packet: &mut AgentContextPacket,
+) -> Result<String, serde_json::Error> {
+    loop {
+        let rendered = serde_json::to_string_pretty(packet)?;
+        let serialized_bytes = rendered.len();
+        if packet.serialized_bytes == serialized_bytes {
+            return Ok(rendered);
+        }
+        packet.serialized_bytes = serialized_bytes;
+    }
 }
 
 fn git_repo_root(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
@@ -353,13 +382,14 @@ fn historical_companions(
                 .iter()
                 .take(budget.max_examples_per_relation)
                 .map(|index| considered[*index].summary.clone())
-                .collect();
+                .collect::<Vec<_>>();
             let counterexamples = (0..considered.len())
                 .filter(|index| !present.contains(index))
                 .take(budget.max_examples_per_relation)
                 .map(|index| considered[index].summary.clone())
-                .collect();
+                .collect::<Vec<_>>();
             let support_count = present_in.len();
+            let counterexample_count = opportunities.saturating_sub(support_count);
             let support_percent = if opportunities == 0 {
                 0.0
             } else {
@@ -371,7 +401,9 @@ fn historical_companions(
                 support: support_count,
                 opportunities,
                 support_percent,
+                examples_omitted: support_count.saturating_sub(examples.len()),
                 examples,
+                counterexamples_omitted: counterexample_count.saturating_sub(counterexamples.len()),
                 counterexamples,
             }
         })

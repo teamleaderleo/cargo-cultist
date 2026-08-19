@@ -121,7 +121,7 @@ jobs:
           treatment_scope_subjects = [row["subject"] for row in treatment["scope_recent_history"]]
 
           assert baseline["schema_version"] == 5
-          assert baseline["analysis"] == "agent_context_packet"
+          assert baseline["analysis"] == "agent_context"
           assert baseline["target"]["path"] == "convex/schema.ts"
           assert baseline["budget"]["max_serialized_bytes"] == 32768
           assert baseline["serialized_bytes"] <= 32768

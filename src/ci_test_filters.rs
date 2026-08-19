@@ -182,7 +182,7 @@ fn collect_explicit_tests(
     report: &mut CiTestFilterReport,
 ) -> Result<(), Box<dyn Error>> {
     let scan = scan_rust_repository(root, &BTreeSet::new(), SKIPPED_RUST_DIRS)?;
-    performance::record_rust_scan(scan.parsed_files, scan.cache_hits, 0);
+    performance::record_rust_scan(scan.parsed_files, scan.cache_hits);
 
     for file in scan.files {
         if let Some(error) = file.facts.parse_error {

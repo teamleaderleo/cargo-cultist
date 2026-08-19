@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use proc_macro2::{Literal, TokenTree};
-use syn::{Expr, ExprCall, ExprMethodCall, ImplItem, Item, LitStr, Member, Pat, Stmt};
+use syn::{Expr, ImplItem, Item, LitStr, Member, Pat, Stmt};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct RankRule {
@@ -99,14 +99,14 @@ fn run() -> Result<(), Box<dyn Error>> {
     if violations.is_empty() {
         println!("\nOBSERVATION");
         println!(
-            "  Every supported acquisition made while another named guard remained held is permitted by the declared rank DAG."
+            "  Every supported acquisition follows the repository's declared successor rule for the most recently acquired lock still held."
         );
     } else {
         println!("\nFINDING: declared lock-rank order contradicted by lexical acquisition");
         for violation in &violations {
             println!("\nPROVEN / DERIVED");
             println!(
-                "  `{}` ({}) is still held when `{}` ({}) is acquired.",
+                "  `{}` ({}) is the most recently acquired supported lock still held when `{}` ({}) is acquired.",
                 violation.held.field,
                 violation.held.rank,
                 violation.acquired.field,
@@ -160,9 +160,14 @@ fn parse_rank_rules(source: &str) -> Result<BTreeMap<String, RankRule>, Box<dyn 
             }
 
             let name = token_ident(tokens.get(index + 1)).ok_or("rank name missing")?;
-            let member = token_string_literal(tokens.get(index + 2)).ok_or("rank member missing")?;
-            if !tokens.get(index + 3).is_some_and(|token| is_ident(token, "followed"))
-                || !tokens.get(index + 4).is_some_and(|token| is_ident(token, "by"))
+            let member =
+                token_string_literal(tokens.get(index + 2)).ok_or("rank member missing")?;
+            if !tokens
+                .get(index + 3)
+                .is_some_and(|token| is_ident(token, "followed"))
+                || !tokens
+                    .get(index + 4)
+                    .is_some_and(|token| is_ident(token, "by"))
             {
                 return Err(format!("rank `{name}` is missing `followed by`").into());
             }
@@ -199,21 +204,21 @@ fn parse_rank_rules(source: &str) -> Result<BTreeMap<String, RankRule>, Box<dyn 
 fn unique_field_ranks(ranks: &BTreeMap<String, RankRule>) -> BTreeMap<String, String> {
     let mut candidates = BTreeMap::<String, Vec<String>>::new();
     for rule in ranks.values() {
-        let Some(field) = rule.member.rsplit("::").next() else {
-            continue;
-        };
-        candidates
-            .entry(field.to_string())
-            .or_default()
-            .push(rule.name.clone());
+        if let Some(field) = rule.member.rsplit("::").next() {
+            candidates
+                .entry(field.to_string())
+                .or_default()
+                .push(rule.name.clone());
+        }
     }
 
-    candidates
-        .into_iter()
-        .filter_map(|(field, ranks)| {
-            (ranks.len() == 1).then(|| (field, ranks.into_iter().next().unwrap()))
-        })
-        .collect()
+    let mut unique = BTreeMap::new();
+    for (field, ranks) in candidates {
+        if ranks.len() == 1 {
+            unique.insert(field, ranks[0].clone());
+        }
+    }
+    unique
 }
 
 fn find_impl_function(source: &str, function_name: &str) -> Result<syn::ImplItemFn, Box<dyn Error>> {
@@ -240,13 +245,16 @@ fn analyze_function(
     field_to_rank: &BTreeMap<String, String>,
 ) -> (Vec<Acquisition>, Vec<Violation>, Vec<(usize, String)>) {
     let mut held = BTreeMap::<String, Acquisition>::new();
+    let mut held_order = Vec::<String>::new();
     let mut acquisitions = Vec::new();
     let mut violations = Vec::new();
     let mut releases = Vec::new();
 
     for statement in function.block.stmts {
         if let Some(acquisition) = local_acquisition(&statement, field_to_rank) {
-            for prior in held.values() {
+            if let Some(top_guard) = held_order.last()
+                && let Some(prior) = held.get(top_guard)
+            {
                 let allowed = ranks
                     .get(&prior.rank)
                     .is_some_and(|rule| rule.followers.contains(&acquisition.rank));
@@ -257,6 +265,8 @@ fn analyze_function(
                     });
                 }
             }
+
+            held_order.push(acquisition.guard.clone());
             held.insert(acquisition.guard.clone(), acquisition.clone());
             acquisitions.push(acquisition);
             continue;
@@ -264,6 +274,7 @@ fn analyze_function(
 
         if let Some((line, guard)) = explicit_drop(&statement) {
             held.remove(&guard);
+            held_order.retain(|held_guard| held_guard != &guard);
             releases.push((line, guard));
         }
     }
@@ -318,7 +329,7 @@ fn explicit_drop(statement: &Stmt) -> Option<(usize, String)> {
         return None;
     }
     Some((
-        call.func.span().start().line,
+        path.path.segments[0].ident.span().start().line,
         argument.path.segments[0].ident.to_string(),
     ))
 }
@@ -374,8 +385,12 @@ fn print_boundary() {
     println!("\nEVIDENCE BOUNDARY");
     println!("  Rank policy is read from the repository's `define_lock_ranks!` invocation.");
     println!("  Field-to-rank matching requires a unique rank member field name.");
-    println!("  Acquisition tracking covers simple named guards initialized by `.lock()`, `.read()`, or `.write()` at the function's top statement level.");
-    println!("  Explicit `drop(guard)` ends that held interval. Temporary guards, helper-returned guards, nested blocks, aliases, and control-flow joins remain outside this first probe.");
+    println!(
+        "  Acquisition tracking covers simple named guards initialized by `.lock()`, `.read()`, or `.write()` at the function's top statement level."
+    );
+    println!(
+        "  Explicit `drop(guard)` ends that held interval. Temporary guards, helper-returned guards, nested blocks, aliases, and control-flow joins remain outside this first probe."
+    );
 }
 
 #[cfg(test)]

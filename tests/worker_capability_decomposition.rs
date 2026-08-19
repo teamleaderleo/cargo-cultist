@@ -33,6 +33,7 @@ struct EpisodeFacts {
     decisive_evidence_required: bool,
     decisive_evidence_available: bool,
     decisive_evidence_selected: bool,
+    decisive_evidence_recovered_manually: bool,
     decisive_evidence_inspected: bool,
     interpretation_matches_oracle: Option<bool>,
     plan_matches_contract: Option<bool>,
@@ -50,6 +51,7 @@ impl EpisodeFacts {
             decisive_evidence_required: true,
             decisive_evidence_available: true,
             decisive_evidence_selected: true,
+            decisive_evidence_recovered_manually: false,
             decisive_evidence_inspected: true,
             interpretation_matches_oracle: Some(true),
             plan_matches_contract: Some(true),
@@ -108,6 +110,29 @@ fn assess_episode(facts: EpisodeFacts) -> EpisodeAssessment {
     EpisodeAssessment { boundary, response }
 }
 
+fn boundary_chain(facts: EpisodeFacts) -> Vec<FailureBoundary> {
+    let primary = assess_episode(facts).boundary;
+    let mut chain = match primary {
+        FailureBoundary::None | FailureBoundary::Unexplained => Vec::new(),
+        boundary => vec![boundary],
+    };
+
+    if primary == FailureBoundary::SelectionMiss && facts.decisive_evidence_recovered_manually {
+        let mut recovered = facts;
+        recovered.decisive_evidence_selected = true;
+        recovered.decisive_evidence_recovered_manually = false;
+        let downstream = assess_episode(recovered).boundary;
+        if !matches!(
+            downstream,
+            FailureBoundary::None | FailureBoundary::Unexplained
+        ) {
+            chain.push(downstream);
+        }
+    }
+
+    chain
+}
+
 #[test]
 fn identical_failed_outcome_does_not_imply_identical_worker_skill_failure() {
     let mut selection_miss = EpisodeFacts::baseline_failure();
@@ -128,7 +153,10 @@ fn identical_failed_outcome_does_not_imply_identical_worker_skill_failure() {
         assess_episode(interpretation_miss).boundary,
         FailureBoundary::InterpretationMiss
     );
-    assert_ne!(assess_episode(selection_miss), assess_episode(interpretation_miss));
+    assert_ne!(
+        assess_episode(selection_miss),
+        assess_episode(interpretation_miss)
+    );
 }
 
 #[test]
@@ -207,15 +235,26 @@ fn escalation_does_not_excuse_ignoring_evidence_that_was_already_selected() {
 }
 
 #[test]
+fn selection_miss_can_precede_a_downstream_worker_failure_after_manual_recovery() {
+    let mut facts = EpisodeFacts::baseline_failure();
+    facts.decisive_evidence_selected = false;
+    facts.decisive_evidence_recovered_manually = true;
+    facts.required_validation_completed = false;
+
+    assert_eq!(
+        boundary_chain(facts),
+        vec![FailureBoundary::SelectionMiss, FailureBoundary::ValidationMiss]
+    );
+}
+
+#[test]
 fn insufficient_receipts_stay_unexplained_instead_of_becoming_model_blame() {
     let mut facts = EpisodeFacts::baseline_failure();
     facts.interpretation_matches_oracle = None;
     facts.plan_matches_contract = None;
 
-    assert_eq!(
-        assess_episode(facts).boundary,
-        FailureBoundary::Unexplained
-    );
+    assert_eq!(assess_episode(facts).boundary, FailureBoundary::Unexplained);
+    assert!(boundary_chain(facts).is_empty());
 }
 
 #[test]
@@ -230,4 +269,5 @@ fn completed_task_is_success_without_failure_attribution() {
             response: ResponseQuality::Success,
         }
     );
+    assert!(boundary_chain(facts).is_empty());
 }

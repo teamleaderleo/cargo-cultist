@@ -175,7 +175,7 @@ impl ProjectMemoryPacket {
                 &edge.evidence,
                 "edge evidence",
                 MAX_EDGE_EVIDENCE_BYTES,
-                true,
+                false,
             )?;
             if !source.evidence_text.contains(&edge.evidence) {
                 return Err(format!(
@@ -184,6 +184,7 @@ impl ProjectMemoryPacket {
                     display_ref(edge.to)
                 ));
             }
+            validate_edge_semantics(edge)?;
         }
 
         Ok(())
@@ -322,6 +323,95 @@ fn validate_repository(value: &str) -> Result<(), String> {
 
 fn valid_repository_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
+}
+
+fn validate_edge_semantics(edge: &ProjectMemoryEdge) -> Result<(), String> {
+    let Some(classified) = classify_relation(&edge.evidence) else {
+        return Err(format!(
+            "edge evidence for {} -> {} is not an admitted explicit relationship line",
+            display_ref(edge.from),
+            display_ref(edge.to)
+        ));
+    };
+    if classified != edge.relation {
+        return Err(format!(
+            "edge relation {:?} disagrees with source evidence classified as {:?}",
+            edge.relation, classified
+        ));
+    }
+    if !evidence_mentions_reference(&edge.evidence, edge.to.number) {
+        return Err(format!(
+            "edge evidence does not explicitly mention target {}",
+            display_ref(edge.to)
+        ));
+    }
+    Ok(())
+}
+
+fn classify_relation(evidence: &str) -> Option<MemoryRelation> {
+    let normalized = evidence.trim().to_ascii_lowercase();
+    if [
+        "closes", "close", "closed", "fixes", "fix", "fixed", "resolves", "resolve", "resolved",
+    ]
+    .iter()
+    .any(|word| starts_with_relation_word(&normalized, word))
+    {
+        return Some(MemoryRelation::Closes);
+    }
+    if normalized.starts_with("follow-up to") || normalized.starts_with("follow up to") {
+        return Some(MemoryRelation::FollowUpTo);
+    }
+    if normalized.starts_with("continuation from")
+        || normalized.starts_with("deployment continuation")
+    {
+        return Some(MemoryRelation::ContinuationFrom);
+    }
+    if normalized.starts_with("parent:") {
+        return Some(MemoryRelation::Parent);
+    }
+    if normalized.starts_with("related:") {
+        return Some(MemoryRelation::Related);
+    }
+    None
+}
+
+fn starts_with_relation_word(value: &str, word: &str) -> bool {
+    value
+        .strip_prefix(word)
+        .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+}
+
+fn evidence_mentions_reference(evidence: &str, target: u64) -> bool {
+    let bytes = evidence.as_bytes();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] != b'#' {
+            index += 1;
+            continue;
+        }
+        let mut cursor = index + 1;
+        if cursor >= bytes.len() || bytes[cursor] == b'0' || !bytes[cursor].is_ascii_digit() {
+            index += 1;
+            continue;
+        }
+        let mut number = 0u64;
+        while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
+            let Some(next) = number
+                .checked_mul(10)
+                .and_then(|value| value.checked_add((bytes[cursor] - b'0') as u64))
+            else {
+                number = u64::MAX;
+                break;
+            };
+            number = next;
+            cursor += 1;
+        }
+        if number == target {
+            return true;
+        }
+        index = cursor.max(index + 1);
+    }
+    false
 }
 
 fn validate_sha(value: &str, label: &str) -> Result<(), String> {

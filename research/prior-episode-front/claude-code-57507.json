@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "inputs": [
+    {
+      "kind": "issue_closure",
+      "id": "claude-code:31294-to-57507:inactive-rereport",
+      "episode": {
+        "schema_version": 1,
+        "repository": "anthropics/claude-code",
+        "prior": {
+          "number": 31294,
+          "title": "[BUG] Subagents with `memory` field never create or update MEMORY.md — memory system not functional for Task() subagents",
+          "state": "closed",
+          "state_reason": "not_planned",
+          "created_at": "2026-03-06T00:41:05Z",
+          "closed_at": "2026-04-11T22:11:48Z",
+          "closed_by": "github-actions[bot]"
+        },
+        "later": {
+          "number": 57507,
+          "title": "[BUG] `memory:` field in subagent frontmatter not functional — reproduces on v2.1.137; tools allowlist appears to override auto-enable",
+          "state": "closed",
+          "state_reason": "not_planned",
+          "created_at": "2026-05-09T00:48:52Z",
+          "closed_at": "2026-06-09T11:10:27Z",
+          "closed_by": "github-actions[bot]"
+        },
+        "closure": {
+          "issue": 31294,
+          "comment_id": 4230270046,
+          "source_ref": "github:issue/31294/comment/4230270046",
+          "actor": "github-actions[bot]",
+          "kind": "administrative_inactive",
+          "evidence": "Closing for now — inactive for too long. Please [open a new issue](https://github.com/anthropics/claude-code/issues/new/choose) if this is still relevant."
+        },
+        "re_report": {
+          "from_issue": 57507,
+          "to_issue": 31294,
+          "relation": "re_report_of",
+          "source_ref": "github:issue/57507",
+          "evidence": "**Re-reporting** the bug from #31294 (closed-as-inactive 2026-04-11 by github-actions bot, not because it was fixed)."
+        },
+        "duplicate_challenge": {
+          "suggestion_comment_id": 4008755017,
+          "suggestion_source_ref": "github:issue/31294/comment/4008755017",
+          "suggestion_actor": "github-actions[bot]",
+          "suggestion_evidence": "Found 3 possible duplicate issues: #25140, #27942, and #29423. The bot announced possible automatic closure unless the reporter responded.",
+          "rejection_comment_id": 4008815491,
+          "rejection_source_ref": "github:issue/31294/comment/4008815491",
+          "rejection_actor": "Mationetap",
+          "rejection_evidence": "Not a duplicate of the suggested issues. The reporter distinguished all three suggested issues from the `memory: user|project|local` Task() subagent failure."
+        }
+      }
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 [package]
+# Rust distribution name retained so `cargo cultist ...` continues to work.
 name = "cargo-cultist"
 version = "0.1.0"
 edition = "2024"
-description = "Repository-aware analysis for Rust codebases"
-repository = "https://github.com/teamleaderleo/cargo-cultist"
+description = "Repository-aware evidence and analysis with Rust-focused adapters"
+repository = "https://github.com/teamleaderleo/cultist"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 

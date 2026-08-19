@@ -1,0 +1,190 @@
+name: Stensibly selected scope evidence replay
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/scoped-selected-evidence-replay.yml"
+      - "examples/agent_context_packet.rs"
+      - "examples/scoped_agent_context_packet.rs"
+      - "examples/support/scoped_agent_context_packet_impl.rs"
+      - "examples/support/scoped_selected_evidence_impl.rs"
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          fetch-depth: 1
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build scoped packet example
+        run: cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
+
+      - name: Checkout exact pre-guard Stensibly state
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/stensibly
+          ref: 85cecf2608ad9e734a67518577fa85b9a08a550c
+          fetch-depth: 256
+          persist-credentials: false
+          path: target
+
+      - name: Replay selected-evidence budget discriminator
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          scoped="$PWD/cultist/target/release/examples/scoped_agent_context_packet"
+          target="$PWD/target/convex/schema.ts"
+
+          python - "$scoped" "$target" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          scoped, target = sys.argv[1:]
+          budgets = [32768, 16000, 15750, 4096, 3900]
+          selected_shas = [
+              "85cecf2608ad9e734a67518577fa85b9a08a550c",
+              "ca5d2c7fdf89666e523972ab6e81610d17b9611b",
+          ]
+          required_subjects = [
+              "Keep Gmail mailbox-disposition indexes deployable (#1573)",
+              "Keep Gmail semantic-admission indexes deployable (#1571)",
+          ]
+
+          def run(budget, protected):
+              env = os.environ.copy()
+              env["CARGO_CULTIST_PACKET_MAX_BYTES"] = str(budget)
+              args = [scoped, target, "--scope", "convex"]
+              if protected:
+                  for sha in selected_shas:
+                      args.extend(["--protect-scope-sha", sha])
+              completed = subprocess.run(args, env=env, capture_output=True, text=True)
+              if completed.returncode != 0:
+                  stderr = completed.stderr.strip()
+                  if "protected scoped packet evidence requires" not in stderr:
+                      raise SystemExit(f"unexpected failure at {budget}, protected={protected}: {stderr}")
+                  return {"status": "protected_core_too_large", "stderr": stderr}
+
+              envelope = json.loads(completed.stdout)
+              scope_rows = envelope["scope_recent_history"]
+              scope_shas = [row["sha"] for row in scope_rows]
+              scope_subjects = [row["subject"] for row in scope_rows]
+              presence = {
+                  subject: any(subject in observed for observed in scope_subjects)
+                  for subject in required_subjects
+              }
+              result = {
+                  "status": "selected",
+                  "candidate_serialized_bytes": envelope["candidate_serialized_bytes"],
+                  "serialized_bytes": envelope["serialized_bytes"],
+                  "scope_history_count": len(scope_rows),
+                  "scope_shas": scope_shas,
+                  "scope_semantic_evictions": envelope["semantic_evictions"],
+                  "file_packet_semantic_evictions": envelope["file_packet"]["semantic_evictions"],
+                  "target_recent_history_count": len(envelope["file_packet"]["recent_history"]),
+                  "lesson_presence": presence,
+                  "preserves_all_required": all(presence.values()),
+              }
+              if protected:
+                  result["protected_scope_shas"] = envelope.get("protected_scope_shas")
+              return result
+
+          rows = []
+          for budget in budgets:
+              rows.append({
+                  "budget": budget,
+                  "current": run(budget, False),
+                  "protected": run(budget, True),
+              })
+
+          def row(budget):
+              return next(item for item in rows if item["budget"] == budget)
+
+          if not row(16000)["current"].get("preserves_all_required"):
+              raise SystemExit("16,000-byte unprotected control no longer preserves both lessons")
+          if row(15750)["current"].get("preserves_all_required"):
+              raise SystemExit("15,750-byte unprotected control no longer reproduces selected-lesson loss")
+          if not row(15750)["protected"].get("preserves_all_required"):
+              raise SystemExit("15,750-byte protected policy did not preserve both lessons")
+          if row(4096)["protected"].get("status") != "selected" or not row(4096)["protected"].get("preserves_all_required"):
+              raise SystemExit("4,096-byte protected policy did not preserve both selected lessons")
+          if row(3900)["protected"].get("status") != "protected_core_too_large":
+              raise SystemExit("3,900-byte protected policy did not fail closed")
+
+          for budget in [32768, 16000, 15750, 4096]:
+              protected = row(budget)["protected"]
+              if protected.get("status") != "selected":
+                  raise SystemExit(f"protected run unexpectedly failed at {budget}")
+              if set(protected.get("protected_scope_shas") or []) != set(selected_shas):
+                  raise SystemExit(f"protected SHA receipt mismatch at {budget}")
+              if not set(selected_shas).issubset(set(protected["scope_shas"])):
+                  raise SystemExit(f"selected SHAs missing from scope history at {budget}")
+
+          receipt = {
+              "schema_version": 1,
+              "repository": "teamleaderleo/stensibly",
+              "revision": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+              "target": "convex/schema.ts",
+              "scope": "convex",
+              "selected_scope_shas": selected_shas,
+              "required_history_subjects": required_subjects,
+              "rows": rows,
+              "summary": {
+                  "unprotected_15750_preserves_all_required": row(15750)["current"].get("preserves_all_required", False),
+                  "protected_15750_preserves_all_required": row(15750)["protected"].get("preserves_all_required", False),
+                  "protected_4096_preserves_all_required": row(4096)["protected"].get("preserves_all_required", False),
+                  "protected_3900_status": row(3900)["protected"]["status"],
+                  "protected_4096_serialized_bytes": row(4096)["protected"].get("serialized_bytes"),
+              },
+          }
+          Path("artifacts/stensibly-selected-scope-evidence-replay.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(receipt["summary"], indent=2, sort_keys=True))
+          PY
+
+      - name: Write replay summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("artifacts/stensibly-selected-scope-evidence-replay.json")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Selected scope evidence replay\n\n")
+              if not path.is_file():
+                  out.write("Replay receipt unavailable.\n")
+                  raise SystemExit(0)
+              receipt = json.loads(path.read_text(encoding="utf-8"))
+              summary = receipt["summary"]
+              out.write(f"Unprotected 15,750 keeps both: `{summary['unprotected_15750_preserves_all_required']}`  \n")
+              out.write(f"Protected 15,750 keeps both: `{summary['protected_15750_preserves_all_required']}`  \n")
+              out.write(f"Protected 4,096 keeps both: `{summary['protected_4096_preserves_all_required']}`  \n")
+              out.write(f"Protected 4,096 selected bytes: `{summary['protected_4096_serialized_bytes']}`  \n")
+              out.write(f"Protected 3,900 status: `{summary['protected_3900_status']}`\n")
+          PY
+
+      - name: Upload replay receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stensibly-selected-scope-evidence-${{ github.run_id }}
+          path: artifacts/stensibly-selected-scope-evidence-replay.json
+          if-no-files-found: error

@@ -52,39 +52,53 @@ The workflow:
 3. reset the repository to the target's first parent;
 4. applied only that source patch;
 5. verified the worktree diff contained exactly `rules.rs`;
-6. ran the composed analyzer from the parent state.
+6. proved the pinned generator's path receiver came from `project_root::get_project_root()` and that the exact `rules.rs` read / generated-registry target paths were rooted in that binding;
+7. ran the composed analyzer from the parent state.
 
 Therefore the target commit itself was absent from the historical cohort used by the analyzer. The generated outputs were absent from the current diff by construction, while their current parent-state markers, `.gitattributes` entries, generator code, Cargo aliases, and earlier history remained available.
+
+The explicit root-provenance gate is important because the generic Rust generator-ownership research adapter separately tracks unresolved receiver provenance in #65. This specimen proves the Oxc-specific premise it relies on instead of borrowing confidence from a variable name or generic `.join(...)` syntax.
 
 ## Exact Cargo Cultist receipt
 
 Experiment head:
 
 ```text
-746d0ab4e6786099baa618563653c8ddc62c4660
+18fdc0c67d45d2648b2981ce06437c5a2d70546e
 ```
 
 Generic CI:
 
 ```text
-run:    32217601800
+run:    32217805189
 result: success
 ```
 
 Held-out research workflow:
 
 ```text
-run:    32217601874
-job:    95961927494
+run:    32217805187
+job:    95962481271
 result: success
+```
+
+Every research step passed, including:
+
+```text
+Probe quality gates
+Build held-out semantic source-only counterfactual
+Prove pinned Oxc repository-root ownership premise
+Detect held-out missing generated companions
+Build exact docs-only exception counterfactual
+Keep docs-only exception quiet
 ```
 
 Artifact:
 
 ```text
-id:     9352863272
+id:     9352928628
 name:   generated-missing-companion-research
-sha256: faac0d7d5cd66f1f28353562b2b1ccbcda1577be031ecd1dfc03d118f93f258d
+sha256: 29c9dee2342c77780c039b089dc92de2c841a7f2eeb2e470160447ddf572804a
 ```
 
 The experiment's own fmt, Clippy, and unit-test gates passed before the corpus replay.
@@ -130,6 +144,8 @@ and the repository Cargo alias:
 ```text
 cargo lintgen -> run -p oxc_linter_codegen
 ```
+
+The pinned source gate independently established that both generator functions obtain `root` from `project_root::get_project_root()`, read `rules.rs` through that root, and form the two target paths through that root.
 
 ### Observed directional precedent
 

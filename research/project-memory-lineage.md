@@ -76,7 +76,15 @@ depth_frontier
 
 so a consumer cannot mistake the bounded packet for evidence that deeper explicit lineage does not exist.
 
-An anchor with no admitted explicit relationship yields an anchor-only packet and an empty edge list. That is a useful quiet result.
+Provider source completeness is independent. The existing GitHub adapter can fall back to an artifact title when its body is absent; such an artifact carries `evidence_complete=false`. If lineage expansion reaches one of those artifacts, the sidecar records it under:
+
+```text
+incomplete_evidence_artifacts
+```
+
+and sets `complete_within_requested_depth=false`. An empty relation set over incomplete retained text therefore remains visibly incomplete evidence rather than a false claim that the source artifact contains no relationship.
+
+An anchor with complete evidence and no admitted explicit relationship yields an anchor-only packet and an empty edge list. That is a useful quiet result.
 
 ## External discriminator: PR-Agent #2627 -> #2573
 
@@ -96,6 +104,33 @@ issue #2627 explicitly says follow_up_to issue #2573
 
 The collector does not infer that both issues are the same bug, that #2573's closure was incorrect, or that one artifact caused another. Those interpretations remain separate work.
 
+### Executed live carrier
+
+The first PR carrier executed the public pair through the provider collector and independent Rust packet validator:
+
+```text
+workflow run: 32248397421
+job:          96053824984
+artifact:     9363465840
+artifact digest:
+  sha256:e3333d14d004a11f4130aceda10b2366d46fb2707f7dd66461e1896c9da882e5
+```
+
+The workflow asserted:
+
+```text
+artifacts: 2
+  issue #2627 closed
+  issue #2573 closed
+
+edges: 1
+  #2627 follow_up_to #2573
+
+depth frontier: empty
+```
+
+The collector regression controls, live collection, Rust validation, exact carrier assertion, summary generation, and artifact upload all completed successfully in that run.
+
 The product value to test under #137/#109 is whether seeing the closed predecessor before editing release/install behavior changes the next justified inspection or prevents repeated archaeology.
 
 ## Regression controls
@@ -110,6 +145,7 @@ The product value to test under #137/#109 is whether seeing the closed predecess
 - duplicate reference deduplication;
 - fail-closed artifact overflow;
 - anchor-only quiet output;
+- incomplete source-evidence receipts;
 - self-reference rejection;
 - invalid bounds before provider access.
 

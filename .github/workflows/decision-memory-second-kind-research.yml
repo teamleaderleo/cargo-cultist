@@ -1,0 +1,116 @@
+name: Decision memory second-kind research
+
+on:
+  pull_request:
+    paths:
+      - research/decision-memory/generated-companion-canonical-provenance.json
+      - .github/workflows/decision-memory-second-kind-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  second-kind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Build research consumers
+        run: |
+          cargo fmt --check
+          cargo clippy --example decision_memory -- -D warnings
+          cargo test --example decision_memory
+          cargo clippy --example agent_context_packet -- -D warnings
+          cargo build --example agent_context_packet
+
+      - name: Resolve provenance implementation decision
+        run: |
+          set -euo pipefail
+          mkdir -p research-output
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/generated_diff.rs \
+            | tee research-output/generated-diff-decision.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/generated-diff-decision.json').read_text())
+          assert len(report['decisions']) == 1, report
+          decision = report['decisions'][0]
+          record = decision['record']
+          assert record['id'] == 'generated-companion-canonical-provenance-v1', record
+          assert record['kind'] == 'provenance-implementation-boundary', record
+          assert record['scope']['path_prefix'] == 'src/generated_diff.rs', record
+          assert decision['matched_via'] == 'direct', decision
+          assert decision['matched_path'] == 'src/generated_diff.rs', decision
+          assert [item['reference'] for item in record['authority']] == [
+              '#80', '#90', '#82', '#70'
+          ], record
+          assert 'canonical proven-root implementation' in record['reason'], record['reason']
+          PY
+
+      - name: Preserve independent history decision kind
+        run: |
+          set -euo pipefail
+          cargo run --quiet --example decision_memory -- \
+            research/decision-memory src/history.rs \
+            | tee research-output/history-decision.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/history-decision.json').read_text())
+          assert len(report['decisions']) == 1, report
+          record = report['decisions'][0]['record']
+          assert record['id'] == 'history-cochange-remains-association-v1', record
+          assert record['kind'] == 'historical-companion-policy', record
+          assert record['kind'] != 'provenance-implementation-boundary', record
+          PY
+
+      - name: Surface second kind in agent packet
+        run: |
+          set -euo pipefail
+          target/debug/examples/agent_context_packet src/generated_diff.rs \
+            | tee research-output/generated-diff-agent-packet.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packet = json.loads(Path('research-output/generated-diff-agent-packet.json').read_text())
+          assert packet['schema_version'] == 4, packet['schema_version']
+          decisions = packet['reviewed_decisions']
+          assert len(decisions) == 1, decisions
+          record = decisions[0]['record']
+          assert record['id'] == 'generated-companion-canonical-provenance-v1', record
+          assert record['kind'] == 'provenance-implementation-boundary', record
+          assert decisions[0]['matched_via'] == 'direct', decisions[0]
+          PY
+
+      - name: Keep canonical ownership module outside the narrower scope
+        run: |
+          set -euo pipefail
+          target/debug/examples/agent_context_packet src/generator_ownership.rs \
+            | tee research-output/generator-ownership-agent-packet.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packet = json.loads(Path('research-output/generator-ownership-agent-packet.json').read_text())
+          assert packet['reviewed_decisions'] == [], packet['reviewed_decisions']
+          PY
+
+      - name: Upload second-kind receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: decision-memory-second-kind
+          path: research-output/
+          if-no-files-found: error

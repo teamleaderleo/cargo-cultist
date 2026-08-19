@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Reported public Agent Skills issue cases for capability-demand research. Rows are claims until independently reproduced or linked to a verified repair.",
+  "description": "Public Agent Skills issue cases for capability-demand research. Evidence status records how far each reported diagnosis has been independently supported; it does not promote vendor issue claims by editorial confidence.",
   "episodes": [
     {
       "id": "anthropics/skills#556",
@@ -17,8 +17,12 @@
       "source_url": "https://github.com/anthropics/skills/issues/1352",
       "title": "skill-creator: run_eval.py parallel workers cross-match skill UUIDs, producing false-negative trigger rates",
       "reported_boundary": "measurement_misrepresented",
-      "evidence_status": "reported_only",
-      "candidate_discriminator": "compare parallel and isolated/serial trigger evaluation under the same skill description"
+      "evidence_status": "source_mechanism_confirmed",
+      "source_evidence_url": "https://github.com/anthropics/skills/blob/0a64e398ec6bb34a494f0c347e8ccae53a862f8e/skills/skill-creator/scripts/run_eval.py",
+      "source_evidence_blob_sha": "e58c70bea39d5b252a1e819f242bbdcdf20e8b87",
+      "repair_url": "https://github.com/anthropics/skills/pull/1437",
+      "repair_status": "proposed_open",
+      "candidate_discriminator": "compare parallel and isolated/serial trigger evaluation under the same skill description; current source confirms shared project registration, per-query UUID names, parallel execution, and exact per-query UUID matching, but the claimed trigger-rate consequence is not independently replayed here"
     },
     {
       "id": "anthropics/skills#1487",

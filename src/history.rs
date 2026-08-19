@@ -295,7 +295,7 @@ fn parse_history_log(output: &str) -> Option<Vec<HistoricalCommit>> {
 }
 
 fn parse_history_record(record: &str) -> Option<HistoricalCommit> {
-    let record = record.trim_start_matches(|ch| ch == '\n' || ch == '\r');
+    let record = record.trim_start_matches(['\n', '\r']);
     let mut lines = record.lines();
     let metadata = lines.next()?.trim();
     let mut fields = metadata.splitn(3, '\u{1f}');

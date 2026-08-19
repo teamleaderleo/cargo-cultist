@@ -170,9 +170,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
     let relations_with_omitted_examples = historical_companions
         .iter()
-        .filter(|companion| {
-            companion.examples_omitted > 0 || companion.counterexamples_omitted > 0
-        })
+        .filter(|companion| companion.examples_omitted > 0 || companion.counterexamples_omitted > 0)
         .count();
     if relations_with_omitted_examples > 0 {
         truncation.push(format!(

@@ -6,6 +6,10 @@ on:
     paths:
       - ".github/workflows/jei-scope-history-pilot.yml"
       - "scripts/jei_scope_history_pilot.py"
+      - "examples/agent_context_packet.rs"
+      - "examples/scoped_agent_context_packet.rs"
+      - "examples/support/scoped_agent_context_packet_impl.rs"
+      - "tests/scoped_agent_context_packet.rs"
 
 permissions:
   contents: read
@@ -34,8 +38,10 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Build file-local agent context packet
-        run: cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
+      - name: Build file-local and scoped packet examples
+        run: |
+          cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
+          cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
 
       - name: Checkout exact pre-guard Stensibly state
         uses: actions/checkout@v4
@@ -56,12 +62,22 @@ jobs:
           test -f "target/$TARGET_FILE"
           test -d target/convex
 
+          target_history="$(git -C target log --no-merges --format='%s' -n 20 -- "$TARGET_FILE")"
+          if grep -F "Keep Gmail semantic-admission indexes deployable (#1571)" <<<"$target_history"; then
+            echo "unexpected: #1571 appears in target-local history" >&2
+            exit 1
+          fi
+          if grep -F "Keep Gmail mailbox-disposition indexes deployable (#1573)" <<<"$target_history"; then
+            echo "unexpected: #1573 appears in target-local history" >&2
+            exit 1
+          fi
+
           scope_history="$(git -C target log --no-merges --format='%s' -n 20 -- convex)"
           printf '%s\n' "$scope_history"
           grep -F "Keep Gmail semantic-admission indexes deployable (#1571)" <<<"$scope_history"
           grep -F "Keep Gmail mailbox-disposition indexes deployable (#1573)" <<<"$scope_history"
 
-      - name: Compile explicit scope-history envelopes
+      - name: Compile Python reference scope envelope
         env:
           TARGET_FILE: ${{ steps.target.outputs.history_file }}
           TARGET_REPOSITORY: ${{ steps.target.outputs.repository }}
@@ -83,34 +99,70 @@ jobs:
             --history-limit 20 \
             --required-subject "Keep Gmail semantic-admission indexes deployable (#1571)" \
             --required-subject "Keep Gmail mailbox-disposition indexes deployable (#1573)" \
-            --output "$PWD/artifacts/stensibly-explicit-convex-scope.json"
+            --output "$PWD/artifacts/stensibly-python-scope-reference.json"
 
-      - name: Reject invalid and non-containing scopes
+      - name: Compile Rust scoped envelope at 32 KiB
         env:
           TARGET_FILE: ${{ steps.target.outputs.history_file }}
-          TARGET_REPOSITORY: ${{ steps.target.outputs.repository }}
-          TARGET_SOURCE: ${{ steps.target.outputs.source }}
+          CARGO_CULTIST_PACKET_MAX_BYTES: "32768"
         run: |
           set -euo pipefail
-          common=(
-            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet"
-            --repo "$PWD/target"
-            --target "$TARGET_FILE"
-            --repository-label "$TARGET_REPOSITORY"
-            --source "$TARGET_SOURCE / scope-validation"
-            --budget 32768
-            --control-budget 32768
-            --acceptance-budget 32768
-            --required-subject "Keep Gmail semantic-admission indexes deployable (#1571)"
-            --output "$PWD/artifacts/invalid-scope.json"
-          )
+          "$PWD/cultist/target/release/examples/scoped_agent_context_packet" \
+            "$PWD/target/$TARGET_FILE" \
+            --scope convex \
+            > "$PWD/artifacts/stensibly-rust-scoped-32k.json"
 
-          if python cultist/scripts/jei_scope_history_pilot.py "${common[@]}" --scope ../; then
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("artifacts/stensibly-rust-scoped-32k.json")
+          envelope = json.loads(path.read_text(encoding="utf-8"))
+          required = [
+              "Keep Gmail semantic-admission indexes deployable (#1571)",
+              "Keep Gmail mailbox-disposition indexes deployable (#1573)",
+          ]
+
+          assert envelope["schema_version"] == 1
+          assert envelope["analysis"] == "scoped_agent_context"
+          assert envelope["target"] == "convex/schema.ts"
+          assert envelope["scope"] == "convex"
+          assert envelope["budget"]["max_serialized_bytes"] == 32768
+          assert envelope["serialized_bytes"] == len(path.read_text(encoding="utf-8").encode("utf-8"))
+          assert envelope["serialized_bytes"] <= 32768
+          assert envelope["scope_history_truncated"] is True
+
+          scope_subjects = [row["subject"] for row in envelope["scope_recent_history"]]
+          target_subjects = [row["subject"] for row in envelope["file_packet"]["recent_history"]]
+          for subject in required:
+              assert any(subject in observed for observed in scope_subjects), subject
+              assert not any(subject in observed for observed in target_subjects), subject
+
+          print(json.dumps({
+              "candidate_serialized_bytes": envelope["candidate_serialized_bytes"],
+              "serialized_bytes": envelope["serialized_bytes"],
+              "scope_history_count": len(envelope["scope_recent_history"]),
+              "scope_history_truncated": envelope["scope_history_truncated"],
+              "scope_semantic_evictions": envelope["semantic_evictions"],
+              "file_packet_semantic_evictions": envelope["file_packet"]["semantic_evictions"],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: Reject invalid Rust scopes
+        env:
+          TARGET_FILE: ${{ steps.target.outputs.history_file }}
+          CARGO_CULTIST_PACKET_MAX_BYTES: "32768"
+        run: |
+          set -euo pipefail
+          exe="$PWD/cultist/target/release/examples/scoped_agent_context_packet"
+          target="$PWD/target/$TARGET_FILE"
+
+          if "$exe" "$target" --scope ../; then
             echo "traversing scope unexpectedly accepted" >&2
             exit 1
           fi
 
-          if python cultist/scripts/jei_scope_history_pilot.py "${common[@]}" --scope src; then
+          if "$exe" "$target" --scope src; then
             echo "non-containing scope unexpectedly accepted" >&2
             exit 1
           fi
@@ -123,32 +175,33 @@ jobs:
           import os
           from pathlib import Path
 
-          path = Path("artifacts/stensibly-explicit-convex-scope.json")
+          reference_path = Path("artifacts/stensibly-python-scope-reference.json")
+          rust_path = Path("artifacts/stensibly-rust-scoped-32k.json")
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
               out.write("## Stensibly explicit `convex/` scope pilot\n\n")
-              if not path.is_file():
-                  out.write("Scope pilot receipt unavailable.\n")
-                  raise SystemExit(0)
-              receipt = json.loads(path.read_text(encoding="utf-8"))
-              passed = receipt["acceptance"]["passed"]
-              out.write(f"Result: `{'PASS' if passed else 'FAIL'}`  \n")
-              out.write(f"Pinned revision: `{receipt['revision']}`  \n")
-              out.write(f"Target: `{receipt['target']}` · explicit scope: `{receipt['scope']}`\n\n")
-              out.write("| budget | file packet | scope history | combined | fits | lessons |\n")
-              out.write("|---:|---:|---:|---:|---|---|\n")
-              for result in receipt["results"]:
-                  out.write(
-                      f"| {result['budget']} | {result['file_packet_serialized_bytes']} | "
-                      f"{result['scope_history_serialized_bytes']} | {result['combined_serialized_bytes']} | "
-                      f"{'yes' if result['combined_fits_budget'] else 'no'} | "
-                      f"{'yes' if result['preserves_all_required'] else 'no'} |\n"
-                  )
+              if reference_path.is_file():
+                  reference = json.loads(reference_path.read_text(encoding="utf-8"))
+                  row = next(result for result in reference["results"] if result["budget"] == 32768)
+                  out.write("### Python reference discriminator\n\n")
+                  out.write(f"32 KiB combined: `{row['combined_serialized_bytes']}` bytes · lessons: `{'yes' if row['preserves_all_required'] else 'no'}`\n\n")
+              if rust_path.is_file():
+                  envelope = json.loads(rust_path.read_text(encoding="utf-8"))
+                  subjects = [row["subject"] for row in envelope["scope_recent_history"]]
+                  required = ["(#1571)", "(#1573)"]
+                  out.write("### Rust scoped envelope\n\n")
+                  out.write(f"Candidate: `{envelope['candidate_serialized_bytes']}` bytes  \n")
+                  out.write(f"Selected: `{envelope['serialized_bytes']}` bytes  \n")
+                  out.write(f"Scope history: `{len(envelope['scope_recent_history'])}` rows · truncated: `{envelope['scope_history_truncated']}`  \n")
+                  out.write(f"Both lessons present: `{'yes' if all(any(token in subject for subject in subjects) for token in required) else 'no'}`  \n")
+                  out.write(f"Scope evictions: `{envelope['semantic_evictions']}`\n")
           PY
 
-      - name: Upload scope-history receipt
+      - name: Upload scope-history receipts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jei-scope-history-stensibly-${{ github.run_id }}
-          path: artifacts/stensibly-explicit-convex-scope.json
+          path: |
+            artifacts/stensibly-python-scope-reference.json
+            artifacts/stensibly-rust-scoped-32k.json
           if-no-files-found: error

@@ -53,14 +53,15 @@ It then:
 1. validates the metadata and freshness assertions;
 2. parses the raw packet through the existing `BehavioralWorkerPacket` schema;
 3. requires the parsed packet to equal one exact arm materialized from the frozen plan;
-4. parses the raw worker output through the existing `BehavioralTrialObservation` schema;
-5. binds the observation to the exact plan and exact packet fingerprint;
-6. requires the first action to be in the frozen vocabulary;
-7. computes `sha256:<hex>` from the exact raw packet bytes;
-8. computes `sha256:<hex>` from the exact raw output bytes;
-9. retains both exact raw JSON strings plus the typed observation.
+4. requires the exact raw packet bytes to equal that arm's canonical pretty-JSON materializer file bytes, including the terminal newline;
+5. parses the raw worker output through the existing `BehavioralTrialObservation` schema;
+6. binds the observation to the exact plan and exact packet fingerprint;
+7. requires the first action to be in the frozen vocabulary;
+8. computes `sha256:<hex>` from the exact raw packet bytes;
+9. computes `sha256:<hex>` from the exact raw output bytes;
+10. retains both exact raw JSON strings plus the typed observation.
 
-The organizer does not hand-type either content hash.
+The organizer does not hand-type either content hash. Semantically equivalent alternate packet JSON serialization is rejected: serialization/whitespace is part of the worker-visible intervention bytes.
 
 ## Pair admission
 
@@ -105,6 +106,7 @@ The standard controls require:
 - the loaded action vocabulary contains `block_patch` and excludes superseded `block_and_shorten_identifier`;
 - a fresh BA pair reconciles correctly even when receipt vector order is treatment/control;
 - exact raw packet and output SHA-256 receipts are computed by the builder;
+- semantically equal minified/reformatted packet JSON rejects because it differs from the canonical materializer file bytes;
 - retained raw output reparses to the stored typed observation;
 - `fresh_session=false` rejects;
 - `prior_condition_exposure=true` rejects;
@@ -141,6 +143,20 @@ Both examples are provider-neutral and perform no model/provider call.
 ## Relationship to the blind Stensibly pair
 
 Merged #262 rematerializes the repaired neutral blind packets through the permanent input workflow introduced by the earlier trial-input lane. Issue #267 asks an external harness to run those two current packet files in genuinely fresh sessions and preserve raw outputs plus freshness/config evidence.
+
+The current exact materialized worker files are:
+
+```text
+control
+sha256:6a568aed1eb660141cd7e7759e47edeb10a5c759fe1402689699dd7b6837149e
+2252 bytes
+
+treatment
+sha256:1063efc8ecdf0313b947923dad8216fb9fa43b2e8b8cafa7ab6b63d53eb65c7d
+2953 bytes
+```
+
+They come from repaired materializer run `32271062286`, artifact `9372168346`, archive SHA-256 `d4de6fe63a7088a921cbd6ea1a3c386f22a5620c5c25a71f34edc5bb11fd23cd`.
 
 This run receipt is the typed intake boundary for that future execution:
 

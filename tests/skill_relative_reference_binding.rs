@@ -8,9 +8,9 @@ struct SkillReferenceContext {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum ReferenceResolution<'a> {
-    AmbientTarget(&'a Path),
-    ExplicitSkillRoot(&'a Path),
+enum ReferenceResolution {
+    AmbientTarget,
+    ExplicitSkillRoot,
 }
 
 fn validate_relative_reference(reference: &Path) -> bool {
@@ -24,14 +24,14 @@ fn validate_relative_reference(reference: &Path) -> bool {
 fn resolve_reference(
     context: &SkillReferenceContext,
     reference: &Path,
-    mode: ReferenceResolution<'_>,
+    mode: ReferenceResolution,
 ) -> Option<PathBuf> {
     if !validate_relative_reference(reference) {
         return None;
     }
     let root = match mode {
-        ReferenceResolution::AmbientTarget(root) => root,
-        ReferenceResolution::ExplicitSkillRoot(root) => root,
+        ReferenceResolution::AmbientTarget => &context.target_repository_root,
+        ReferenceResolution::ExplicitSkillRoot => &context.skill_root,
     };
     Some(root.join(reference))
 }
@@ -59,13 +59,13 @@ fn same_relative_reference_resolves_to_different_objects_under_two_ambient_roots
     let target_resolution = resolve_reference(
         &context,
         reference,
-        ReferenceResolution::AmbientTarget(&context.target_repository_root),
+        ReferenceResolution::AmbientTarget,
     )
     .unwrap();
     let skill_resolution = resolve_reference(
         &context,
         reference,
-        ReferenceResolution::ExplicitSkillRoot(&context.skill_root),
+        ReferenceResolution::ExplicitSkillRoot,
     )
     .unwrap();
 
@@ -89,13 +89,13 @@ fn known_bundled_helper_is_recoverable_from_explicit_skill_root_but_not_target_c
     let target_resolution = resolve_reference(
         &context,
         reference,
-        ReferenceResolution::AmbientTarget(&context.target_repository_root),
+        ReferenceResolution::AmbientTarget,
     )
     .unwrap();
     let skill_resolution = resolve_reference(
         &context,
         reference,
-        ReferenceResolution::ExplicitSkillRoot(&context.skill_root),
+        ReferenceResolution::ExplicitSkillRoot,
     )
     .unwrap();
 
@@ -109,30 +109,14 @@ fn explicit_skill_root_resolution_is_invariant_to_target_repository_movement() {
     let second = fixture_context("/tmp/another-checkout");
     let reference = Path::new("scripts/fetch_comments.py");
 
-    let first_target = resolve_reference(
-        &first,
-        reference,
-        ReferenceResolution::AmbientTarget(&first.target_repository_root),
-    )
-    .unwrap();
-    let second_target = resolve_reference(
-        &second,
-        reference,
-        ReferenceResolution::AmbientTarget(&second.target_repository_root),
-    )
-    .unwrap();
-    let first_bound = resolve_reference(
-        &first,
-        reference,
-        ReferenceResolution::ExplicitSkillRoot(&first.skill_root),
-    )
-    .unwrap();
-    let second_bound = resolve_reference(
-        &second,
-        reference,
-        ReferenceResolution::ExplicitSkillRoot(&second.skill_root),
-    )
-    .unwrap();
+    let first_target = resolve_reference(&first, reference, ReferenceResolution::AmbientTarget)
+        .unwrap();
+    let second_target = resolve_reference(&second, reference, ReferenceResolution::AmbientTarget)
+        .unwrap();
+    let first_bound = resolve_reference(&first, reference, ReferenceResolution::ExplicitSkillRoot)
+        .unwrap();
+    let second_bound = resolve_reference(&second, reference, ReferenceResolution::ExplicitSkillRoot)
+        .unwrap();
 
     assert_ne!(first_target, second_target);
     assert_eq!(first_bound, second_bound);
@@ -148,7 +132,7 @@ fn explicit_root_binding_does_not_make_traversal_or_absolute_references_valid() 
             resolve_reference(
                 &context,
                 reference,
-                ReferenceResolution::ExplicitSkillRoot(&context.skill_root),
+                ReferenceResolution::ExplicitSkillRoot,
             )
             .is_none()
         );

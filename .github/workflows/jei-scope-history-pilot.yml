@@ -117,7 +117,8 @@ jobs:
           from pathlib import Path
 
           path = Path("artifacts/stensibly-rust-scoped-32k.json")
-          envelope = json.loads(path.read_text(encoding="utf-8"))
+          raw = path.read_bytes()
+          envelope = json.loads(raw)
           required = [
               "Keep Gmail semantic-admission indexes deployable (#1571)",
               "Keep Gmail mailbox-disposition indexes deployable (#1573)",
@@ -128,7 +129,8 @@ jobs:
           assert envelope["target"] == "convex/schema.ts"
           assert envelope["scope"] == "convex"
           assert envelope["budget"]["max_serialized_bytes"] == 32768
-          assert envelope["serialized_bytes"] == len(path.read_text(encoding="utf-8").encode("utf-8"))
+          assert raw.endswith(b"\n")
+          assert envelope["serialized_bytes"] == len(raw) - 1
           assert envelope["serialized_bytes"] <= 32768
           assert envelope["scope_history_truncated"] is True
 

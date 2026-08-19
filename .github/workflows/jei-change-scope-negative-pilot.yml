@@ -49,7 +49,7 @@ jobs:
           printf '%s\n' "$history"
           grep -F "M3: separate workflow result from runner process exit (#520)" <<<"$history"
           grep -F "Gate workers on host free space (#485)" <<<"$history"
-          if grep -F "fix: keep clone preflight before durable checkpoint (#530)" <<<"$history"; then
+          if grep -F "keep clone preflight before durable checkpoint (#530)" <<<"$history"; then
             echo "unexpected: future #530 repair appears in its base history" >&2
             exit 1
           fi
@@ -90,7 +90,7 @@ jobs:
           printf '%s\n' "$history"
           grep -F "Reduce live admission latency before JIT" <<<"$history"
           grep -F "fix: collapse redundant clone admission polls (#533)" <<<"$history"
-          grep -F "fix: keep clone preflight before durable checkpoint (#530)" <<<"$history"
+          grep -F "keep clone preflight before durable checkpoint (#530)" <<<"$history"
           if grep -F "Fix private checkout in disposable workers (#539)" <<<"$history"; then
             echo "unexpected: future #539 repair appears in its base history" >&2
             exit 1
@@ -117,7 +117,7 @@ jobs:
             --source "smolrunner#539 review base root-span control" \
             --required-subject "Reduce live admission latency before JIT" \
             --required-subject "fix: collapse redundant clone admission polls (#533)" \
-            --required-subject "fix: keep clone preflight before durable checkpoint (#530)" \
+            --required-subject "keep clone preflight before durable checkpoint (#530)" \
             --output "$PWD/artifacts/smolrunner-539-root-span.json"
 
       - name: Write negative-control summary

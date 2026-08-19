@@ -314,7 +314,9 @@ fn classify_source_history(
             Some(parent) => {
                 let after_key = revision_spec(&record.sha, input);
                 let before_key = revision_spec(parent, input);
-                let after = versions.get(&after_key).and_then(|source| source.as_deref());
+                let after = versions
+                    .get(&after_key)
+                    .and_then(|source| source.as_deref());
                 let before = versions
                     .get(&before_key)
                     .and_then(|source| source.as_deref());
@@ -765,7 +767,9 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].sha, "abc");
         assert_eq!(records[0].parent.as_deref(), Some("parent"));
-        assert!(records[0].paths.contains(Path::new("generated/output.rs")));
+        assert!(records[0]
+            .paths
+            .contains(Path::new("generated/output.rs")));
         assert_eq!(records[1].subject, "docs: two");
     }
 
@@ -779,7 +783,11 @@ mod tests {
         run_git(&root, &["config", "user.name", "Cargo Cultist Tests"]);
 
         fs::write(root.join("src/input.rs"), "fn value() -> usize { 0 }\n").unwrap();
-        fs::write(root.join("generated/output.rs"), "const VALUE: usize = 0;\n").unwrap();
+        fs::write(
+            root.join("generated/output.rs"),
+            "const VALUE: usize = 0;\n",
+        )
+        .unwrap();
         run_git(&root, &["add", "."]);
         run_git(&root, &["commit", "-q", "-m", "baseline"]);
 
@@ -792,12 +800,20 @@ mod tests {
         run_git(&root, &["commit", "-q", "-m", "docs only"]);
 
         fs::write(root.join("src/input.rs"), "fn value() -> usize { 1 }\n").unwrap();
-        fs::write(root.join("generated/output.rs"), "const VALUE: usize = 1;\n").unwrap();
+        fs::write(
+            root.join("generated/output.rs"),
+            "const VALUE: usize = 1;\n",
+        )
+        .unwrap();
         run_git(&root, &["add", "."]);
         run_git(&root, &["commit", "-q", "-m", "syntax one"]);
 
         fs::write(root.join("src/input.rs"), "fn value() -> usize { 2 }\n").unwrap();
-        fs::write(root.join("generated/output.rs"), "const VALUE: usize = 2;\n").unwrap();
+        fs::write(
+            root.join("generated/output.rs"),
+            "const VALUE: usize = 2;\n",
+        )
+        .unwrap();
         run_git(&root, &["add", "."]);
         run_git(&root, &["commit", "-q", "-m", "syntax two"]);
 

@@ -109,6 +109,23 @@ def presence(required: list[str], observed: list[str]) -> dict[str, bool]:
     }
 
 
+def base_presence(repo: Path, paths: list[str]) -> dict[str, bool]:
+    presence_by_path: dict[str, bool] = {}
+    for value in paths:
+        candidate = repo / value
+        exists = candidate.exists()
+        if exists:
+            resolved = candidate.resolve(strict=True)
+            try:
+                resolved.relative_to(repo)
+            except ValueError as error:
+                raise ValueError(f"task path escapes repository: {value}") from error
+            if not resolved.is_file():
+                raise ValueError(f"task path exists at base but is not a file: {value}")
+        presence_by_path[value] = exists
+    return presence_by_path
+
+
 def main() -> int:
     args = parser().parse_args()
     try:
@@ -126,14 +143,9 @@ def main() -> int:
         if primary not in task_paths:
             raise ValueError("primary target must be included in task paths")
 
-        for value in task_paths:
-            candidate = (repo / value).resolve(strict=True)
-            if not candidate.is_file():
-                raise ValueError(f"task path is not an existing file: {value}")
-            try:
-                candidate.relative_to(repo)
-            except ValueError as error:
-                raise ValueError(f"task path escapes repository: {value}") from error
+        task_path_base_presence = base_presence(repo, task_paths)
+        if not task_path_base_presence[primary]:
+            raise ValueError("primary target must exist in the pinned base checkout")
 
         required = args.required_subject
         if not required or len(required) > MAX_REQUIRED_SUBJECTS:
@@ -190,11 +202,12 @@ def main() -> int:
             raise ValueError("packet byte measurement missing")
 
         receipt = {
-            "schema_version": 1,
+            "schema_version": 2,
             "repository": args.repository_label,
             "revision": git_head(repo),
             "primary_target": primary,
             "task_paths": task_paths,
+            "task_path_base_presence": task_path_base_presence,
             "source": args.source,
             "budget": budget,
             "decision": decision,

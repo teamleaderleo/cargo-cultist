@@ -143,7 +143,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
     if companion_truncated > 0 {
         truncation.push(format!(
-            "{companion_truncated} additional historical companion path(s) were omitted by max_companions={}. ",
+            "{companion_truncated} additional historical companion path(s) were omitted by max_companions={}.",
             budget.max_companions
         ));
     }
@@ -195,7 +195,11 @@ fn git_repo_root(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("{} is not inside a Git repository: {stderr}", path.display()).into());
+        return Err(format!(
+            "{} is not inside a Git repository: {stderr}",
+            path.display()
+        )
+        .into());
     }
 
     Ok(PathBuf::from(String::from_utf8(output.stdout)?.trim()).canonicalize()?)
@@ -226,7 +230,11 @@ fn applicable_guidance(root: &Path, target: &Path) -> Result<Vec<GuidanceFile>, 
                 let scope = directory.strip_prefix(root)?.display().to_string();
                 guidance.push(GuidanceFile {
                     path,
-                    scope: if scope.is_empty() { ".".to_string() } else { scope },
+                    scope: if scope.is_empty() {
+                        ".".to_string()
+                    } else {
+                        scope
+                    },
                     guidance_kind: name.to_string(),
                 });
             }

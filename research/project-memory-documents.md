@@ -139,4 +139,4 @@ Each deeper step requires an explicit pointer from already-admitted evidence. Th
 
 The next evaluator should compare retained document claims with their underlying case/provider/source evidence before promoting a reusable lesson. In particular, a retained investigation's lesson text is evidence from that artifact, not automatically a universal rule.
 
-Refs #18 #29 #160 #162 #167 #176.
+Refs #18 #29 #160 #162 #167 #171.

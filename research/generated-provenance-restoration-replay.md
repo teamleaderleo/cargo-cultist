@@ -2,13 +2,20 @@
 
 Date: 2026-08-19
 
-Status: successful product restoration for issue #80 / PR #90.
+Status: successful product restoration for issue #80 / PR #90, including a review-dogfood provenance attack found after the first successful held-out matrix.
 
 ## Question
 
 Can `generated-companion-missing` return to the public diff analyzer while generator ownership uses the same proven repository-root semantics as the research adapter that passed the Oxc replay in #70?
 
-The restoration gate required one canonical ownership implementation, adversarial root-provenance controls, the original held-out semantic Oxc positive, and the exact docs/license historical exception.
+The final restoration gate required:
+
+- one canonical ownership implementation;
+- adversarial root-provenance controls;
+- an additional derived-subdirectory provenance attack from review dogfood;
+- the original held-out semantic Oxc positive;
+- the exact docs/license historical exception;
+- ordinary repository CI and dogfood.
 
 ## Canonical ownership boundary
 
@@ -28,13 +35,14 @@ src/generated_diff.rs
   -> product consumer of canonical GeneratorRelation values
 ```
 
-The product diff analyzer no longer contains an independent repository-path ownership parser.
+The product diff analyzer contains no independent repository-path ownership parser.
 
 The canonical module owns:
 
 - explicit repository-root provider recognition;
-- literal repository-relative `.join("...")` paths only from proven root bindings;
-- local path bindings derived from those proven roots;
+- repository-root versus derived repository-path provenance;
+- literal repository-relative `.join("...")` composition;
+- local path bindings derived from proven roots or proven relative paths;
 - exact `fs::{read,read_to_string,write}` qualification;
 - Cargo alias -> `cargo run -p PACKAGE` resolution;
 - default generator package `src/main.rs` discovery;
@@ -70,7 +78,71 @@ non-filesystem `read` / `write` lookalikes
   -> rejected
 ```
 
-The same module also retains package/alias and `.gitattributes` parsing controls.
+It also rejects repository-relative literal paths containing `..` parent-directory escapes.
+
+The same module retains package/alias and `.gitattributes` parsing controls.
+
+## Review dogfood found a stronger provenance bug
+
+After the first held-out Oxc matrix had already passed, the repository's generated-provenance review dogfood added this counterexample:
+
+```rust
+let tasks = project_root::get_project_root()?.join("tasks");
+let source = std::fs::read_to_string(tasks.join("src/rules.rs"))?;
+let target = tasks.join("generated/rules.rs");
+```
+
+The first canonical implementation treated any initializer containing the recognized root provider as a repository-root binding. That promoted `tasks` itself to repository root and incorrectly reported:
+
+```text
+reads  src/rules.rs
+writes generated/rules.rs
+```
+
+instead of preserving the `tasks/` prefix.
+
+The dogfood run failed explicitly with:
+
+```text
+derived subdirectory was incorrectly promoted to repository root
+```
+
+### Provenance repair
+
+Path provenance now distinguishes:
+
+```text
+RepositoryRoot
+DerivedRepositoryPath("tasks")
+```
+
+A literal join composes those values instead of replacing root identity:
+
+```text
+RepositoryRoot.join("tasks")
+  -> DerivedRepositoryPath("tasks")
+
+DerivedRepositoryPath("tasks").join("src/rules.rs")
+  -> DerivedRepositoryPath("tasks/src/rules.rs")
+```
+
+The canonical unit suite now requires:
+
+```text
+reads  tasks/src/rules.rs
+writes tasks/generated/rules.rs
+```
+
+and explicitly rejects the prefix-losing forms.
+
+Final review-dogfood run:
+
+```text
+run:    32221343868
+result: success
+```
+
+The `derived-root` job passed both the canonical research-view build and the derived-subdirectory rejection control.
 
 ## Exact held-out positive
 
@@ -116,7 +188,7 @@ function generate_rules_enum_file
          [.gitattributes: linguist-generated=true]
 ```
 
-The evidence boundary printed by the probe explicitly states that path relations require a recognized repository-root provider and that unresolved roots are omitted.
+The evidence boundary printed by the probe states that path relations require a recognized repository-root lineage and that unresolved roots are omitted.
 
 ## Product result
 
@@ -176,18 +248,18 @@ generated findings: 0
 
 So the restored product remains quiet for the exact docs/license exception that sharpened the historical cohort in #54.
 
-## Exact execution receipt
+## Final exact execution receipt
 
-Restoration head that executed the matrix:
+Final semantic-restoration head that executed the full matrix after the derived-path provenance repair:
 
 ```text
-4ba397d7927d954f52095608d26a635a8f814604
+4796ed643e1ed8bfe4e0b8fe61df099214aee80d
 ```
 
 Generic CI on the same head:
 
 ```text
-run:    32220853227
+run:    32221343983
 result: success
 ```
 
@@ -201,20 +273,27 @@ Every substantive generic step passed:
 - CI-test text + JSON + fixture;
 - diff text + JSON dogfood.
 
+Review-dogfood provenance control:
+
+```text
+run:    32221343868
+result: success
+```
+
 Dedicated held-out replay:
 
 ```text
-run:    32220853243
-job:    95970901277
+run:    32221343877
+job:    95972249274
 result: success
 ```
 
 Artifact:
 
 ```text
-id:     9353882794
+id:     9354031900
 name:   generated-provenance-restoration-research
-sha256: e778aabec7d8dcc6b9570b06335027de498d22339db93e6f3d5f839613d9343c
+sha256: 9143c1d2940fb5f056b814816253dcfc8569e362c93156d7963d870602534c8a
 ```
 
 Artifact contents:
@@ -229,17 +308,19 @@ oxc-docs-only-product.json
 
 The containment in #82 did its job: product findings stayed silent until the stricter provenance semantics were physically shared with the successful research adapter.
 
+The review dogfood then found a second failure class after the first product replay had already gone green. Keeping that review gate active strengthened the path model before release.
+
 The restoration now has this implementation boundary:
 
 ```text
 canonical generator ownership
-  -> proven repository-root relations
+  -> proven root / derived-path relations
 
 current diff + generated identity + semantic history
   -> generated-companion finding evaluation
 ```
 
-This removes the previous failure mode where research and product could drift into different notions of repository-relative path ownership.
+This removes the previous failure mode where research and product could drift into different notions of repository-relative path ownership, and it preserves path prefixes across derived repository directories.
 
 ## Evidence boundary
 
@@ -259,4 +340,4 @@ Intent stays `UNKNOWN` even when every deterministic prerequisite agrees.
 
 **Restore the bounded product finding.**
 
-The #80 acceptance matrix is satisfied on the executed branch head. Retire the temporary external replay workflow, run final source-only CI, and merge the canonical ownership restoration if that cleaned head remains green.
+The #80 acceptance matrix and the additional derived-root review attack are satisfied on the final executed branch head. Retire the temporary external replay workflow, run one final source-only CI/review-dogfood pass, and merge the canonical ownership restoration if that cleaned head remains green.

@@ -1,0 +1,125 @@
+name: GitHub issue project-memory packet
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Public GitHub owner/repository
+        required: true
+        default: teamleaderleo/linux-fieldwork
+        type: string
+      anchor_issue:
+        description: Issue number to use as the one-hop memory anchor
+        required: true
+        default: "675"
+        type: string
+      max_artifacts:
+        description: Maximum admitted artifacts including the anchor, 2 through 32
+        required: true
+        default: "16"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  packet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Check collector syntax and Primary case parser
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/project_memory_github_issue.py
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "scripts")
+          import project_memory_github_issue as issue_memory
+
+          anchor = {
+              "reference": {"kind": "issue", "number": 675},
+              "evidence_text": (
+                  "Primary case:\n\n"
+                  "https://redirect.github.com/teamleaderleo/linux-fieldwork/issues/609\n\n"
+                  "Primary case:\n\n"
+                  "https://github.com/teamleaderleo/linux-fieldwork/issues/611"
+              ),
+          }
+          edges = issue_memory.primary_case_edges("teamleaderleo/linux-fieldwork", anchor)
+          assert [edge["to"]["number"] for edge in edges] == [609, 611], edges
+          assert all(edge["relation"] == "related" for edge in edges), edges
+          PY
+
+      - name: Collect one-hop issue memory
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ inputs.repository }}
+          TARGET_ANCHOR_ISSUE: ${{ inputs.anchor_issue }}
+          MAX_ARTIFACTS: ${{ inputs.max_artifacts }}
+        run: |
+          set -euo pipefail
+          python scripts/project_memory_github_issue.py \
+            --repository "$TARGET_REPOSITORY" \
+            --anchor-issue "$TARGET_ANCHOR_ISSUE" \
+            --max-artifacts "$MAX_ARTIFACTS" \
+            --output project-memory.json \
+            > /tmp/project-memory-issue-collector.stdout
+
+      - name: Validate with offline packet reader
+        run: |
+          cargo run --quiet --example project_memory_packet \
+            < project-memory.json \
+            > project-memory-summary.json
+
+      - name: Write job summary
+        env:
+          TARGET_REPOSITORY: ${{ inputs.repository }}
+          TARGET_ANCHOR_ISSUE: ${{ inputs.anchor_issue }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary = json.loads(Path("project-memory-summary.json").read_text())
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## GitHub issue project memory\n\n")
+              out.write(
+                  f"Anchor: `{os.environ['TARGET_REPOSITORY']}#"
+                  f"{os.environ['TARGET_ANCHOR_ISSUE']}`\n\n"
+              )
+              out.write(
+                  f"Artifacts: **{summary['artifact_count']}** · "
+                  f"explicit edges: **{summary['edge_count']}**\n\n"
+              )
+              out.write("| relation | target | evidence |\n|---|---|---|\n")
+              for link in summary["explicit_anchor_links"]:
+                  target = link["target"]
+                  evidence = link["evidence"].replace("\n", " ").replace("|", "\\|")
+                  out.write(
+                      f"| {link['relation']} | {target['kind']} #{target['number']} | "
+                      f"{evidence} |\n"
+                  )
+              out.write(
+                  "\nCollector scope: exact `Primary case:` blocks followed by "
+                  "same-repository issue URLs. The edge remains generic `related`; "
+                  "the exact evidence preserves the source's primary-case wording.\n"
+              )
+          PY
+
+      - name: Upload packet receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-memory-issue-${{ github.run_id }}
+          path: |
+            project-memory.json
+            project-memory-summary.json
+          if-no-files-found: error

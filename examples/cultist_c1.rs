@@ -9,7 +9,7 @@ use std::env;
 use std::error::Error;
 use std::io::{self, Read, Write};
 
-use compact_ir::{decode_report, encode_report, MAX_C1_BYTES};
+use compact_ir::{MAX_C1_BYTES, decode_report, encode_report};
 use finding::AnalysisReport;
 
 const USAGE: &str = "usage: cargo run --example cultist_c1 -- [--decode] < input";
@@ -51,10 +51,9 @@ fn read_bounded_stdin() -> Result<String, Box<dyn Error>> {
         .take((MAX_C1_BYTES + 1) as u64)
         .read_to_end(&mut bytes)?;
     if bytes.len() > MAX_C1_BYTES {
-        return Err(format!(
-            "input exceeds research converter limit of {MAX_C1_BYTES} bytes"
-        )
-        .into());
+        return Err(
+            format!("input exceeds research converter limit of {MAX_C1_BYTES} bytes").into(),
+        );
     }
     Ok(String::from_utf8(bytes)?)
 }

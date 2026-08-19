@@ -14,6 +14,7 @@ from typing import Any
 MAX_BUDGET = 16 * 1024 * 1024
 MAX_REQUIRED_SUBJECTS = 16
 MAX_SUBJECT_BYTES = 1024
+EXPECTATIONS = {"preserve_all", "miss_all"}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -25,6 +26,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--control-budget", required=True, type=int)
     result.add_argument("--acceptance-budget", required=True, type=int)
     result.add_argument("--required-subject", required=True, action="append")
+    result.add_argument("--expectation", required=True, choices=sorted(EXPECTATIONS))
     result.add_argument("--repository-label", required=True)
     result.add_argument("--source", required=True)
     result.add_argument("--output", required=True, type=Path)
@@ -67,21 +69,24 @@ def run_packet(packet_exe: Path, repo: Path, target: str, budget: int, required:
         text=True,
     )
 
+    empty_presence = {subject: False for subject in required}
     if completed.returncode != 0:
         stderr = completed.stderr
         if "protected packet evidence requires" in stderr:
             return {
                 "budget": budget,
                 "status": "protected_core_too_large",
+                "preserves_any_required": False,
                 "preserves_all_required": False,
-                "lesson_presence": {subject: False for subject in required},
+                "lesson_presence": empty_presence,
             }
         return {
             "budget": budget,
             "status": "packet_error",
             "returncode": completed.returncode,
+            "preserves_any_required": False,
             "preserves_all_required": False,
-            "lesson_presence": {subject: False for subject in required},
+            "lesson_presence": empty_presence,
         }
 
     packet = json.loads(completed.stdout)
@@ -108,8 +113,19 @@ def run_packet(packet_exe: Path, repo: Path, target: str, budget: int, required:
         "semantic_evictions": packet.get("semantic_evictions", []),
         "recent_history_subjects": subjects,
         "lesson_presence": presence,
+        "preserves_any_required": any(presence.values()),
         "preserves_all_required": all(presence.values()),
     }
+
+
+def result_matches_expectation(result: dict[str, Any], expectation: str) -> bool:
+    if result["status"] != "success":
+        return False
+    if expectation == "preserve_all":
+        return bool(result["preserves_all_required"])
+    if expectation == "miss_all":
+        return not bool(result["preserves_any_required"])
+    raise ValueError(f"unsupported expectation: {expectation}")
 
 
 def main() -> int:
@@ -140,38 +156,52 @@ def main() -> int:
         revision = git_head(repo)
         results = [run_packet(packet_exe, repo, target, budget, required) for budget in budgets]
         by_budget = {result["budget"]: result for result in results}
-        control_ok = by_budget[control_budget]["status"] == "success" and by_budget[control_budget]["preserves_all_required"]
-        acceptance_ok = by_budget[acceptance_budget]["status"] == "success" and by_budget[acceptance_budget]["preserves_all_required"]
+        control_result = by_budget[control_budget]
+        acceptance_result = by_budget[acceptance_budget]
+        control_matches = result_matches_expectation(control_result, args.expectation)
+        acceptance_matches = result_matches_expectation(acceptance_result, args.expectation)
         unexpected_errors = [result["budget"] for result in results if result["status"] == "packet_error"]
 
-        preserving = [result["budget"] for result in results if result["status"] == "success" and result["preserves_all_required"]]
-        below_acceptance = [result for result in results if result["budget"] < acceptance_budget]
-        first_loss = next(
-            (
-                result["budget"]
-                for result in below_acceptance
-                if result["status"] != "success" or not result["preserves_all_required"]
-            ),
-            None,
-        )
+        preserving = [
+            result["budget"]
+            for result in results
+            if result["status"] == "success" and result["preserves_all_required"]
+        ]
+        first_loss = None
+        if acceptance_result["status"] == "success" and acceptance_result["preserves_all_required"]:
+            first_loss = next(
+                (
+                    result["budget"]
+                    for result in results
+                    if result["budget"] < acceptance_budget
+                    and (result["status"] != "success" or not result["preserves_all_required"])
+                ),
+                None,
+            )
 
         receipt = {
-            "schema_version": 1,
+            "schema_version": 2,
             "repository": args.repository_label,
             "revision": revision,
             "target": target,
             "source": args.source,
+            "expectation": args.expectation,
             "required_history_subjects": required,
             "control_budget": control_budget,
             "acceptance_budget": acceptance_budget,
             "minimum_tested_preserving_budget": min(preserving) if preserving else None,
             "first_tested_loss_below_acceptance": first_loss,
+            "acceptance_already_loses_required": not bool(acceptance_result.get("preserves_all_required")),
             "results": results,
             "acceptance": {
-                "control_preserves_required_history": control_ok,
-                "acceptance_budget_preserves_required_history": acceptance_ok,
+                "control_matches_expectation": control_matches,
+                "acceptance_budget_matches_expectation": acceptance_matches,
+                "control_preserves_any_required_history": bool(control_result.get("preserves_any_required")),
+                "control_preserves_all_required_history": bool(control_result.get("preserves_all_required")),
+                "acceptance_budget_preserves_any_required_history": bool(acceptance_result.get("preserves_any_required")),
+                "acceptance_budget_preserves_all_required_history": bool(acceptance_result.get("preserves_all_required")),
                 "unexpected_packet_error_budgets": unexpected_errors,
-                "passed": control_ok and acceptance_ok and not unexpected_errors,
+                "passed": control_matches and acceptance_matches and not unexpected_errors,
             },
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)

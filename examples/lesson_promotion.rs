@@ -45,6 +45,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let memory_bytes = read_bounded(&memory_path, MAX_PROJECT_MEMORY_BYTES)?;
     let claim_bytes = read_bounded(&claim_path, MAX_LESSON_PROMOTION_BYTES)?;
     let memory = parse_project_memory_packet(&memory_bytes).map_err(invalid_data)?;
+    memory.summary().map_err(invalid_data)?;
     let claim = parse_lesson_promotion_claim(&claim_bytes).map_err(invalid_data)?;
     let evaluation = evaluate_lesson_promotion(&memory, &claim).map_err(invalid_data)?;
     println!("{}", serde_json::to_string_pretty(&evaluation)?);

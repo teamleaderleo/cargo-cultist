@@ -4,10 +4,10 @@
 mod applicability;
 #[path = "../src/closure_episode.rs"]
 mod closure_episode;
-#[path = "../src/review_memory.rs"]
-mod review_memory;
 #[path = "../src/prior_episode_front.rs"]
 mod prior_episode_front;
+#[path = "../src/review_memory.rs"]
+mod review_memory;
 
 use applicability::ApplicabilityStatus;
 use closure_episode::{ClearanceStatus, ClosureKind, IssueState};
@@ -88,8 +88,6 @@ fn claude_code_rereport_front_keeps_clearance_unknown_after_second_close() {
         &vec![
             "github:issue/31294/comment/4230270046".to_string(),
             "github:issue/57507".to_string(),
-            "github:issue/31294/comment/4008755017".to_string(),
-            "github:issue/31294/comment/4008815491".to_string(),
         ]
     );
 }

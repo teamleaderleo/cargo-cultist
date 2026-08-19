@@ -1,0 +1,214 @@
+name: Capability-demand retirement trial inputs
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/capability-demand-retirement-inputs.yml"
+      - "research/capability-demand-retirement/**"
+      - "tests/capability_demand_retirement.rs"
+      - "examples/agent_context_packet.rs"
+      - "examples/scoped_agent_context_packet.rs"
+      - "examples/support/scoped_agent_context_packet_impl.rs"
+      - "research/external-dogfood-cases.json"
+      - "scripts/external_dogfood_case.py"
+
+permissions:
+  contents: read
+
+jobs:
+  stensibly-convex-index-review-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Resolve pinned Stensibly case
+        id: target
+        run: |
+          python cultist/scripts/external_dogfood_case.py \
+            --registry cultist/research/external-dogfood-cases.json \
+            --case stensibly-1575-pre-guard-jei \
+            --github-output "$GITHUB_OUTPUT" \
+            > resolved-target.json
+          cat resolved-target.json
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build packet examples
+        run: |
+          cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
+          cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
+
+      - name: Checkout exact pre-guard Stensibly state
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.target.outputs.repository }}
+          ref: ${{ steps.target.outputs.ref }}
+          fetch-depth: ${{ steps.target.outputs.fetch_depth }}
+          persist-credentials: false
+          path: target
+
+      - name: Verify exact trial coordinate
+        run: |
+          set -euo pipefail
+          test "$(git -C target rev-parse HEAD)" = "85cecf2608ad9e734a67518577fa85b9a08a550c"
+          test "$(git -C target rev-parse HEAD:convex/schema.ts)" = "7fdd51e2f9fba80d1c0a814cea708d601a7b9925"
+
+      - name: Materialize worker task and evaluator oracle
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          spec = json.loads(Path("cultist/research/capability-demand-retirement/stensibly-convex-index-review-v1.json").read_text(encoding="utf-8"))
+          Path("artifacts/worker-task.txt").write_text(spec["worker_task"]["prompt"] + "\n", encoding="utf-8")
+          Path("artifacts/proposed.patch").write_text(spec["worker_task"]["patch"] + "\n", encoding="utf-8")
+          Path("artifacts/evaluator-oracle.json").write_text(
+              json.dumps(spec["oracle"], indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Compile file-local baseline packet at 32 KiB
+        env:
+          CARGO_CULTIST_PACKET_MAX_BYTES: "32768"
+        run: |
+          set -euo pipefail
+          "$PWD/cultist/target/release/examples/agent_context_packet" \
+            "$PWD/target/convex/schema.ts" \
+            > "$PWD/artifacts/file-local-32k.json"
+
+      - name: Compile scoped treatment packet at 32 KiB
+        env:
+          CARGO_CULTIST_PACKET_MAX_BYTES: "32768"
+        run: |
+          set -euo pipefail
+          "$PWD/cultist/target/release/examples/scoped_agent_context_packet" \
+            "$PWD/target/convex/schema.ts" \
+            --scope convex \
+            > "$PWD/artifacts/scoped-convex-32k.json"
+
+      - name: Verify evidence intervention and write manifest
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          artifact_dir = Path("artifacts")
+          spec = json.loads(Path("cultist/research/capability-demand-retirement/stensibly-convex-index-review-v1.json").read_text(encoding="utf-8"))
+          baseline_path = artifact_dir / "file-local-32k.json"
+          treatment_path = artifact_dir / "scoped-convex-32k.json"
+          baseline_raw = baseline_path.read_bytes()
+          treatment_raw = treatment_path.read_bytes()
+          baseline = json.loads(baseline_raw)
+          treatment = json.loads(treatment_raw)
+
+          required = [
+              "Keep Gmail semantic-admission indexes deployable (#1571)",
+              "Keep Gmail mailbox-disposition indexes deployable (#1573)",
+          ]
+          baseline_subjects = [row["subject"] for row in baseline["recent_history"]]
+          treatment_scope_subjects = [row["subject"] for row in treatment["scope_recent_history"]]
+
+          assert baseline["schema_version"] == 5
+          assert baseline["analysis"] == "agent_context_packet"
+          assert baseline["target"]["path"] == "convex/schema.ts"
+          assert baseline["budget"]["max_serialized_bytes"] == 32768
+          assert baseline["serialized_bytes"] <= 32768
+
+          assert treatment["schema_version"] == 1
+          assert treatment["analysis"] == "scoped_agent_context"
+          assert treatment["target"] == "convex/schema.ts"
+          assert treatment["scope"] == "convex"
+          assert treatment["budget"]["max_serialized_bytes"] == 32768
+          assert treatment["serialized_bytes"] <= 32768
+
+          for subject in required:
+              assert not any(subject in observed for observed in baseline_subjects), subject
+              assert any(subject in observed for observed in treatment_scope_subjects), subject
+
+          def digest(path):
+              raw = Path(path).read_bytes()
+              return {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+
+          manifest = {
+              "schema_version": 1,
+              "trial_id": spec["trial_id"],
+              "repository": spec["repository"],
+              "revision": spec["revision"],
+              "target_path": spec["target_path"],
+              "target_blob_sha": spec["target_blob_sha"],
+              "worker_visible_common": {
+                  "task": digest(artifact_dir / "worker-task.txt"),
+                  "patch": digest(artifact_dir / "proposed.patch"),
+              },
+              "evaluator_only": {
+                  "oracle": digest(artifact_dir / "evaluator-oracle.json"),
+              },
+              "conditions": {
+                  "file_local_jei": {
+                      "packet": digest(baseline_path),
+                      "decisive_evidence_present": False,
+                  },
+                  "scoped_jei": {
+                      "packet": digest(treatment_path),
+                      "decisive_evidence_present": True,
+                      "decisive_evidence_refs": spec["conditions"][1]["decisive_evidence_refs"],
+                  },
+              },
+          }
+          (artifact_dir / "trial-input-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
+      - name: Write trial input summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest_path = Path("artifacts/trial-input-manifest.json")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Capability-demand retirement trial inputs\n\n")
+              if not manifest_path.is_file():
+                  out.write("Input manifest was not produced.\n")
+              else:
+                  manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                  baseline = manifest["conditions"]["file_local_jei"]
+                  treatment = manifest["conditions"]["scoped_jei"]
+                  out.write(f"Trial: `{manifest['trial_id']}`  \n")
+                  out.write(f"Revision: `{manifest['revision']}`  \n")
+                  out.write(f"Target: `{manifest['target_path']}`  \n")
+                  out.write(f"Baseline packet: `{baseline['packet']['bytes']}` bytes · decisive refs: `no`  \n")
+                  out.write(f"Treatment packet: `{treatment['packet']['bytes']}` bytes · decisive refs: `yes`  \n")
+                  out.write("Worker task/patch hashes are shared across both conditions; oracle stays evaluator-only.\n")
+          PY
+
+      - name: Upload frozen trial inputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-demand-retirement-inputs-${{ github.run_id }}
+          path: |
+            artifacts/worker-task.txt
+            artifacts/proposed.patch
+            artifacts/file-local-32k.json
+            artifacts/scoped-convex-32k.json
+            artifacts/evaluator-oracle.json
+            artifacts/trial-input-manifest.json
+          if-no-files-found: error

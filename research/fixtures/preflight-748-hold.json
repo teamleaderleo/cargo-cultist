@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "source": "github_public_replay",
+  "work": [
+    {
+      "id": "#748",
+      "kind": "pull_request",
+      "source": "github:pull/748",
+      "head_sha": "a2e14c4265e3568d8f943906a53e3b0e16dca141",
+      "updated_at": "2026-08-18T19:11:15Z",
+      "body": "Refs #727.\n\nThis is the isolated cleanup half of #727 on current `main` `2aba5c7e6cb01304493a76df1838d7e4856bfce3`.\n\nDeterministic production defect: current success registers the staged JAR with `deleteOnExit()` and then its private parent directory. Reproducing that exact order in a fresh OpenJDK 21 process leaves the parent directory behind after normal wrapper exit while the child JAR is removed.\n\nBounded correction:\n- replace the two independent delete-on-exit registrations with one shutdown cleanup owner;\n- that owner deletes the exact staged JAR first, then its exact private parent;\n- failure to register cleanup fails staging and the existing immediate-failure cleanup removes both paths;\n- add a subprocess lifecycle regression that invokes the production staging path, waits for JVM exit, and requires both staged child and private parent absent.\n\nThis PR deliberately does **not** change Windows/ACL staging-root selection or creation semantics. #727 remains open for the separate creation-time owner-only ACL boundary under shared `ProgramData` fallback.\n\nDo not merge while #703 is using current-main package evidence; this branch is intended to stay reviewable and green without moving the RC baseline underneath that gate."
+    },
+    {
+      "id": "#703",
+      "kind": "pull_request",
+      "source": "github:pull/703",
+      "head_sha": "866e4466259a51857e932f0e78032363cb3ab908",
+      "updated_at": "2026-08-19T09:20:17Z",
+      "body": ""
+    }
+  ]
+}

@@ -261,7 +261,7 @@ fn unrelated_review_lineage_stays_quiet_with_receipt() {
 fn explicit_closure_rereport_surfaces_inspection_with_unknown_clearance() {
     let output = evaluate_prior_episode_front(&front(vec![PriorEpisodeInput::IssueClosure {
         id: "issue:rereport".to_string(),
-        episode: closure_episode(IssueState::Open),
+        episode: Box::new(closure_episode(IssueState::Open)),
     }]))
     .unwrap();
 
@@ -295,7 +295,7 @@ fn explicit_closure_rereport_surfaces_inspection_with_unknown_clearance() {
 fn closing_later_rereport_does_not_remove_front_item() {
     let output = evaluate_prior_episode_front(&front(vec![PriorEpisodeInput::IssueClosure {
         id: "issue:closed-rereport".to_string(),
-        episode: closure_episode(IssueState::Closed),
+        episode: Box::new(closure_episode(IssueState::Closed)),
     }]))
     .unwrap();
 
@@ -336,7 +336,7 @@ fn surfaced_items_preserve_admitted_input_order_across_species() {
         },
         PriorEpisodeInput::IssueClosure {
             id: "issue:third".to_string(),
-            episode: closure_episode(IssueState::Open),
+            episode: Box::new(closure_episode(IssueState::Open)),
         },
     ]))
     .unwrap();

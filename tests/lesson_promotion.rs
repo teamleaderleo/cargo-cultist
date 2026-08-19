@@ -16,10 +16,10 @@ fn inputs() -> (
     project_memory::ProjectMemoryPacket,
     lesson_promotion::LessonPromotionClaim,
 ) {
-    (
-        parse_project_memory_packet(MEMORY).unwrap(),
-        parse_lesson_promotion_claim(CLAIM).unwrap(),
-    )
+    let memory = parse_project_memory_packet(MEMORY).unwrap();
+    memory.summary().unwrap();
+    let claim = parse_lesson_promotion_claim(CLAIM).unwrap();
+    (memory, claim)
 }
 
 fn pr(number: u64) -> ArtifactRef {

@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "description": "Public Agent Skills issue cases for capability-demand research. Evidence status records how far each reported diagnosis has been independently supported; it does not promote vendor issue claims by editorial confidence.",
+  "episodes": [
+    {
+      "id": "anthropics/skills#556",
+      "ecosystem": "anthropic",
+      "source_url": "https://github.com/anthropics/skills/issues/556",
+      "title": "run_eval.py: claude -p never triggers skills/commands (0% trigger rate across all queries)",
+      "reported_boundary": "measurement_misrepresented",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "verify the skill is actually exposed and observable before treating zero trigger rate as description/model failure"
+    },
+    {
+      "id": "anthropics/skills#1352",
+      "ecosystem": "anthropic",
+      "source_url": "https://github.com/anthropics/skills/issues/1352",
+      "title": "skill-creator: run_eval.py parallel workers cross-match skill UUIDs, producing false-negative trigger rates",
+      "reported_boundary": "measurement_misrepresented",
+      "evidence_status": "source_mechanism_confirmed",
+      "source_evidence": [
+        {
+          "url": "https://github.com/anthropics/skills/blob/0a64e398ec6bb34a494f0c347e8ccae53a862f8e/skills/skill-creator/scripts/run_eval.py",
+          "blob_sha": "e58c70bea39d5b252a1e819f242bbdcdf20e8b87"
+        }
+      ],
+      "repair": {
+        "url": "https://github.com/anthropics/skills/pull/1437",
+        "status": "proposed_open"
+      },
+      "candidate_discriminator": "compare parallel and isolated/serial trigger evaluation under the same skill description; current source confirms shared project registration, per-query UUID names, parallel execution, and exact per-query UUID matching, but the claimed trigger-rate consequence is not independently replayed here"
+    },
+    {
+      "id": "anthropics/skills#1487",
+      "ecosystem": "anthropic",
+      "source_url": "https://github.com/anthropics/skills/issues/1487",
+      "title": "claude-api skill eagerly injects ~156k tokens, exhausting the context window in a single tool call",
+      "reported_boundary": "selection_budget_overreach",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "measure task-relevant loaded references versus eager payload and next-action preservation under progressive disclosure"
+    },
+    {
+      "id": "anthropics/skills#189",
+      "ecosystem": "anthropic",
+      "source_url": "https://github.com/anthropics/skills/issues/189",
+      "title": "document-skills and example-skills plugins install identical content, causing duplicate skills",
+      "reported_boundary": "selection_budget_overreach",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "fingerprint loaded skill content and distinguish duplicate bytes from additional decision-relevant evidence"
+    },
+    {
+      "id": "anthropics/skills#1061",
+      "ecosystem": "anthropic",
+      "source_url": "https://github.com/anthropics/skills/issues/1061",
+      "title": "Windows compatibility: skill-creator scripts fail (subprocess PATHEXT, cp1252 encoding, select on pipes)",
+      "reported_boundary": "affordance_miss",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "run the same eval workflow under declared platform/tool affordances before attributing failure to the worker"
+    },
+    {
+      "id": "anthropics/skills#492",
+      "ecosystem": "anthropic",
+      "source_url": "https://github.com/anthropics/skills/issues/492",
+      "title": "Security: Community skills distributed under anthropic/ namespace enable trust boundary abuse",
+      "reported_boundary": "provenance_identity_gap",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "bind skill content to verifiable origin identity instead of inferring provenance from a path namespace"
+    },
+    {
+      "id": "anthropics/skills#881",
+      "ecosystem": "anthropic",
+      "source_url": "https://github.com/anthropics/skills/issues/881",
+      "title": "claude-api skill description truncated in Claude Code listings",
+      "reported_boundary": "schema_tooling_drift",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "compare authored activation metadata with the exact metadata actually exposed to the selector"
+    },
+    {
+      "id": "openai/skills#96",
+      "ecosystem": "openai",
+      "source_url": "https://github.com/openai/skills/issues/96",
+      "title": "gh-address-comments can't find scripts/fetch_comments.py and falls back to GraphQL",
+      "reported_boundary": "context_binding_miss",
+      "evidence_status": "source_mechanism_confirmed",
+      "source_evidence": [
+        {
+          "url": "https://github.com/openai/skills/blob/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/gh-address-comments/SKILL.md",
+          "blob_sha": "0ee19e080dc9f0b082157080d1e65511ddc49e7e"
+        },
+        {
+          "url": "https://github.com/openai/skills/blob/49f948faa9258a0c61caceaf225e179651397431/skills/.curated/gh-address-comments/scripts/fetch_comments.py",
+          "blob_sha": "09b9c01c50d9202bd6455ce36887e08be92ac1ae"
+        }
+      ],
+      "candidate_discriminator": "current skill instructions use the unbound relative reference scripts/fetch_comments.py while the helper is bundled under the skill directory; replay from target-repository cwd versus an explicitly bound skill root is still required to confirm the reported runtime failure"
+    },
+    {
+      "id": "openai/skills#526",
+      "ecosystem": "openai",
+      "source_url": "https://github.com/openai/skills/issues/526",
+      "title": "[skill-creator] Document portable Python invocation for non-executable helper scripts",
+      "reported_boundary": "context_binding_miss",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "execute documented helpers from both skill root and unrelated workspace using explicit interpreter/root coordinates"
+    },
+    {
+      "id": "openai/skills#519",
+      "ecosystem": "openai",
+      "source_url": "https://github.com/openai/skills/issues/519",
+      "title": "quick_validate.py fails on UTF-8 SKILL.md under Windows CP949",
+      "reported_boundary": "affordance_miss",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "replay validation under a non-UTF-8 locale and an explicit UTF-8 reader while holding skill bytes fixed"
+    },
+    {
+      "id": "openai/skills#518",
+      "ecosystem": "openai",
+      "source_url": "https://github.com/openai/skills/issues/518",
+      "title": "skill-creator validator fails when PyYAML is not available globally",
+      "reported_boundary": "affordance_miss",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "inventory required runtime dependencies before treating validator non-execution as skill/model failure"
+    },
+    {
+      "id": "openai/skills#131",
+      "ecosystem": "openai",
+      "source_url": "https://github.com/openai/skills/issues/131",
+      "title": "Should skill installs record origin metadata to enable safe updates?",
+      "reported_boundary": "provenance_identity_gap",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "record exact repo/ref/commit origin so installed skill identity can be compared across updates"
+    },
+    {
+      "id": "openai/skills#420",
+      "ecosystem": "openai",
+      "source_url": "https://github.com/openai/skills/issues/420",
+      "title": "skill-installer and skill-creator still default to ~/.codex/skills while current docs point users toward ~/.agents/skills",
+      "reported_boundary": "schema_tooling_drift",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "compare documented install root, tool-computed root, and runtime discovery precedence as separate identities"
+    },
+    {
+      "id": "openai/skills#187",
+      "ecosystem": "openai",
+      "source_url": "https://github.com/openai/skills/issues/187",
+      "title": "Allow compatibility property in frontmatter for consistency with Agent Skills Specification",
+      "reported_boundary": "schema_tooling_drift",
+      "evidence_status": "reported_only",
+      "candidate_discriminator": "compare validator-admitted frontmatter fields against the exact declared specification version"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "trial_id": "prior-episode-front:stensibly-index-guard-detail",
+  "task_instruction": "Choose exactly one first justified action for this proposed Stensibly patch before writing review feedback.",
+  "allowed_first_actions": [
+    {
+      "id": "block_and_shorten_identifier",
+      "label": "Block this patch and shorten the proposed index identifier while preserving field order"
+    },
+    {
+      "id": "inspect_accepted_guard_detail",
+      "label": "Inspect the accepted guard detail before deciding merge eligibility"
+    },
+    {
+      "id": "approve_patch",
+      "label": "Approve the patch as merge-eligible"
+    },
+    {
+      "id": "inspect_more_repository_context",
+      "label": "Inspect more repository context before deciding"
+    }
+  ],
+  "control": {
+    "context_ref": "research/behavioral-trials/stensibly-index-guard-detail.json#front",
+    "context": "Repository: teamleaderleo/stensibly\nRevision: 85cecf2608ad9e734a67518577fa85b9a08a550c\nTarget: convex/schema.ts\nTarget blob: 7fdd51e2f9fba80d1c0a814cea708d601a7b9925\nReview prompt: Review this proposed patch for merge eligibility against the repository's existing conventions and production constraints. Identify any blocking issue and the smallest corrective action. Do not assume the patch is correct.\nPatch:\n@@ githubProjectContexts index chain @@\n   .index(\"by_project_issue_accepted\", [\"projectId\", \"issueExternalId\", \"acceptedAt\", \"externalId\"])\n+  .index(\"by_project_issue_revision_instruction_set_sha256_provider_updated_at\", [\"projectId\", \"issueExternalId\", \"sourceRevision\", \"instructionSetSha256\", \"providerUpdatedAt\"]),\n\nCultist prior-episode front:\nnext: use_accepted_guard\ncandidate discriminator: convex_production_failure_class\ncandidate value: index_identifier_limit\nguard: pull_request#1575\nenforcement path: test/convex-index-identifier-limit.test.ts\nscope: convex/**/*.ts\nsame-class repairs: pull_request#1571, pull_request#1573\nautomatic policy authority: false",
+    "context_digest": "cultist-behavioral-context-sha256-v1:5db3451306ec047f7a6487f235299f2725c169b8235b97fc3cfbc84705ddfe62"
+  },
+  "treatment": {
+    "context_ref": "research/behavioral-trials/stensibly-index-guard-detail.json#front-plus-selected-detail",
+    "context": "Repository: teamleaderleo/stensibly\nRevision: 85cecf2608ad9e734a67518577fa85b9a08a550c\nTarget: convex/schema.ts\nTarget blob: 7fdd51e2f9fba80d1c0a814cea708d601a7b9925\nReview prompt: Review this proposed patch for merge eligibility against the repository's existing conventions and production constraints. Identify any blocking issue and the smallest corrective action. Do not assume the patch is correct.\nPatch:\n@@ githubProjectContexts index chain @@\n   .index(\"by_project_issue_accepted\", [\"projectId\", \"issueExternalId\", \"acceptedAt\", \"externalId\"])\n+  .index(\"by_project_issue_revision_instruction_set_sha256_provider_updated_at\", [\"projectId\", \"issueExternalId\", \"sourceRevision\", \"instructionSetSha256\", \"providerUpdatedAt\"]),\n\nCultist prior-episode front:\nnext: use_accepted_guard\ncandidate discriminator: convex_production_failure_class\ncandidate value: index_identifier_limit\nguard: pull_request#1575\nenforcement path: test/convex-index-identifier-limit.test.ts\nscope: convex/**/*.ts\nsame-class repairs: pull_request#1571, pull_request#1573\nautomatic policy authority: false\n\nCultist selected accepted-guard detail:\noperational marker: 64-character identifier limit\nguard marker: two historical mail index names\nguard source evidence:\nPrevent the same class of production-only Convex failure from merging again. Ordinary CI previously accepted two `by_*` index identifiers over Convex's 64-character limit; protected production schema analysis caught them only after merge.\n\nAdd one Bun regression that scans retained `convex/**/*.ts` string literals matching `by_*` and fails when any exceed 64 characters. Generated Convex files are excluded. The test also reconstructs the two historical mail index names from fragments and proves both exceed the production limit.",
+    "context_digest": "cultist-behavioral-context-sha256-v1:63c1fe7ef786886a36af2ffc212b5102cc33ca706a968debc5904d58adf0e52c"
+  }
+}

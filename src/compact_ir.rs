@@ -112,7 +112,10 @@ pub fn decode_report(input: &str) -> Result<AnalysisReport, CompactError> {
     for (zero_based, line) in lines {
         let line_number = zero_based + 1;
         if line.is_empty() {
-            return Err(CompactError::at(line_number, "empty records are not allowed"));
+            return Err(CompactError::at(
+                line_number,
+                "empty records are not allowed",
+            ));
         }
 
         let mut chars = line.chars();
@@ -214,9 +217,8 @@ pub fn decode_report(input: &str) -> Result<AnalysisReport, CompactError> {
                 let report = report
                     .as_mut()
                     .ok_or_else(|| CompactError::at(line_number, "q record before R record"))?;
-                let finding_index = current_finding.ok_or_else(|| {
-                    CompactError::at(line_number, "q record outside an F record")
-                })?;
+                let finding_index = current_finding
+                    .ok_or_else(|| CompactError::at(line_number, "q record outside an F record"))?;
                 if question_seen {
                     return Err(CompactError::at(
                         line_number,
@@ -240,11 +242,7 @@ pub fn decode_report(input: &str) -> Result<AnalysisReport, CompactError> {
     report.ok_or_else(|| CompactError::new("missing R record"))
 }
 
-fn encode_claim(
-    output: &mut String,
-    tag: char,
-    claim: &Claim,
-) -> Result<(), serde_json::Error> {
+fn encode_claim(output: &mut String, tag: char, claim: &Claim) -> Result<(), serde_json::Error> {
     push_record(
         output,
         tag,
@@ -429,10 +427,7 @@ mod tests {
     #[test]
     fn rejects_top_level_claim_after_finding() {
         assert!(
-            decode_report(
-                "C1\nR[1,\"a\",\"r\"]\nF[\"k\",\"t\",null]\nC[\"O\",\"m\"]\n"
-            )
-            .is_err()
+            decode_report("C1\nR[1,\"a\",\"r\"]\nF[\"k\",\"t\",null]\nC[\"O\",\"m\"]\n").is_err()
         );
     }
 

@@ -94,12 +94,33 @@ corrective_action
 
 The decisive rule comes from the admitted historical source detail, not the retirement oracle.
 
-Worker-visible context sizes are frozen:
+Worker-visible context sizes are frozen and asserted in the ordinary test suite:
 
 ```text
 control    1082 bytes
 treatment  1775 bytes
 ```
+
+## Post-selection contrast vs the retirement leak control
+
+This plan reuses the **task and patch** from the capability-demand retirement corpus, but it asks a later question after project-memory selection has already happened.
+
+The original retirement experiment prohibited worker-visible fragments such as `#1571`, `#1573`, `64`, and `identifier limit` so it could test whether broader scoped evidence retired a capability demand.
+
+This new trial intentionally starts later:
+
+```text
+both arms
+  compact selected prior episode
+  #1571 / #1573 / #1575 coordinates
+  use_accepted_guard
+  index_identifier_limit
+
+treatment only
+  exact accepted-guard operational detail
+```
+
+So the original retirement oracle-leak prohibition does not define this new contrast. The isolation rule here is stricter for the question being asked: every worker-visible byte before the selected-detail suffix is identical across arms.
 
 ## Exact fingerprints
 
@@ -129,6 +150,7 @@ The materialized worker packet omits organizer-only `context_ref` / arm identity
 
 - known plan and worker-packet fingerprints;
 - identical task/action vocabulary across arms;
+- exact 1082/1775 worker-visible context sizes;
 - treatment starts with the exact complete control context;
 - the only worker-visible suffix is selected accepted-guard detail;
 - both arms carry the same compact front and proposed patch;
@@ -151,6 +173,20 @@ treatment first action
 
 only to verify pair mapping and `same_first_action=false`. It is not represented as a real worker result or evidence that the treatment improves behavior.
 
+## Executed semantic receipt
+
+Formatted/linted semantic head:
+
+```text
+head:       c9fccae8877ba6a1f684b803420943e3d1946b79
+CI:         32268660788 success
+provenance: 32268660723 success
+```
+
+That run passed formatter, strict all-target Clippy, exact fingerprint/context-isolation tests, full tests, project-memory/review/closure controls, the external GitHub reference controls, the new pull-request redirect guard, and normal Cultist repository/history/CI/diff dogfood. Provider-specific carriers skipped on their path filters.
+
+`main` advanced independently through merged #179 while the run was executing. A direct compare from current `main@3d6715f99d9a5f5ac37c0626bf9cb4a459a3f463` to this branch shows only the three trial-lane files, so the final note-only merge-view pass tests the same frozen plan against the newer base.
+
 ## Execution boundary
 
 This PR freezes the plan only.
@@ -172,4 +208,4 @@ A later runner may materialize both blind packets from this registered plan and 
 
 This isolates one narrower question than capability success: does the selected source detail change what the worker does first?
 
-Refs #41 #137 #217 #219 #237 #244 #245 #246 #249.
+Refs #41 #137 #179 #217 #219 #237 #244 #245 #246 #249.

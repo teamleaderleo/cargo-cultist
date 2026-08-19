@@ -65,7 +65,10 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("  policy inventory: {}", inventory.display());
     println!("  source: {}", source.display());
     println!("  function: {function_name}");
-    println!("  exact ranked lock-name samples: {}", exact_name_ranks.len());
+    println!(
+        "  exact ranked lock-name samples: {}",
+        exact_name_ranks.len()
+    );
 
     if bindings.is_empty() {
         println!("\nOBSERVATION");
@@ -178,7 +181,9 @@ fn find_function(source: &str, function_name: &str) -> Result<syn::ItemFn, Box<d
 fn find_function_in_items(items: &[Item], function_name: &str) -> Option<syn::ItemFn> {
     for item in items {
         match item {
-            Item::Fn(function) if function.sig.ident == function_name => return Some(function.clone()),
+            Item::Fn(function) if function.sig.ident == function_name => {
+                return Some(function.clone());
+            }
             Item::Mod(module) => {
                 if let Some((_, nested)) = &module.content
                     && let Some(function) = find_function_in_items(nested, function_name)
@@ -331,10 +336,18 @@ fn acquired_lock_variable(expr: &Expr) -> Option<String> {
 
 fn print_boundary() {
     println!("\nEVIDENCE BOUNDARY");
-    println!("  Numeric ranks come only from exact lock-name samples in the repository inventory.");
-    println!("  This adapter treats lower-to-higher numeric rank as the ordered hierarchy; the target repository's runtime checker independently enforces `new_rank < highest_held` as a violation.");
-    println!("  The lexical extractor handles literal lock constructors and named `.lock().unwrap()` guard acquisitions in one function.");
-    println!("  Prefix inference, async lock futures, explicit drops, nested control flow, aliases, and dynamic lock names remain outside this first adapter.");
+    println!(
+        "  Numeric ranks come only from exact lock-name samples in the repository inventory."
+    );
+    println!(
+        "  This adapter treats lower-to-higher numeric rank as the ordered hierarchy; the target repository's runtime checker independently enforces `new_rank < highest_held` as a violation."
+    );
+    println!(
+        "  The lexical extractor handles literal lock constructors and named `.lock().unwrap()` guard acquisitions in one function."
+    );
+    println!(
+        "  Prefix inference, async lock futures, explicit drops, nested control flow, aliases, and dynamic lock names remain outside this first adapter."
+    );
 }
 
 #[cfg(test)]

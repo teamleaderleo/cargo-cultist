@@ -86,10 +86,11 @@ jobs:
           assert any('clone preflight before durable checkpoint' in subject for subject in clone_subjects)
 
           host_subjects = [item['subject'].lower() for item in host['recent_history']]
-          assert any('confirmations to exact durable commands' in subject for subject in host_subjects)
+          assert any('confirmation to exact durable plan' in subject for subject in host_subjects)
           PY
 
       - name: Upload research packets
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: agent-context-packets

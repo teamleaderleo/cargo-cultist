@@ -1,0 +1,130 @@
+name: Generated provenance restoration research
+
+on:
+  push:
+    branches:
+      - fix/80-canonical-generator-ownership
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  oxc-held-out:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Focused quality gates
+        working-directory: cultist
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+          cargo build --bin cargo-cultist
+
+      - name: Checkout exact Oxc held-out target
+        uses: actions/checkout@v4
+        with:
+          repository: oxc-project/oxc
+          ref: 228e8e0f85c0e7aeded02c5e27fd810004d3b41a
+          path: corpus/oxc
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build held-out semantic source-only counterfactual
+        run: |
+          set -euo pipefail
+          target=228e8e0f85c0e7aeded02c5e27fd810004d3b41a
+          parent=$(git -C corpus/oxc rev-parse "${target}^")
+          test "$parent" = 568203e24f090f2cc3f945d611e605b864842bf0
+          git -C corpus/oxc diff "$parent" "$target" -- crates/oxc_linter/src/rules.rs > /tmp/oxc-rules-semantic.patch
+          test -s /tmp/oxc-rules-semantic.patch
+          git -C corpus/oxc reset --hard "$parent"
+          git -C corpus/oxc apply /tmp/oxc-rules-semantic.patch
+          test "$(git -C corpus/oxc diff --name-only HEAD)" = "crates/oxc_linter/src/rules.rs"
+
+      - name: Prove canonical Oxc generator ownership
+        run: |
+          set -euo pipefail
+          mkdir -p research-output
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example rust_generator_ownership -- \
+            corpus/oxc tasks/linter_codegen/src/main.rs \
+            | tee research-output/oxc-generator-ownership.txt
+          grep -F 'cargo lintgen -> run -p oxc_linter_codegen' research-output/oxc-generator-ownership.txt
+          grep -F 'reads  crates/oxc_linter/src/rules.rs' research-output/oxc-generator-ownership.txt
+          grep -F 'writes crates/oxc_linter/src/generated/rule_runner_impls.rs  [.gitattributes: linguist-generated=true]' research-output/oxc-generator-ownership.txt
+          grep -F 'writes crates/oxc_linter/src/generated/rules_enum.rs  [.gitattributes: linguist-generated=true]' research-output/oxc-generator-ownership.txt
+
+      - name: Restore the two held-out product findings
+        run: |
+          set -euo pipefail
+          cultist/target/debug/cargo-cultist diff --format json corpus/oxc \
+            | tee research-output/oxc-held-out-product.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/oxc-held-out-product.json').read_text())
+          findings = [f for f in report['findings'] if f['kind'] == 'generated-companion-missing']
+          assert len(findings) == 2, findings
+          serialized = json.dumps(findings)
+          expected = [
+              'crates/oxc_linter/src/generated/rule_runner_impls.rs',
+              'crates/oxc_linter/src/generated/rules_enum.rs',
+          ]
+          for output in expected:
+              assert output in serialized, output
+          for finding in findings:
+              kinds = [claim['kind'] for claim in finding['claims']]
+              assert kinds == ['derived', 'derived', 'observed', 'observed', 'unknown'], kinds
+              assert finding.get('question'), finding
+          print('generated findings:', len(findings))
+          print('outputs:', *expected, sep='\n  ')
+          PY
+
+      - name: Build exact docs-only historical exception
+        run: |
+          set -euo pipefail
+          target=5e113baf716b9f3781331b268b4142d23cac0541
+          git -C corpus/oxc reset --hard "$target"
+          git -C corpus/oxc clean -fd
+          parent=$(git -C corpus/oxc rev-parse "${target}^")
+          git -C corpus/oxc diff "$parent" "$target" -- crates/oxc_linter/src/rules.rs > /tmp/oxc-rules-docs.patch
+          test -s /tmp/oxc-rules-docs.patch
+          git -C corpus/oxc reset --hard "$parent"
+          git -C corpus/oxc apply /tmp/oxc-rules-docs.patch
+          test "$(git -C corpus/oxc diff --name-only HEAD)" = "crates/oxc_linter/src/rules.rs"
+
+      - name: Keep docs-only exception quiet
+        run: |
+          set -euo pipefail
+          cultist/target/debug/cargo-cultist diff --format json corpus/oxc \
+            | tee research-output/oxc-docs-only-product.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/oxc-docs-only-product.json').read_text())
+          findings = [f for f in report['findings'] if f['kind'] == 'generated-companion-missing']
+          assert findings == [], findings
+          print('generated findings: 0')
+          PY
+
+      - name: Upload restoration receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-provenance-restoration-research
+          path: research-output/
+          if-no-files-found: error

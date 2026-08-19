@@ -451,11 +451,7 @@ mod tests {
         run_git(&root, &["commit", "-q", "-m", "baseline"]);
 
         fs::write(root.join("anchor.rs"), "fn anchor_changed() {}\n").unwrap();
-        fs::write(
-            root.join("companion.rs"),
-            "fn companion_changed() {}\n",
-        )
-        .unwrap();
+        fs::write(root.join("companion.rs"), "fn companion_changed() {}\n").unwrap();
         run_git(&root, &["add", "."]);
         run_git(&root, &["commit", "-q", "-m", "paired change"]);
 

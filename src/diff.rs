@@ -98,10 +98,7 @@ pub fn build_diff_analysis_report(
         },
     ));
 
-    let changed_rust_paths: Vec<_> = changed
-        .rust_paths()
-        .map(|path| root.join(path))
-        .collect();
+    let changed_rust_paths: Vec<_> = changed.rust_paths().map(|path| root.join(path)).collect();
     if changed_rust_paths.is_empty() {
         analysis.claims.push(Claim::new(
             ClaimKind::Observed,
@@ -597,23 +594,31 @@ mod tests {
         let analysis = build_diff_analysis_report(&root, None).unwrap();
 
         assert!(analysis.findings.is_empty());
-        assert!(analysis.claims.iter().any(|claim| claim
-            .message
-            .contains("No added or renamed test-gated module declarations")));
+        assert!(analysis.claims.iter().any(|claim| {
+            claim
+                .message
+                .contains("No added or renamed test-gated module declarations")
+        }));
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn irrelevant_rust_diff_skips_unrelated_repository_rust_scan() {
         let root = init_repo("irrelevant-rust-diff");
-        fs::write(root.join("changed.rs"), "fn changed() { println!(\"hi\"); }\n").unwrap();
+        fs::write(
+            root.join("changed.rs"),
+            "fn changed() { println!(\"hi\"); }\n",
+        )
+        .unwrap();
 
         let analysis = build_diff_analysis_report(&root, None).unwrap();
 
         assert!(analysis.findings.is_empty());
-        assert!(analysis.claims.iter().any(|claim| claim
-            .message
-            .contains("No added or renamed test-gated module declarations")));
+        assert!(analysis.claims.iter().any(|claim| {
+            claim
+                .message
+                .contains("No added or renamed test-gated module declarations")
+        }));
         fs::remove_dir_all(root).unwrap();
     }
 }

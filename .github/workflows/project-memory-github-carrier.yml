@@ -1,0 +1,94 @@
+name: GitHub project-memory carrier
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  stensibly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Check collector syntax
+        run: python -m py_compile scripts/project_memory_github.py
+
+      - name: Collect Stensibly #1575
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/project_memory_github.py \
+            --repository teamleaderleo/stensibly \
+            --anchor-pr 1575 \
+            --max-artifacts 8 \
+            --output packet.json \
+            > /tmp/project-memory-collector.stdout
+
+      - name: Validate packet through Rust boundary
+        run: |
+          cargo run --quiet --example project_memory_packet \
+            < packet.json \
+            > summary.json
+
+      - name: Assert Stensibly discriminator
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packet = json.loads(Path("packet.json").read_text())
+          summary = json.loads(Path("summary.json").read_text())
+          assert packet["repository"] == "teamleaderleo/stensibly"
+          assert packet["anchor"] == {"kind": "pull_request", "number": 1575}
+          assert summary["artifact_count"] == 5, summary
+          assert summary["edge_count"] == 4, summary
+          assert summary["anchor_changed_paths"] == [
+              "test/convex-index-identifier-limit.test.ts"
+          ], summary
+
+          links = summary["explicit_anchor_links"]
+          closes = sorted(
+              link["target"]["number"]
+              for link in links
+              if link["relation"] == "closes"
+          )
+          follows = sorted(
+              link["target"]["number"]
+              for link in links
+              if link["relation"] == "follow_up_to"
+          )
+          assert closes == [1574], links
+          assert follows == [1569, 1571, 1573], links
+
+          by_number = {
+              artifact["reference"]["number"]: artifact
+              for artifact in packet["artifacts"]
+          }
+          assert by_number[1575]["revision"] == {
+              "head_sha": "78a9061b2feebe71211f0034ff2705b7143f6ce9",
+              "base_sha": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+              "merged": True,
+          }
+          assert by_number[1574]["reference"]["kind"] == "issue"
+          for number in (1569, 1571, 1573):
+              assert by_number[number]["reference"]["kind"] == "pull_request"
+              assert by_number[number]["revision"]["merged"] is True
+          PY
+
+      - name: Upload carrier receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-memory-carrier-${{ github.run_id }}
+          path: |
+            packet.json
+            summary.json
+          if-no-files-found: error

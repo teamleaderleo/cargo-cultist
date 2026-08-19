@@ -43,7 +43,7 @@ use observation_probe_bridge::{
 use refinement_candidate_readiness::{
     REFINEMENT_CANDIDATE_READINESS_SCHEMA_VERSION, RefinementCandidateReadinessRequest,
 };
-use refinement_episode::parse_refinement_episode_batch;
+use refinement_episode::{HeldOutStatus, parse_refinement_episode_batch};
 use refinement_investigation_demand::{
     RefinementInvestigationDispositionStatus, evaluate_refinement_investigation_demand,
 };
@@ -182,6 +182,24 @@ fn request_for_subject(subject: &RustEditClassSubject) -> RefinementCandidateRea
     request
 }
 
+fn set_selected_held_out(
+    request: &mut RefinementCandidateReadinessRequest,
+    held_out_status: HeldOutStatus,
+) {
+    let episode = request
+        .refinements
+        .episodes
+        .iter_mut()
+        .find(|episode| episode.id == OXC_EPISODE)
+        .unwrap();
+    let selected = episode
+        .candidate_refinements
+        .iter_mut()
+        .find(|candidate| candidate.id == SELECTED_OXC_CANDIDATE)
+        .unwrap();
+    selected.replay_result.held_out_status = held_out_status;
+}
+
 fn selected_disposition(
     request: &RefinementCandidateReadinessRequest,
 ) -> refinement_investigation_demand::RefinementInvestigationDisposition {
@@ -264,6 +282,32 @@ fn selected_acquisition_demand_routes_to_real_source_probe_and_closes_after_obse
         RefinementInvestigationDispositionStatus::Satisfied
     );
     assert!(after.acquisition_frontiers.is_empty());
+}
+
+#[test]
+fn held_out_not_run_remains_visible_on_the_disposition_that_authorizes_planning() {
+    let (_repo, _revision, source) = local_source();
+    let mut request = request_for_subject(&source.subject);
+    set_selected_held_out(&mut request, HeldOutStatus::NotRun);
+
+    let disposition = selected_disposition(&request);
+    assert_eq!(
+        disposition.disposition,
+        RefinementInvestigationDispositionStatus::ObservationAcquisitionNeeded
+    );
+    assert_eq!(
+        disposition.replay_result.held_out_status,
+        HeldOutStatus::NotRun
+    );
+    assert_eq!(disposition.acquisition_frontiers.len(), 1);
+
+    let plan = plan_frontier(&source, disposition.acquisition_frontiers[0].clone());
+    assert_eq!(plan.status, ObservationProbePlanStatus::Planned);
+    assert_eq!(plan.frontier_status, ObservationFrontierStatus::Missing);
+    assert_eq!(
+        plan.evidence_plan.as_ref().unwrap().status,
+        EvidencePlanStatus::Selected
+    );
 }
 
 #[test]

@@ -150,18 +150,15 @@ fn parse_exact_name_ranks(source: &str) -> Result<BTreeMap<String, u64>, Box<dyn
     let mut names = BTreeMap::new();
     for entry in rank_map {
         let rank = entry
-            .get("rank")
+            .get("numeric_rank")
             .and_then(Value::as_u64)
-            .ok_or("rank_map entry has no numeric `rank`")?;
-        let Some(samples) = entry.get("from_name_samples").and_then(Value::as_object) else {
+            .ok_or("rank_map entry has no numeric `numeric_rank`")?;
+        let Some(samples) = entry.get("from_name_samples").and_then(Value::as_array) else {
             continue;
         };
-        for (name, sample_rank) in samples {
-            let Some(sample_rank) = sample_rank.as_u64() else {
-                continue;
-            };
-            if sample_rank == rank {
-                names.insert(name.clone(), rank);
+        for sample in samples {
+            if let Some(name) = sample.as_str() {
+                names.insert(name.to_string(), rank);
             }
         }
     }
@@ -355,9 +352,9 @@ mod tests {
     const INVENTORY: &str = r#"
     {
       "rank_map": [
-        {"rank": 10, "from_name_samples": {"config_cache": 10}},
-        {"rank": 30, "from_name_samples": {"regions_table": 30}},
-        {"rank": 40, "from_name_samples": {"tasks_queue": 40}}
+        {"numeric_rank": 10, "from_name_samples": ["config_cache"]},
+        {"numeric_rank": 30, "from_name_samples": ["regions_table"]},
+        {"numeric_rank": 40, "from_name_samples": ["tasks_queue"]}
       ]
     }
     "#;

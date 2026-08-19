@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/stensibly",
+  "candidate_id": "stensibly-responsibility-generation-proxy-revision",
+  "semantic_axis_id": "responsibility_generation_evidence",
+  "prior_value_ref": "positive_expected_generation",
+  "replacement_value_ref": "live_unexpired_claim_for_actor",
+  "predecessor": {
+    "kind": "pull_request",
+    "number": 1604
+  },
+  "successor": {
+    "kind": "pull_request",
+    "number": 1605
+  },
+  "shared_path": "convex/items.ts",
+  "predecessor_source_evidence": "- retain the responsibility generation being ended when it is positive;\n- omit responsibility generation for valid generation-0 transitions instead of inventing a claim that never existed;",
+  "successor_counterexample_evidence": "#1604 attached positive `claimGeneration` to handoff/completion activity. The counter also advances on unclaimed semantic transitions, so positivity alone does not prove a live responsibility. This slice binds `responsibilityGeneration` to actual live claim evidence instead.",
+  "successor_replacement_evidence": "- `responsibilityGeneration` is included only when the item carries a live, unexpired claim held by the acting actor at transition time;\n- unclaimed transitions stay responsibility-null even when the monotonic claim-generation counter is positive because earlier semantic transitions advanced it;",
+  "proxy_rule_marker": "retain the responsibility generation being ended when it is positive",
+  "counterexample_marker": "The counter also advances on unclaimed semantic transitions",
+  "replacement_rule_marker": "`responsibilityGeneration` is included only when the item carries a live, unexpired claim held by the acting actor at transition time"
+}

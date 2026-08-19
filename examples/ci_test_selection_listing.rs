@@ -1,7 +1,7 @@
-#[path = "../src/finding.rs"]
-mod finding;
 #[path = "../src/ci_test_filters.rs"]
 mod ci_test_filters;
+#[path = "../src/finding.rs"]
+mod finding;
 
 use std::env;
 use std::error::Error;
@@ -32,7 +32,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("CI TEST SELECTION LISTING PROBE");
     println!("  repository: {}", root.display());
     println!("  supported commands: {}", report.commands.len());
-    println!("  WARNING: this probe invokes Cargo and may execute repository build scripts while compiling the library test target.");
+    println!(
+        "  WARNING: this probe invokes Cargo and may execute repository build scripts while compiling the library test target."
+    );
 
     for command in &report.commands {
         println!(
@@ -84,7 +86,10 @@ fn listing_args(command: &str) -> Option<Vec<String>> {
     }
 
     let mut command_index = 1;
-    if tokens.get(command_index).is_some_and(|token| token.starts_with('+')) {
+    if tokens
+        .get(command_index)
+        .is_some_and(|token| token.starts_with('+'))
+    {
         command_index += 1;
     }
     if tokens.get(command_index).copied() != Some("test") {
@@ -143,9 +148,7 @@ mod tests {
     #[test]
     fn preserves_cargo_toolchain_selector() {
         assert_eq!(
-            listing_args(
-                "cargo +1.88.0 test --lib test_rollback --locked --no-default-features"
-            ),
+            listing_args("cargo +1.88.0 test --lib test_rollback --locked --no-default-features"),
             Some(vec![
                 "+1.88.0".to_string(),
                 "test".to_string(),

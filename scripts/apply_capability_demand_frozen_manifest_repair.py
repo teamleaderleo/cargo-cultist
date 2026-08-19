@@ -12,6 +12,7 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+# One-shot carrier helper; deleted by the successful semantic repair commit.
 CARRIER = Path(".github/workflows/repair-capability-demand-frozen-manifest-binding.yml")
 MATERIALIZER = Path(".github/workflows/capability-demand-retirement-inputs.yml")
 EXPECTED_CHANGED = {

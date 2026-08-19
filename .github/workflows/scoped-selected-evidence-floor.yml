@@ -1,0 +1,119 @@
+name: Stensibly selected evidence floor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/scoped-selected-evidence-floor.yml"
+      - "examples/scoped_selected_evidence_protection.rs"
+      - "examples/agent_context_packet.rs"
+      - "examples/support/scoped_agent_context_packet_impl.rs"
+
+permissions:
+  contents: read
+
+jobs:
+  floor:
+    if: github.head_ref == 'research/scoped-selected-evidence-protection'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: cultist
+          fetch-depth: 1
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build protected scoped example
+        run: cargo build --release --example scoped_selected_evidence_protection --manifest-path cultist/Cargo.toml
+
+      - uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/stensibly
+          ref: 85cecf2608ad9e734a67518577fa85b9a08a550c
+          fetch-depth: 256
+          persist-credentials: false
+          path: target
+
+      - name: Find lower protected-core boundary
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          exe="$PWD/cultist/target/release/examples/scoped_selected_evidence_protection"
+          target="$PWD/target/convex/schema.ts"
+          python - "$exe" "$target" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          exe, target = sys.argv[1:]
+          budgets = [4096, 3900, 3800, 3700, 3600, 3500, 3400, 3300, 3200, 3100, 3000, 2900, 2800, 2700, 2600, 2500, 2400, 2300, 2200, 2100, 2000, 1800, 1600, 1400, 1200, 1000]
+          selected_shas = [
+              "85cecf2608ad9e734a67518577fa85b9a08a550c",
+              "ca5d2c7fdf89666e523972ab6e81610d17b9611b",
+          ]
+          required = [
+              "Keep Gmail mailbox-disposition indexes deployable (#1573)",
+              "Keep Gmail semantic-admission indexes deployable (#1571)",
+          ]
+          rows = []
+
+          for budget in budgets:
+              env = os.environ.copy()
+              env["CARGO_CULTIST_PACKET_MAX_BYTES"] = str(budget)
+              args = [exe, target, "--scope", "convex"]
+              for sha in selected_shas:
+                  args.extend(["--protect-scope-sha", sha])
+              completed = subprocess.run(args, env=env, capture_output=True, text=True)
+              if completed.returncode != 0:
+                  stderr = completed.stderr.strip()
+                  if "protected scoped packet evidence requires" not in stderr:
+                      raise SystemExit(f"unexpected failure at {budget}: {stderr}")
+                  rows.append({"budget": budget, "status": "protected_core_too_large", "stderr": stderr})
+                  continue
+
+              envelope = json.loads(completed.stdout)
+              subjects = [item["subject"] for item in envelope["scope_recent_history"]]
+              presence = {subject: any(subject in observed for observed in subjects) for subject in required}
+              if not all(presence.values()):
+                  raise SystemExit(f"protected selected evidence disappeared at successful budget {budget}")
+              rows.append({
+                  "budget": budget,
+                  "status": "selected",
+                  "serialized_bytes": envelope["serialized_bytes"],
+                  "scope_history_count": len(envelope["scope_recent_history"]),
+                  "target_recent_history_count": len(envelope["file_packet"]["recent_history"]),
+                  "scope_semantic_evictions": envelope["semantic_evictions"],
+                  "file_packet_semantic_evictions": envelope["file_packet"]["semantic_evictions"],
+              })
+
+          successful = [row["budget"] for row in rows if row["status"] == "selected"]
+          failed = [row["budget"] for row in rows if row["status"] != "selected"]
+          receipt = {
+              "schema_version": 1,
+              "selected_scope_shas": selected_shas,
+              "rows": rows,
+              "summary": {
+                  "minimum_tested_successful_budget": min(successful) if successful else None,
+                  "first_failure_descending": next((row["budget"] for row in rows if row["status"] != "selected"), None),
+                  "maximum_tested_failed_budget": max(failed) if failed else None,
+              },
+          }
+          Path("artifacts/stensibly-selected-evidence-floor.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(receipt["summary"], indent=2, sort_keys=True))
+          PY
+
+      - name: Upload floor receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stensibly-selected-evidence-floor-${{ github.run_id }}
+          path: artifacts/stensibly-selected-evidence-floor.json
+          if-no-files-found: error

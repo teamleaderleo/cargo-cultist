@@ -81,12 +81,13 @@ fn missing_edge_target_is_rejected() {
 #[test]
 fn issue_cannot_claim_pull_request_revision_coordinates() {
     let mut packet = parse_project_memory_packet(STENSIBLY_1575).unwrap();
+    let revision = packet.artifacts[0].revision.clone();
     let issue = packet
         .artifacts
         .iter_mut()
         .find(|artifact| artifact.reference.kind == ArtifactKind::Issue)
         .unwrap();
-    issue.revision = packet.artifacts[0].revision.clone();
+    issue.revision = revision;
 
     let error = packet.validate().unwrap_err();
     assert!(error.contains("may not carry pull-request revision coordinates"));

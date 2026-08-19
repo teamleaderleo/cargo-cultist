@@ -1,0 +1,234 @@
+name: Rust edit-class observation carrier
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/rust-edit-class-observation.yml"
+      - "examples/rust_syntax_cohort.rs"
+      - "examples/rust_edit_class_observation.rs"
+      - "src/rust_edit_class_source.rs"
+      - "src/observation_probe_bridge.rs"
+      - "src/observation_frontier.rs"
+      - "src/discriminator_observation.rs"
+      - "src/evidence_planner.rs"
+      - "tests/rust_edit_class_source.rs"
+
+permissions:
+  contents: read
+
+jobs:
+  oxc-edit-class-loop:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'research/rust-edit-class-observation-loop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build source and generic readers
+        run: |
+          cargo build --release \
+            --example rust_edit_class_observation \
+            --example observation_probe_plan \
+            --example observation_frontiers \
+            --manifest-path cultist/Cargo.toml
+
+      - name: Checkout pinned Oxc history
+        uses: actions/checkout@v4
+        with:
+          repository: oxc-project/oxc
+          ref: 8783524015b1e6ff1c39ccf426df0bb07cbbc588
+          fetch-depth: 200
+          persist-credentials: false
+          path: target
+
+      - name: Verify pinned head and resolve latest focused rules commit
+        id: focus
+        run: |
+          set -euo pipefail
+          pinned=8783524015b1e6ff1c39ccf426df0bb07cbbc588
+          anchor=crates/oxc_linter/src/rules.rs
+          test "$(git -C target rev-parse HEAD)" = "$pinned"
+          test -f "target/$anchor"
+
+          focused="$(git -C target log --no-merges -1 --format='%H' -- "$anchor")"
+          test -n "$focused"
+          test "$focused" != "$pinned"
+          parent="$(git -C target rev-parse "$focused^")"
+          test -n "$parent"
+          test -n "$(git -C target diff-tree --no-commit-id --name-only -r "$focused" -- "$anchor")"
+
+          echo "focused_sha=$focused" >> "$GITHUB_OUTPUT"
+          echo "focused_parent=$parent" >> "$GITHUB_OUTPUT"
+          echo "Pinned repository head: $pinned"
+          echo "Latest focused rules.rs commit: $focused"
+          git -C target show --no-patch --format='%H %s' "$focused"
+
+      - name: Assert pinned repository head is not an edit-class observation
+        run: |
+          set -euo pipefail
+          "$PWD/cultist/target/release/examples/rust_edit_class_observation" \
+            "$PWD/target" \
+            oxc-project/oxc \
+            8783524015b1e6ff1c39ccf426df0bb07cbbc588 \
+            crates/oxc_linter/src/rules.rs \
+            > head-control.json
+          cat head-control.json
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("head-control.json").read_text())
+          observation = result["observation"]
+          assert result["current_head"] == "8783524015b1e6ff1c39ccf426df0bb07cbbc588", result
+          assert observation["value_state"]["state"] == "unknown", observation
+          assert "anchor-unchanged" in observation["value_state"]["reason_ref"], observation
+          assert observation["applicability"]["status"] == "applies", observation
+          PY
+
+      - name: Checkout latest focused rules commit
+        env:
+          FOCUSED_SHA: ${{ steps.focus.outputs.focused_sha }}
+        run: |
+          set -euo pipefail
+          git -C target checkout -q "$FOCUSED_SHA"
+          test "$(git -C target rev-parse HEAD)" = "$FOCUSED_SHA"
+          test -f target/crates/oxc_linter/src/rules.rs
+
+      - name: Collect focused source-owned bridge and observation
+        env:
+          FOCUSED_SHA: ${{ steps.focus.outputs.focused_sha }}
+        run: |
+          set -euo pipefail
+          "$PWD/cultist/target/release/examples/rust_edit_class_observation" \
+            "$PWD/target" \
+            oxc-project/oxc \
+            "$FOCUSED_SHA" \
+            crates/oxc_linter/src/rules.rs \
+            > source-result.json
+          cat source-result.json
+
+      - name: Plan missing observation through generic bridge
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = json.loads(Path("source-result.json").read_text())
+          subject_ref = source["observation"]["subject_ref"]
+          revision = source["subject"]["revision"]
+          path = source["subject"]["path"]
+          request = {
+              "schema_version": 1,
+              "frontier": {
+                  "discriminator_id": "edit_class",
+                  "subject_ref": subject_ref,
+                  "status": "missing",
+                  "current": [],
+                  "unknown": [],
+                  "invalid": [],
+                  "other_subject": [],
+              },
+              "bridges": [source["bridge"]],
+              "context": {
+                  "repository": "oxc-project/oxc",
+                  "revision": revision,
+                  "path": path,
+              },
+              "probes": [source["probe"]],
+              "allow_effectful": False,
+              "policy": "conservative",
+          }
+          Path("plan-request.json").write_text(json.dumps(request), encoding="utf-8")
+          PY
+
+          "$PWD/cultist/target/release/examples/observation_probe_plan" \
+            < plan-request.json \
+            > plan.json
+          cat plan.json
+
+      - name: Feed produced observation back into frontier
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = json.loads(Path("source-result.json").read_text())
+          subject_ref = source["observation"]["subject_ref"]
+          request = {
+              "schema_version": 2,
+              "requirements": [{
+                  "discriminator_id": "edit_class",
+                  "subject_ref": subject_ref,
+              }],
+              "observations": {
+                  "schema_version": 2,
+                  "observations": [source["observation"]],
+              },
+          }
+          Path("frontier-request.json").write_text(json.dumps(request), encoding="utf-8")
+          PY
+
+          "$PWD/cultist/target/release/examples/observation_frontiers" \
+            < frontier-request.json \
+            > frontier.json
+          cat frontier.json
+
+      - name: Assert retained Oxc focused closed loop
+        env:
+          FOCUSED_SHA: ${{ steps.focus.outputs.focused_sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          focused = os.environ["FOCUSED_SHA"]
+          path = "crates/oxc_linter/src/rules.rs"
+          expected_subject = f"oxc-project/oxc@{focused}:{path}"
+
+          source = json.loads(Path("source-result.json").read_text())
+          observation = source["observation"]
+          assert source["current_head"] == focused, source
+          assert observation["discriminator_id"] == "edit_class", observation
+          assert observation["subject_ref"] == expected_subject, observation
+          assert observation["value_state"] == {
+              "state": "known",
+              "value_ref": "syntax_changed",
+          }, observation
+          assert observation["applicability"]["status"] == "applies", observation
+          assert source["bridge"]["observation_subject_ref"] == expected_subject, source
+          assert source["bridge"]["probe_discriminator"]["kind"] == "rust_edit_class", source
+          assert source["probe"]["effect"] == "read_only", source
+          assert source["probe"]["requirements"]["scope"] == {
+              "mode": "exact",
+              "path": path,
+          }, source
+
+          plan = json.loads(Path("plan.json").read_text())
+          assert plan["status"] == "planned", plan
+          assert plan["frontier_status"] == "missing", plan
+          assert plan["evidence_plan"]["status"] == "selected", plan
+          assert plan["evidence_plan"]["selected"]["id"] == source["probe"]["id"], plan
+
+          frontier = json.loads(Path("frontier.json").read_text())
+          receipt = frontier["frontiers"][0]
+          assert receipt["status"] == "current", receipt
+          assert receipt["current"][0]["value_ref"] == "syntax_changed", receipt
+          print(json.dumps({
+              "pinned_head_control": "unknown:anchor-unchanged",
+              "focused_sha": focused,
+              "subject_ref": expected_subject,
+              "planned_probe": plan["evidence_plan"]["selected"]["id"],
+              "value_ref": receipt["current"][0]["value_ref"],
+              "frontier": receipt["status"],
+          }, indent=2, sort_keys=True))
+          PY

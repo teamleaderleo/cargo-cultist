@@ -1,0 +1,171 @@
+name: Stensibly index-guard detail trial inputs
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/stensibly-index-guard-detail-inputs.yml"
+      - "research/behavioral-trials/stensibly-index-guard-detail.json"
+      - "src/behavioral_trial.rs"
+      - "examples/behavioral_trial_materialize.rs"
+
+permissions:
+  contents: read
+
+jobs:
+  materialize-blind-worker-packets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build behavioral packet materializer
+        run: cargo build --release --example behavioral_trial_materialize
+
+      - name: Materialize and verify blind packets
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          plan_path = Path("research/behavioral-trials/stensibly-index-guard-detail.json")
+          plan_raw = plan_path.read_bytes()
+          plan = json.loads(plan_raw)
+          exe = Path("target/release/examples/behavioral_trial_materialize").resolve()
+
+          expected_plan = "cultist-behavioral-trial-plan-sha256-v1:6f3eddecf177271c0ad60f32fb17008841bdb81f34aa717f52be90c3bdd1f69b"
+          expected_packets = {
+              "control": "cultist-behavioral-worker-packet-sha256-v1:9949665d13b162692ebd3f7d12b6f162881f18d2d381c7257100bbb89c317f01",
+              "treatment": "cultist-behavioral-worker-packet-sha256-v1:6d3d93c574e81800ef1829216356d258553cabc7d2bdce2d09c32f46659c738c",
+          }
+          expected_context_bytes = {"control": 1082, "treatment": 1775}
+          worker_keys = {
+              "schema_version",
+              "trial_id",
+              "plan_fingerprint",
+              "worker_packet_fingerprint",
+              "task_instruction",
+              "context",
+              "context_digest",
+              "allowed_first_actions",
+          }
+
+          packets = {}
+          raws = {}
+          for arm in ("control", "treatment"):
+              request = json.dumps({"arm": arm, "plan": plan}, separators=(",", ":"))
+              completed = subprocess.run(
+                  [str(exe)],
+                  input=request,
+                  text=True,
+                  capture_output=True,
+                  check=True,
+              )
+              raw = completed.stdout.encode("utf-8")
+              packet = json.loads(raw)
+              assert set(packet) == worker_keys, (arm, sorted(packet))
+              assert packet["trial_id"] == plan["trial_id"]
+              assert packet["plan_fingerprint"] == expected_plan
+              assert packet["worker_packet_fingerprint"] == expected_packets[arm]
+              assert packet["task_instruction"] == plan["task_instruction"]
+              assert packet["allowed_first_actions"] == plan["allowed_first_actions"]
+              assert packet["context_digest"] == plan[arm]["context_digest"]
+              assert packet["context"] == plan[arm]["context"]
+              assert len(packet["context"].encode("utf-8")) == expected_context_bytes[arm]
+              assert "context_ref" not in packet
+              assert "arm" not in packet
+              packets[arm] = packet
+              raws[arm] = raw
+
+          control = packets["control"]
+          treatment = packets["treatment"]
+          assert treatment["context"].startswith(control["context"])
+          suffix = treatment["context"][len(control["context"]):]
+          assert suffix.startswith("\n\nCultist selected accepted-guard detail:\n")
+          assert "64-character identifier limit" in suffix
+          assert "fails when any exceed 64 characters" in suffix
+          assert "max_identifier_length" not in control["context"]
+          assert "max_identifier_length" not in treatment["context"]
+          assert "corrective_action" not in control["context"]
+          assert "corrective_action" not in treatment["context"]
+
+          organizer_packets = []
+          for arm in ("control", "treatment"):
+              packet = packets[arm]
+              fingerprint = packet["worker_packet_fingerprint"]
+              packet_id = fingerprint.rsplit(":", 1)[-1]
+              filename = f"packet-{packet_id}.json"
+              path = Path("artifacts") / filename
+              path.write_bytes(raws[arm])
+              organizer_packets.append({
+                  "arm": arm,
+                  "file": filename,
+                  "sha256": hashlib.sha256(raws[arm]).hexdigest(),
+                  "bytes": len(raws[arm]),
+                  "context_bytes": len(packet["context"].encode("utf-8")),
+                  "context_digest": packet["context_digest"],
+                  "worker_packet_fingerprint": fingerprint,
+              })
+
+          manifest = {
+              "schema_version": 1,
+              "trial_id": plan["trial_id"],
+              "plan_source": str(plan_path),
+              "plan_source_sha256": hashlib.sha256(plan_raw).hexdigest(),
+              "plan_fingerprint": expected_plan,
+              "organizer_only": True,
+              "worker_packet_schema_unchanged": True,
+              "packets": organizer_packets,
+              "execution_note": "Supply one packet file to each fresh worker session. Do not supply this organizer manifest to the worker.",
+          }
+          Path("artifacts/organizer-manifest.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          PY
+
+      - name: Write input summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest_path = Path("artifacts/organizer-manifest.json")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Stensibly index-guard detail trial inputs\n\n")
+              if not manifest_path.is_file():
+                  out.write("Organizer manifest was not produced.\n")
+              else:
+                  manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                  out.write(f"Trial: `{manifest['trial_id']}`  \n")
+                  out.write(f"Plan: `{manifest['plan_fingerprint']}`  \n")
+                  for packet in manifest["packets"]:
+                      out.write(
+                          f"Packet `{packet['worker_packet_fingerprint']}`: "
+                          f"`{packet['bytes']}` serialized bytes · "
+                          f"`{packet['context_bytes']}` context bytes  \n"
+                      )
+                  out.write("Packet filenames are fingerprint-derived; arm mapping remains organizer-only.\n")
+          PY
+
+      - name: Upload blind trial inputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stensibly-index-guard-detail-inputs-${{ github.run_id }}
+          path: |
+            artifacts/packet-*.json
+            artifacts/organizer-manifest.json
+          if-no-files-found: error

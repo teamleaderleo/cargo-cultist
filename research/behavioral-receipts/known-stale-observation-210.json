@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/cultist",
+  "revision": "1614cc2ae82df50ec3c8b5c4a9e428ad01c1d50f",
+  "task": "observation-frontier-phase-b-bridge",
+  "evidence_kind": "known-stale-observation-counterexample",
+  "evidence_ref": "github:pull/201@1614cc2ae82df50ec3c8b5c4a9e428ad01c1d50f",
+  "delivery": "surfaced",
+  "consulted": true,
+  "outcome": "changed_next_action",
+  "action": "defer Phase B observation-to-probe bridge and implement #210 typed knowledge/applicability split before acquisition integration"
+}

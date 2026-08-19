@@ -3,38 +3,43 @@ name: External repository dogfood
 on:
   workflow_dispatch:
     inputs:
+      case_id:
+        description: Optional pinned case id from research/external-dogfood-cases.json
+        required: false
+        default: ""
+        type: string
       repository:
-        description: Public or token-accessible owner/repository to inspect
+        description: Ad hoc public owner/repository; ignored when case_id is set
         required: true
         default: teamleaderleo/smolrunner
         type: string
       ref:
-        description: Target branch, tag, or exact commit
+        description: Ad hoc target branch, tag, or exact commit; ignored when case_id is set
         required: true
         default: main
         type: string
       fetch_depth:
-        description: Target checkout depth; 0 requests full history
+        description: Ad hoc checkout depth; 0 requests full history
         required: true
         default: "256"
         type: string
       history_file:
-        description: Optional repository-relative file for bounded history
+        description: Ad hoc repository-relative file for bounded history
         required: false
         default: src/disposable_clone_runtime.rs
         type: string
       history_max:
-        description: History commit bound, from 1 through 1000
+        description: Ad hoc history commit bound, from 1 through 1000
         required: true
         default: "100"
         type: string
       base:
-        description: Optional Git revision for a diff probe
+        description: Ad hoc Git revision for a diff probe
         required: false
         default: ""
         type: string
       repeat_scan:
-        description: Repeat the repository scan to measure warm reuse
+        description: Repeat an ad hoc repository scan to measure warm reuse
         required: true
         default: true
         type: boolean
@@ -51,6 +56,48 @@ jobs:
         with:
           path: cultist
 
+      - name: Resolve target
+        id: target
+        env:
+          CASE_ID: ${{ inputs.case_id }}
+          ADHOC_REPOSITORY: ${{ inputs.repository }}
+          ADHOC_REF: ${{ inputs.ref }}
+          ADHOC_FETCH_DEPTH: ${{ inputs.fetch_depth }}
+          ADHOC_HISTORY_FILE: ${{ inputs.history_file }}
+          ADHOC_HISTORY_MAX: ${{ inputs.history_max }}
+          ADHOC_BASE: ${{ inputs.base }}
+          ADHOC_REPEAT_SCAN: ${{ inputs.repeat_scan }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$CASE_ID" ]]; then
+            python cultist/scripts/external_dogfood_case.py \
+              --registry cultist/research/external-dogfood-cases.json \
+              --case "$CASE_ID" \
+              --github-output "$GITHUB_OUTPUT" \
+              > resolved-target.json
+          else
+            args=(
+              python cultist/scripts/external_dogfood_case.py
+              --adhoc
+              --repository "$ADHOC_REPOSITORY"
+              --ref "$ADHOC_REF"
+              --fetch-depth "$ADHOC_FETCH_DEPTH"
+              --history-max "$ADHOC_HISTORY_MAX"
+              --github-output "$GITHUB_OUTPUT"
+            )
+            if [[ -n "$ADHOC_HISTORY_FILE" ]]; then
+              args+=(--history-file "$ADHOC_HISTORY_FILE")
+            fi
+            if [[ -n "$ADHOC_BASE" ]]; then
+              args+=(--base "$ADHOC_BASE")
+            fi
+            if [[ "$ADHOC_REPEAT_SCAN" == "true" ]]; then
+              args+=(--repeat-scan)
+            fi
+            "${args[@]}" > resolved-target.json
+          fi
+          cat resolved-target.json
+
       - name: Install stable Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -62,20 +109,33 @@ jobs:
       - name: Checkout target repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.repository }}
-          ref: ${{ inputs.ref }}
-          fetch-depth: ${{ inputs.fetch_depth }}
+          repository: ${{ steps.target.outputs.repository }}
+          ref: ${{ steps.target.outputs.ref }}
+          fetch-depth: ${{ steps.target.outputs.fetch_depth }}
           persist-credentials: false
           path: target
+
+      - name: Fetch bounded diff-base ancestry
+        if: steps.target.outputs.base != ''
+        env:
+          TARGET_BASE: ${{ steps.target.outputs.base }}
+          TARGET_FETCH_DEPTH: ${{ steps.target.outputs.fetch_depth }}
+        run: |
+          set -euo pipefail
+          if [[ "$TARGET_FETCH_DEPTH" == "0" ]]; then
+            git -C target fetch --no-tags origin "$TARGET_BASE"
+          else
+            git -C target fetch --no-tags --depth="$TARGET_FETCH_DEPTH" origin "$TARGET_BASE"
+          fi
 
       - name: Run bounded dogfood probes
         id: probes
         env:
-          TARGET_FETCH_DEPTH: ${{ inputs.fetch_depth }}
-          TARGET_HISTORY_FILE: ${{ inputs.history_file }}
-          TARGET_HISTORY_MAX: ${{ inputs.history_max }}
-          TARGET_BASE: ${{ inputs.base }}
-          REPEAT_SCAN: ${{ inputs.repeat_scan }}
+          TARGET_FETCH_DEPTH: ${{ steps.target.outputs.fetch_depth }}
+          TARGET_HISTORY_FILE: ${{ steps.target.outputs.history_file }}
+          TARGET_HISTORY_MAX: ${{ steps.target.outputs.history_max }}
+          TARGET_BASE: ${{ steps.target.outputs.base }}
+          REPEAT_SCAN: ${{ steps.target.outputs.repeat_scan }}
         run: |
           set -euo pipefail
           args=(
@@ -101,8 +161,11 @@ jobs:
       - name: Write job summary
         if: always()
         env:
-          TARGET_REPOSITORY: ${{ inputs.repository }}
-          TARGET_REF: ${{ inputs.ref }}
+          CASE_ID: ${{ steps.target.outputs.case_id }}
+          TARGET_REPOSITORY: ${{ steps.target.outputs.repository }}
+          TARGET_REF: ${{ steps.target.outputs.ref }}
+          TARGET_SOURCE: ${{ steps.target.outputs.source }}
+          TARGET_QUESTION: ${{ steps.target.outputs.question }}
         run: |
           python - <<'PY'
           import json
@@ -112,7 +175,10 @@ jobs:
           summary_path = Path("artifacts/summary.json")
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
               out.write("## External Cultist dogfood\n\n")
+              out.write(f"Case: `{os.environ.get('CASE_ID', '')}`\n\n")
               out.write(f"Target: `{os.environ['TARGET_REPOSITORY']}@{os.environ['TARGET_REF']}`\n\n")
+              out.write(f"Source: `{os.environ.get('TARGET_SOURCE', '')}`\n\n")
+              out.write(f"Question: {os.environ.get('TARGET_QUESTION', '')}\n\n")
               if not summary_path.is_file():
                   out.write("Probe summary was unavailable.\n")
                   raise SystemExit(0)

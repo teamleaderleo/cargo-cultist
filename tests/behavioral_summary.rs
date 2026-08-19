@@ -22,18 +22,18 @@ fn retained_summary() -> BehavioralSummary {
 #[test]
 fn retained_corpus_has_expected_descriptive_counts() {
     let summary = retained_summary();
-    assert_eq!(summary.total_episodes, 4);
-    assert_eq!(summary.surfaced, 3);
+    assert_eq!(summary.total_episodes, 6);
+    assert_eq!(summary.surfaced, 5);
     assert_eq!(summary.quiet, 1);
-    assert_eq!(summary.consulted, 3);
+    assert_eq!(summary.consulted, 5);
 
     let changed = summary
         .by_outcome
         .iter()
         .find(|count| count.key == "changed_next_action")
         .unwrap();
-    assert_eq!(changed.count, 3);
-    assert_eq!(changed.episode_ids.len(), 3);
+    assert_eq!(changed.count, 5);
+    assert_eq!(changed.episode_ids.len(), 5);
 
     let quiet = summary
         .by_outcome
@@ -78,8 +78,10 @@ fn evidence_families_remain_separate_instead_of_becoming_one_score() {
         vec![
             "active-work-heads-up",
             "concurrent-main-head-movement",
+            "known-stale-observation-counterexample",
             "project-memory-contract-collision",
             "project-memory-relation-strengthening",
+            "refinement-investigation-demand-gate",
         ]
     );
 }

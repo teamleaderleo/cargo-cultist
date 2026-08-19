@@ -11,7 +11,9 @@ mod render;
 #[path = "../src/report_fingerprint.rs"]
 mod report_fingerprint;
 
-use finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location, REPORT_SCHEMA_VERSION};
+use finding::{
+    AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location, REPORT_SCHEMA_VERSION,
+};
 use render::render_terse_analysis_report;
 use report_fingerprint::{ReportFingerprint, fingerprint_report};
 
@@ -185,7 +187,8 @@ fn stale_report_fingerprint_rejects_a_previously_valid_local_reference() {
     let mut report = sample_report();
     let old_fingerprint = fingerprint_report(&report).unwrap();
 
-    report.findings[0].claims[0].message = "both work items modify the authorization surface".to_string();
+    report.findings[0].claims[0].message =
+        "both work items modify the authorization surface".to_string();
 
     assert!(matches!(
         resolve(&report, &old_fingerprint, "F1.C1"),

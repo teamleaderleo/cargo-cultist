@@ -204,6 +204,11 @@ fn validate_obligation(obligation: &DurableObligation) -> Result<(), DurableObli
     let mut conditions = BTreeSet::new();
     for condition in &obligation.clearing_conditions {
         validate_discriminator(&condition.discriminator)?;
+        if condition.discriminator != obligation.missing_discriminator {
+            return Err(DurableObligationError::new(
+                "every clearing condition must answer the missing discriminator",
+            ));
+        }
         require_coordinates(&condition.requirements, "clearing condition requirements")?;
         let key = (
             condition.discriminator.clone(),
@@ -218,16 +223,6 @@ fn validate_obligation(obligation: &DurableObligation) -> Result<(), DurableObli
                 "duplicate durable obligation clearing condition",
             ));
         }
-    }
-
-    if !obligation
-        .clearing_conditions
-        .iter()
-        .any(|condition| condition.discriminator == obligation.missing_discriminator)
-    {
-        return Err(DurableObligationError::new(
-            "at least one clearing condition must answer the missing discriminator",
-        ));
     }
 
     Ok(())
@@ -415,6 +410,32 @@ mod tests {
             evaluate_obligation(&obligation(), &[wrong], &context(Some("head-a"))).unwrap();
         assert_eq!(evaluation.status, DurableObligationStatus::Open);
         assert_eq!(evaluation.unmatched_receipts, vec!["test-head-a"]);
+    }
+
+    #[test]
+    fn mixed_clearing_conditions_reject_before_wrong_kind_receipt_can_clear() {
+        let mut record = obligation();
+        let wrong_discriminator = DiscriminatorKey {
+            kind: "target_test_listing".to_string(),
+            target: record.missing_discriminator.target.clone(),
+        };
+        record.clearing_conditions.push(ClearingCondition {
+            discriminator: wrong_discriminator.clone(),
+            requirements: requirements("owner/repo", Some("head-a")),
+        });
+        let wrong_receipt = ClearingEvidenceReceipt {
+            id: "listing-head-a".to_string(),
+            discriminator: wrong_discriminator,
+            requirements: requirements("owner/repo", Some("head-a")),
+        };
+
+        let error =
+            evaluate_obligation(&record, &[wrong_receipt], &context(Some("head-a"))).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("every clearing condition must answer the missing discriminator")
+        );
     }
 
     #[test]

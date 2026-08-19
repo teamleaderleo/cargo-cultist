@@ -3,6 +3,7 @@ mod diff;
 mod finding;
 mod generated_diff;
 mod history;
+mod preflight;
 mod render;
 mod report;
 mod rust_facts;
@@ -19,6 +20,7 @@ use finding::AnalysisReport;
 use history::{
     DEFAULT_MAX_COMMITS, HistoryOptions, analyze_historical_companions, print_history_report,
 };
+use preflight::build_preflight_analysis_report;
 use render::render_analysis_report;
 use report::build_test_module_analysis;
 use test_modules::analyze_test_modules;
@@ -35,6 +37,13 @@ enum OutputFormat {
 #[derive(Debug, Default, Eq, PartialEq)]
 struct DiffArgs {
     base: Option<String>,
+    path: Option<PathBuf>,
+    format: OutputFormat,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct PreflightArgs {
+    against: String,
     path: Option<PathBuf>,
     format: OutputFormat,
 }
@@ -65,6 +74,11 @@ fn run() -> Result<(), Box<dyn Error>> {
     if args.first().is_some_and(|arg| arg == "diff") {
         args.remove(0);
         return run_diff(args);
+    }
+
+    if args.first().is_some_and(|arg| arg == "preflight") {
+        args.remove(0);
+        return run_preflight(args);
     }
 
     if args.first().is_some_and(|arg| arg == "history") {
@@ -105,6 +119,37 @@ fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     let requested_root = requested_root.canonicalize()?;
     let root = git_repo_root(&requested_root)?;
     let analysis = build_diff_analysis_report(&root, base.as_deref())?;
+    emit_analysis(&analysis, format)
+}
+
+fn run_preflight(args: Vec<String>) -> Result<(), Box<dyn Error>> {
+    if args.iter().any(|arg| arg == "-h" || arg == "--help") {
+        print_preflight_help();
+        return Ok(());
+    }
+
+    let PreflightArgs {
+        against,
+        path,
+        format,
+    } = parse_preflight_args(args)?;
+
+    let requested = path.unwrap_or(env::current_dir()?);
+    let requested = requested.canonicalize()?;
+    let probe = if requested.is_file() {
+        requested
+            .parent()
+            .ok_or("could not determine the preflight path's parent directory")?
+    } else {
+        requested.as_path()
+    };
+    let root = git_repo_root(probe)?;
+    let relative = requested
+        .strip_prefix(&root)
+        .map_err(|_| "preflight path is outside the resolved Git repository")?;
+    let scope = (!relative.as_os_str().is_empty()).then(|| relative.to_path_buf());
+
+    let analysis = build_preflight_analysis_report(&root, &against, scope.as_deref())?;
     emit_analysis(&analysis, format)
 }
 
@@ -262,6 +307,50 @@ fn parse_diff_args(args: Vec<String>) -> Result<DiffArgs, Box<dyn Error>> {
     Ok(parsed)
 }
 
+fn parse_preflight_args(args: Vec<String>) -> Result<PreflightArgs, Box<dyn Error>> {
+    let mut against = None;
+    let mut path = None;
+    let mut format = OutputFormat::Text;
+    let mut args = args.into_iter();
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--against" => {
+                if against.is_some() {
+                    return Err("`--against` may only be specified once".into());
+                }
+                against = Some(args.next().ok_or("`--against` requires a Git revision")?);
+            }
+            "--format" => {
+                format = parse_output_format(
+                    &args.next().ok_or("`--format` requires `text` or `json`")?,
+                )?;
+            }
+            _ if arg.starts_with('-') => {
+                return Err(format!(
+                    "unknown preflight option `{arg}`; try `cargo cultist preflight --help`"
+                )
+                .into());
+            }
+            _ => {
+                if path.is_some() {
+                    return Err(
+                        "expected at most one path argument; try `cargo cultist preflight --help`"
+                            .into(),
+                    );
+                }
+                path = Some(PathBuf::from(arg));
+            }
+        }
+    }
+
+    Ok(PreflightArgs {
+        against: against.ok_or("preflight requires `--against REV`")?,
+        path,
+        format,
+    })
+}
+
 fn parse_history_args(args: Vec<String>) -> Result<HistoryArgs, Box<dyn Error>> {
     let mut path = None;
     let mut max_commits = DEFAULT_MAX_COMMITS;
@@ -325,8 +414,8 @@ fn print_help() {
     println!(
         "cargo-cultist {VERSION}\n\
 Repository-aware analysis for Rust codebases.\n\n\
-USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n    cargo cultist ci-tests [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist history [--max-commits N] [--format text|json] FILE\n    cargo-cultist ci-tests [--format text|json] [PATH]\n\n\
-COMMANDS:\n    diff       Inspect changed Rust code against repository precedent.\n    history    Explore which paths historically change with one file.\n    ci-tests   Compare supported CI test filters with explicit test-name evidence.\n\n\
+USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist preflight --against REV [--format text|json] [PATH]\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n    cargo cultist ci-tests [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist preflight --against REV [--format text|json] [PATH]\n    cargo-cultist history [--max-commits N] [--format text|json] FILE\n    cargo-cultist ci-tests [--format text|json] [PATH]\n\n\
+COMMANDS:\n    diff       Inspect changed Rust code against repository precedent.\n    preflight  Compare concurrent change sets for collision evidence.\n    history    Explore which paths historically change with one file.\n    ci-tests   Compare supported CI test filters with explicit test-name evidence.\n\n\
 Without a command, cargo-cultist inspects repository-wide test-module naming\n\
 conventions without inventing a universal rule."
     );
@@ -340,6 +429,18 @@ By default, compares the working tree (including staged changes) against HEAD.\n
 With --base REV, compares changes from the merge base of REV and HEAD.\n\n\
 The first diff-aware check looks for added or renamed #[cfg(test)] modules and\n\
 compares their names with repository-wide and same-file precedent."
+    );
+}
+
+fn print_preflight_help() {
+    println!(
+        "cargo-cultist preflight\n\n\
+USAGE:\n    cargo cultist preflight --against REV [--format text|json] [PATH]\n\n\
+Compares current work with REV from their merge base and reports direct path\n\
+overlap as PROVEN collision evidence. Current work includes committed branch\n\
+changes plus staged and unstaged tracked changes.\n\n\
+Different paths remain semantically UNKNOWN in this first slice; future\n\
+enrichments can add generated, historical, policy, and behavioral evidence."
     );
 }
 
@@ -386,6 +487,27 @@ mod tests {
         assert_eq!(parsed.base.as_deref(), Some("origin/main"));
         assert_eq!(parsed.path, Some(PathBuf::from(".")));
         assert_eq!(parsed.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn parses_preflight_against_path_and_format() {
+        let parsed = parse_preflight_args(vec![
+            "--against".to_string(),
+            "other-agent".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+            "src".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(parsed.against, "other-agent");
+        assert_eq!(parsed.path, Some(PathBuf::from("src")));
+        assert_eq!(parsed.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn rejects_preflight_without_against() {
+        assert!(parse_preflight_args(vec![]).is_err());
     }
 
     #[test]

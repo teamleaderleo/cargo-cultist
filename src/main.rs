@@ -360,8 +360,8 @@ fn print_ci_tests_help() {
         "cargo-cultist ci-tests\n\n\
 USAGE:\n    cargo cultist ci-tests [--format text|json] [PATH]\n\n\
 Research instrumentation for CI test-filter drift. The first slice recognizes\n\
-literal single-line `cargo test --lib FILTER` commands in GitHub Actions and\n\
-compares FILTER with explicit #[test] function names plus module/path hints.\n\n\
+literal single-line `cargo [ +TOOLCHAIN ] test --lib FILTER` commands in GitHub Actions and\n\
+compares FILTER with explicit #[test] function names plus declared Rust module names.\n\n\
 A zero syntax match remains a question. Macro-generated or build-time tests\n\
 are represented as UNKNOWN until authoritative test-listing evidence exists."
     );

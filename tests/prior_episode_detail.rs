@@ -86,7 +86,10 @@ fn selected_guard_detail_recovers_only_the_accepted_operational_evidence() {
         }
     );
     assert!(guard_source_evidence.contains("fails when any exceed 64 characters"));
-    assert_eq!(enforcement_path, "test/convex-index-identifier-limit.test.ts");
+    assert_eq!(
+        enforcement_path,
+        "test/convex-index-identifier-limit.test.ts"
+    );
     assert_eq!(scope_ref, "convex/**/*.ts");
     assert_eq!(
         same_class_repairs,
@@ -134,7 +137,11 @@ fn incomplete_selected_guard_is_rejected_before_detail_projection() {
     });
 
     let error = project_prior_episode_detail(&input).unwrap_err();
-    assert!(error.to_string().contains("selected prior episode is not actionable"));
+    assert!(
+        error
+            .to_string()
+            .contains("selected prior episode is not actionable")
+    );
     assert!(error.to_string().contains("GuardCoverageIncomplete"));
 }
 

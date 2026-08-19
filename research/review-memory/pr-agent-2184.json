@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "current": {
+    "concern_key": "fixture:pr-agent:duplicate-suggestion:src/example.py",
+    "context": {
+      "repository": "The-PR-Agent/pr-agent",
+      "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "work": "fixture:pr-reported-by-2184",
+      "path": "src/example.py"
+    }
+  },
+  "records": [
+    {
+      "event_id": "github:issue/2184:reported-review-event",
+      "concern_key": "fixture:pr-agent:duplicate-suggestion:src/example.py",
+      "source_ref": "github:issue/2184",
+      "subject": {
+        "repository": "The-PR-Agent/pr-agent",
+        "work": "fixture:pr-reported-by-2184",
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "scope": {
+          "mode": "exact",
+          "path": "src/example.py"
+        }
+      },
+      "outcome": "dismissed",
+      "resolution_ref": "fixture:resolved-or-thumbs-downed-thread"
+    }
+  ]
+}

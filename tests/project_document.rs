@@ -35,19 +35,13 @@ fn validates_exact_revision_path_blob_and_source() {
     let summary = packet.summary().unwrap();
 
     assert_eq!(summary.repository, "teamleaderleo/linux-fieldwork");
-    assert_eq!(
-        summary.revision,
-        "b835ed842299f7654afc00f4988f7586e0be63bc"
-    );
+    assert_eq!(summary.revision, "b835ed842299f7654afc00f4988f7586e0be63bc");
     assert_eq!(summary.document_count, 1);
     assert_eq!(
         summary.documents[0].path,
         "investigations/cloud-hypervisor-qcow-r609-review/README.md"
     );
-    assert_eq!(
-        summary.documents[0].source.number,
-        609
-    );
+    assert_eq!(summary.documents[0].source.number, 609);
     assert!(summary.documents[0].text_complete);
 }
 

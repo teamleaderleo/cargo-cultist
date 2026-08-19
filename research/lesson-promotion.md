@@ -91,7 +91,7 @@ proposed_guard
 observed_promotion
 ```
 
-The retained real episode should evaluate to:
+The retained real episode evaluates to:
 
 ```text
 status                    observed_promotion
@@ -127,6 +127,42 @@ cargo run --example lesson_promotion -- \
 ```
 
 The reader consumes the existing project-memory packet plus the small typed promotion claim and prints the evaluation as JSON.
+
+## Executed current-main receipt
+
+The semantic code + retained claim head was:
+
+```text
+branch head: 133e4a9e0cb99bd5076880e2ea62aec44dff13e7
+main:        9ba02d8664ca6cb47573e7cde270cfec15fed50c
+merge view:  c1ae70c4e58fa42c32da0f7ae9d8761ddd8336d7
+```
+
+Current-base GitHub Actions receipt:
+
+```text
+CI run:                    32257963686  success
+Generated provenance run:  32257963257  success
+```
+
+The CI merge view passed:
+
+```text
+rustfmt
+all-target Clippy with -D warnings
+project-memory lineage controls
+GitHub review-memory adapter controls
+GitHub issue-closure adapter controls
+external GitHub reference controls
+full Rust tests
+repository scan text + JSON dogfood
+bounded history text + JSON dogfood
+CI test-filter text + JSON dogfood
+positive/control CI-filter fixtures
+pull-request diff text + JSON dogfood
+```
+
+The retained promotion tests passed all adversarial states above. The only changes after this semantic receipt are the durable receipt prose in this research note.
 
 ## Boundary
 

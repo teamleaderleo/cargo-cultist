@@ -167,7 +167,7 @@ fn terse_can_omit_support_while_fingerprint_bound_expansion_recovers_it() {
 }
 
 #[test]
-fn report_level_claim_and_question_are_expandable_from_the_same_snapshot() {
+fn report_level_claim_finding_and_question_are_expandable_from_the_same_snapshot() {
     let report = sample_report();
     let fingerprint = fingerprint_report(&report).unwrap();
 
@@ -175,6 +175,12 @@ fn report_level_claim_and_question_are_expandable_from_the_same_snapshot() {
         panic!("expected top-level claim");
     };
     assert_eq!(claim.kind, ClaimKind::Unknown);
+
+    let Expansion::Finding(finding) = resolve(&report, &fingerprint, "F1").unwrap() else {
+        panic!("expected finding");
+    };
+    assert_eq!(finding.kind, "preflight-overlap");
+    assert_eq!(finding.title, "Concurrent path overlap");
 
     let Expansion::Question(question) = resolve(&report, &fingerprint, "F1.Q").unwrap() else {
         panic!("expected question");

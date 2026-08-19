@@ -254,10 +254,7 @@ fn add_diff_findings(
     }
 }
 
-fn git_diff_changed_lines(
-    root: &Path,
-    base: Option<&str>,
-) -> Result<ChangedLines, Box<dyn Error>> {
+fn git_diff_changed_lines(root: &Path, base: Option<&str>) -> Result<ChangedLines, Box<dyn Error>> {
     let anchor = match base {
         Some(base) => merge_base(root, base)?,
         None => "HEAD".to_string(),

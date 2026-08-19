@@ -34,7 +34,7 @@ pub enum PriorEpisodeInput {
     },
     IssueClosure {
         id: String,
-        episode: IssueClosureEpisode,
+        episode: Box<IssueClosureEpisode>,
     },
 }
 

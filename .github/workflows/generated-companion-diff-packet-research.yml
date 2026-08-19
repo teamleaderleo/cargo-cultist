@@ -1,0 +1,203 @@
+name: Generated companion diff packet research
+
+on:
+  push:
+    branches:
+      - experiment/generated-companion-diff-packet
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oxc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Checkout pinned Oxc with history
+        uses: actions/checkout@v4
+        with:
+          repository: oxc-project/oxc
+          ref: 8783524015b1e6ff1c39ccf426df0bb07cbbc588
+          path: corpus/oxc
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create controlled missing-generation diff
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('corpus/oxc/crates/oxc_linter/src/rules.rs')
+          source = path.read_text()
+          needle = '    pub mod no_debugger;\n'
+          assert source.count(needle) == 1
+          path.write_text(source.replace(needle, '', 1))
+          PY
+
+          git -C corpus/oxc diff --check
+          test "$(git -C corpus/oxc diff --name-only)" = "crates/oxc_linter/src/rules.rs"
+          grep -F 'Then run `cargo lintgen` to regenerate the RuleEnum and RuleRunnerImpls.' \
+            corpus/oxc/crates/oxc_linter/src/rules.rs
+
+      - name: Recover syntax-aware directional cohort
+        run: |
+          mkdir -p research-output
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example rust_syntax_cohort -- \
+            corpus/oxc crates/oxc_linter/src/rules.rs 100 \
+            | tee research-output/syntax-cohort.txt
+          grep -E 'generated/rule_runner_impls\.rs.*syntax +99/99 +100\.0%' research-output/syntax-cohort.txt
+          grep -E 'generated/rules_enum\.rs.*syntax +99/99 +100\.0%' research-output/syntax-cohort.txt
+
+      - name: Recover current generated markers and raw history
+        run: |
+          cargo run --quiet --manifest-path cultist/Cargo.toml -- history --max-commits 100 --format json \
+            corpus/oxc/crates/oxc_linter/src/rules.rs \
+            > research-output/history.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('research-output/history.json').read_text())
+          companions = {item['path']: item for item in report['companions']}
+          for path in (
+              'crates/oxc_linter/src/generated/rule_runner_impls.rs',
+              'crates/oxc_linter/src/generated/rules_enum.rs',
+          ):
+              item = companions[path]
+              assert item['support'] == 99, item
+              assert item['opportunities'] == 100, item
+              marker = item.get('generated_marker')
+              assert marker, item
+              assert marker['line'] == 1, marker
+              assert 'do not edit' in marker['marker'].lower(), marker
+          PY
+
+      - name: Recover explicit generator ownership
+        run: |
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example rust_generator_ownership -- \
+            corpus/oxc tasks/linter_codegen/src/main.rs \
+            | tee research-output/ownership.txt
+          grep -F 'cargo lintgen -> run -p oxc_linter_codegen' research-output/ownership.txt
+          grep -F 'reads  crates/oxc_linter/src/rules.rs' research-output/ownership.txt
+          grep -F 'writes crates/oxc_linter/src/generated/rules_enum.rs  [.gitattributes: linguist-generated=true]' research-output/ownership.txt
+          grep -F 'writes crates/oxc_linter/src/generated/rule_runner_impls.rs  [.gitattributes: linguist-generated=true]' research-output/ownership.txt
+
+      - name: Assemble evidence packet
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          anchor = 'crates/oxc_linter/src/rules.rs'
+          outputs = [
+              'crates/oxc_linter/src/generated/rule_runner_impls.rs',
+              'crates/oxc_linter/src/generated/rules_enum.rs',
+          ]
+
+          changed = set(
+              line.strip()
+              for line in __import__('subprocess').check_output(
+                  ['git', '-C', 'corpus/oxc', 'diff', '--name-only'], text=True
+              ).splitlines()
+              if line.strip()
+          )
+          assert changed == {anchor}, changed
+
+          history = json.loads(Path('research-output/history.json').read_text())
+          companions = {item['path']: item for item in history['companions']}
+
+          syntax_text = Path('research-output/syntax-cohort.txt').read_text()
+          syntax = {}
+          for line in syntax_text.splitlines():
+              for output in outputs:
+                  if output in line:
+                      match = re.search(r'syntax\s+(\d+)/(\d+)\s+([\d.]+)%', line)
+                      if match:
+                          syntax[output] = {
+                              'support': int(match.group(1)),
+                              'opportunities': int(match.group(2)),
+                              'percent': float(match.group(3)),
+                          }
+          assert set(syntax) == set(outputs), syntax
+
+          packet = {
+              'anchor': anchor,
+              'changed_paths': sorted(changed),
+              'generator_command': 'cargo lintgen',
+              'companions': [],
+              'question': 'Was cargo lintgen intentionally deferred, or are generated registry companions stale?',
+          }
+
+          for output in outputs:
+              item = companions[output]
+              packet['companions'].append({
+                  'path': output,
+                  'present_in_diff': output in changed,
+                  'syntax_cohort': syntax[output],
+                  'raw_history': {
+                      'support': item['support'],
+                      'opportunities': item['opportunities'],
+                      'percent': item['support_percent'],
+                  },
+                  'generated_marker': item['generated_marker'],
+                  'generator_reads_anchor_and_writes_output': True,
+                  'gitattributes_generated': True,
+              })
+
+          Path('research-output/packet.json').write_text(json.dumps(packet, indent=2) + '\n')
+
+          lines = [
+              '# Generated companion evidence packet',
+              '',
+              'CHANGE',
+              f'  Rust syntax changed in `{anchor}`.',
+              '  Neither owned generated registry appears in the current diff.',
+              '',
+              'EXPLICIT / DERIVED',
+              '  `rules.rs` tells contributors to run `cargo lintgen` after registration changes.',
+              '  Cargo alias `lintgen` invokes package `oxc_linter_codegen`.',
+          ]
+          for companion in packet['companions']:
+              lines += [
+                  f"  Generator code reads `{anchor}` and writes `{companion['path']}`.",
+                  f"  `{companion['path']}` self-identifies as generated and `.gitattributes` marks it generated.",
+              ]
+          lines += ['', 'OBSERVED']
+          for companion in packet['companions']:
+              cohort = companion['syntax_cohort']
+              lines.append(
+                  f"  `{companion['path']}` changed in {cohort['support']}/{cohort['opportunities']} comparable Rust-syntax changes ({cohort['percent']:.1f}%)."
+              )
+          lines += [
+              '',
+              'QUESTION',
+              f"  {packet['question']}",
+              '',
+              'BOUNDARY',
+              '  The packet establishes current diff absence, explicit generator data movement, generated-file declarations, and directional historical precedent.',
+              '  It does not claim every possible edit to the anchor changes generated bytes.',
+          ]
+          Path('research-output/packet.md').write_text('\n'.join(lines) + '\n')
+          print(Path('research-output/packet.md').read_text())
+          PY
+
+      - name: Upload research packet
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-companion-diff-packet
+          path: research-output/
+          if-no-files-found: error

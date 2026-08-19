@@ -49,8 +49,28 @@ jobs:
         run: |
           python -m py_compile \
             scripts/github_reference_url.py \
-            scripts/github_reference_url_test.py
+            scripts/github_reference_url_test.py \
+            scripts/external_github_reference_guard.py \
+            scripts/external_github_reference_guard_test.py
           python scripts/github_reference_url_test.py
+          python scripts/external_github_reference_guard_test.py
+      - name: External GitHub reference guard for pull request
+        if: github.event_name == 'pull_request'
+        env:
+          CULTIST_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python scripts/external_github_reference_guard.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --base "$CULTIST_BASE" \
+            --event "$GITHUB_EVENT_PATH"
+      - name: External GitHub reference guard for push
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          CULTIST_BASE: ${{ github.event.before }}
+        run: |
+          python scripts/external_github_reference_guard.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --base "$CULTIST_BASE"
       - name: Active work heads-up
         if: github.event_name == 'pull_request'
         continue-on-error: true

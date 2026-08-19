@@ -33,6 +33,8 @@ DurableObligation
 
 A clearing condition names an exact typed discriminator plus exact applicability requirements. A supplied receipt must match both before it can participate in clearing.
 
+Because v0 carries one singular `missing_discriminator`, every clearing condition must name that same discriminator. Heterogeneous alternative evidence species require a future explicit predicate/OR carrier; a plain condition list cannot grant unrelated evidence clearing authority.
+
 `established_evidence` is intentionally a bounded list of evidence IDs in this experiment. It preserves completed investigation for handoff without granting those strings authority or semantic lineage.
 
 ## Evaluation
@@ -77,7 +79,8 @@ The stacked carrier tests:
 - missing current coordinate remains `unknown`;
 - semantically adjacent receipt does not clear;
 - record round-trips with completed evidence references for fresh-worker handoff;
-- a clearing condition must actually answer the declared missing discriminator.
+- every clearing condition must answer the declared singular missing discriminator;
+- a mixed valid + wrong-kind condition set rejects before the wrong-kind receipt can clear.
 
 ## Executed GitHub receipt
 

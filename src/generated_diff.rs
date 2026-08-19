@@ -12,6 +12,7 @@ use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 mod generator_ownership;
 
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
+use crate::performance;
 use generator_ownership::{
     GeneratorRelation, discover_generator_relations, generated_attribute_paths,
 };
@@ -233,7 +234,7 @@ fn build_finding(
 fn diff_anchor(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>> {
     match base {
         Some(base) => {
-            let output = Command::new("git")
+            let output = performance::git_command()
                 .arg("-C")
                 .arg(root)
                 .args(["merge-base", base, "HEAD"])
@@ -252,7 +253,7 @@ fn diff_anchor(root: &Path, base: Option<&str>) -> Result<String, Box<dyn Error>
 }
 
 fn changed_paths(root: &Path, anchor: &str) -> Result<BTreeSet<PathBuf>, Box<dyn Error>> {
-    let output = Command::new("git")
+    let output = performance::git_command()
         .arg("-C")
         .arg(root)
         .args([
@@ -384,7 +385,7 @@ fn read_source_history(
     input: &Path,
     max_commits: usize,
 ) -> Result<Vec<SourceHistoryRecord>, Box<dyn Error>> {
-    let output = Command::new("git")
+    let output = performance::git_command()
         .arg("-C")
         .arg(root)
         .args([
@@ -486,7 +487,7 @@ fn read_git_blobs(
         return Ok(BTreeMap::new());
     }
 
-    let mut child = Command::new("git")
+    let mut child = performance::git_command()
         .arg("-C")
         .arg(root)
         .args(["cat-file", "--batch"])
@@ -568,7 +569,7 @@ fn revision_spec(revision: &str, path: &Path) -> String {
 
 fn source_at_revision(root: &Path, revision: &str, path: &Path) -> Option<String> {
     let spec = revision_spec(revision, path);
-    let output = Command::new("git")
+    let output = performance::git_command()
         .arg("-C")
         .arg(root)
         .args(["show", &spec])

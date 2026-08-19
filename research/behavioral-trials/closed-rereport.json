@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "trial_id": "prior-episode-front:closed-rereport",
+  "task_instruction": "Choose exactly one first justified action before deciding whether the closed historical failure is exhausted.",
+  "allowed_first_actions": [
+    {
+      "id": "treat_closed_as_exhausted",
+      "label": "Treat the closed prior issue as exhausted"
+    },
+    {
+      "id": "inspect_prior_issue",
+      "label": "Inspect the prior issue only"
+    },
+    {
+      "id": "inspect_later_rereport",
+      "label": "Inspect the later re-report only"
+    },
+    {
+      "id": "inspect_prior_failure_and_rereport",
+      "label": "Inspect the prior failure and the later re-report together"
+    },
+    {
+      "id": "acquire_more_evidence",
+      "label": "Acquire more evidence before deciding"
+    }
+  ],
+  "control": {
+    "context_ref": "research/prior-episode-front/claude-code-57507.json#raw",
+    "context": "Source identities: anthropics/claude-code#31294 and anthropics/claude-code#57507\nPrior issue #31294 state: closed\nPrior state_reason: not_planned\nPrior closed_by: github-actions[bot]\nClosure receipt: Closing for now — inactive for too long. Please open a new issue if this is still relevant.\nLater issue #57507 explicitly says: Re-reporting the bug from #31294; the earlier issue was closed for inactivity, not because it was fixed.\nLater issue #57507 state: closed\nTask: decide the first justified action before treating the historical failure as exhausted.",
+    "context_digest": "cultist-behavioral-context-sha256-v1:68b6eac7092d3df4d00bff5b59031ac7c719d49203b691836bb65a3b45fac015"
+  },
+  "treatment": {
+    "context_ref": "research/prior-episode-front/claude-code-57507.json#front",
+    "context": "Source identities: anthropics/claude-code#31294 and anthropics/claude-code#57507\nPrior issue #31294 state: closed\nPrior state_reason: not_planned\nPrior closed_by: github-actions[bot]\nClosure receipt: Closing for now — inactive for too long. Please open a new issue if this is still relevant.\nLater issue #57507 explicitly says: Re-reporting the bug from #31294; the earlier issue was closed for inactivity, not because it was fixed.\nLater issue #57507 state: closed\nTask: decide the first justified action before treating the historical failure as exhausted.\n\nCultist prior-episode front:\nclosure kind: administrative_inactive\nre-report observed: true\nclearance: UNKNOWN\nnext: inspect_prior_failure_and_rereport",
+    "context_digest": "cultist-behavioral-context-sha256-v1:eeffd05e46d5275e32f63ff6cf49ff0307882b4d603bc2a83328d86374153127"
+  }
+}

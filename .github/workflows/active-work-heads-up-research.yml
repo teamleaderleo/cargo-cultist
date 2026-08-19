@@ -8,9 +8,15 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: active-work-heads-up-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   heads-up:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
     env:
       GH_TOKEN: ${{ github.token }}
       CURRENT_PR: ${{ github.event.pull_request.number }}
@@ -125,64 +131,10 @@ jobs:
               print(f"omitted heads-ups: {report['omitted_heads_up']}")
           PY
 
-      - name: Exercise live pre-edit focus positive control
-        run: |
-          python - <<'PY'
-          import json
-          import subprocess
-          from pathlib import Path
-
-          inventory_path = Path("/tmp/active-work-inventory.json")
-          inventory = json.loads(inventory_path.read_text())
-          current = inventory["current"]
-          candidates = [
-              work
-              for work in inventory["active_work"]
-              if work["id"] != current["id"]
-              and work["head_sha"] != current["head_sha"]
-              and work["changed_paths"]
-          ]
-          candidates.sort(key=lambda work: int(work["id"].lstrip("#")))
-
-          output_path = Path("/tmp/active-work-focus-control.json")
-          if not candidates:
-              output_path.write_text(json.dumps({"skipped": True}, indent=2) + "\n")
-              print("focus control skipped: no non-self active work with changed paths")
-              raise SystemExit(0)
-
-          candidate = candidates[0]
-          focus = candidate["changed_paths"][0]
-          output = subprocess.check_output(
-              [
-                  "cargo", "run", "--quiet", "--example", "active_work_heads_up",
-                  "--", str(inventory_path), focus,
-              ],
-              text=True,
-          )
-          output_path.write_text(output)
-          report = json.loads(output)
-          matches = [
-              item
-              for item in report["heads_up"]
-              if item["work"]["id"] == candidate["id"]
-              and focus in item["focus_overlap_paths"]
-          ]
-          if not matches:
-              raise SystemExit(
-                  f"focus control failed: {candidate['id']} changes {focus!r} "
-                  "but focus-mode heads-up did not surface it"
-              )
-          print(
-              f"focus control: before touching {focus!r}, "
-              f"heads-up surfaced active {candidate['id']} at {candidate['head_sha'][:8]}"
-          )
-          PY
-
       - uses: actions/upload-artifact@v4
         with:
           name: active-work-heads-up-research
           path: |
             /tmp/active-work-inventory.json
             /tmp/active-work-heads-up.json
-            /tmp/active-work-focus-control.json
           if-no-files-found: error

@@ -1,7 +1,7 @@
-#[path = "../src/project_memory.rs"]
-mod project_memory;
 #[path = "../src/lesson_promotion.rs"]
 mod lesson_promotion;
+#[path = "../src/project_memory.rs"]
+mod project_memory;
 
 use lesson_promotion::{
     MAX_LESSON_PROMOTION_BYTES, PromotionStatus, evaluate_lesson_promotion,

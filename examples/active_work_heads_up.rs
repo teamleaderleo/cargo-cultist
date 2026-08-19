@@ -310,8 +310,7 @@ mod tests {
 
     #[test]
     fn rejects_paths_that_escape_repository() {
-        let error =
-            analyze(inventory(work("#1", "aaa", &["../outside"]), Vec::new())).unwrap_err();
+        let error = analyze(inventory(work("#1", "aaa", &["../outside"]), Vec::new())).unwrap_err();
 
         assert!(error.contains("may not escape"));
     }

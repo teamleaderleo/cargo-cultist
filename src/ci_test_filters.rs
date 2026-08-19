@@ -253,7 +253,10 @@ fn parse_filtered_lib_test_command(command: &str) -> Option<String> {
     }
 
     let mut index = 1;
-    if tokens.get(index).is_some_and(|token| token.starts_with('+')) {
+    if tokens
+        .get(index)
+        .is_some_and(|token| token.starts_with('+'))
+    {
         if !is_simple_toolchain_selector(tokens[index]) {
             return None;
         }

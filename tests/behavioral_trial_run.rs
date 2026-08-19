@@ -140,28 +140,66 @@ fn real_guard_detail_plan_admits_fresh_ba_pair_and_preserves_exact_run_metadata(
 }
 
 #[test]
-fn receipt_builder_rejects_nonfresh_or_preexposed_run_metadata() {
+fn receipt_builder_preserves_freshness_facts_while_strict_pair_admission_rejects_confounds() {
     let plan = plan();
-    let packet = materialize_worker_packet(&plan, BehavioralTrialArmKind::Control).unwrap();
-    let raw_packet = canonical_worker_packet_bytes(&packet);
-    let raw_output = raw_observation(
+
+    let mut nonfresh_metadata = metadata(1, "session:nonfresh", "provider:session/nonfresh");
+    nonfresh_metadata.fresh_session = false;
+    let nonfresh = run_receipt(
         &plan,
         BehavioralTrialArmKind::Control,
-        "worker-run:control",
+        nonfresh_metadata,
+        "worker-run:nonfresh",
         "inspect_accepted_guard_detail",
     );
+    assert!(!nonfresh.metadata.fresh_session);
+    let treatment = run_receipt(
+        &plan,
+        BehavioralTrialArmKind::Treatment,
+        metadata(2, "session:treatment-a", "provider:session/treatment-a"),
+        "worker-run:treatment-a",
+        "block_patch",
+    );
+    let error = evaluate_behavioral_trial_run_pair(&BehavioralTrialRunPair {
+        schema_version: BEHAVIORAL_TRIAL_RUN_SCHEMA_VERSION,
+        plan: Box::new(plan.clone()),
+        runs: vec![nonfresh, treatment],
+    })
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("admitted pair requires fresh_session=true")
+    );
 
-    let mut nonfresh = metadata(1, "session:one", "provider:session/one");
-    nonfresh.fresh_session = false;
-    let error =
-        build_behavioral_trial_run_receipt(&plan, nonfresh, &raw_packet, &raw_output).unwrap_err();
-    assert!(error.to_string().contains("fresh_session=true"));
-
-    let mut exposed = metadata(1, "session:two", "provider:session/two");
-    exposed.prior_condition_exposure = true;
-    let error =
-        build_behavioral_trial_run_receipt(&plan, exposed, &raw_packet, &raw_output).unwrap_err();
-    assert!(error.to_string().contains("prior_condition_exposure=false"));
+    let mut exposed_metadata = metadata(1, "session:exposed", "provider:session/exposed");
+    exposed_metadata.prior_condition_exposure = true;
+    let exposed = run_receipt(
+        &plan,
+        BehavioralTrialArmKind::Control,
+        exposed_metadata,
+        "worker-run:exposed",
+        "inspect_accepted_guard_detail",
+    );
+    assert!(exposed.metadata.prior_condition_exposure);
+    let treatment = run_receipt(
+        &plan,
+        BehavioralTrialArmKind::Treatment,
+        metadata(2, "session:treatment-b", "provider:session/treatment-b"),
+        "worker-run:treatment-b",
+        "block_patch",
+    );
+    let error = evaluate_behavioral_trial_run_pair(&BehavioralTrialRunPair {
+        schema_version: BEHAVIORAL_TRIAL_RUN_SCHEMA_VERSION,
+        plan: Box::new(plan),
+        runs: vec![exposed, treatment],
+    })
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("admitted pair requires prior_condition_exposure=false")
+    );
 }
 
 #[test]

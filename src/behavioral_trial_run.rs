@@ -219,6 +219,8 @@ pub fn evaluate_behavioral_trial_run_pair(
     let plan = pair.plan.as_ref();
     let first_arm = validate_receipt(plan, &pair.runs[0])?;
     let second_arm = validate_receipt(plan, &pair.runs[1])?;
+    require_fresh_uncontaminated_run(&pair.runs[0].metadata)?;
+    require_fresh_uncontaminated_run(&pair.runs[1].metadata)?;
     if first_arm == second_arm {
         return Err(BehavioralTrialRunError::new(
             "behavioral-trial run pair contains two receipts for the same arm",
@@ -435,14 +437,20 @@ fn validate_metadata(metadata: &BehavioralTrialRunMetadata) -> Result<(), Behavi
         "freshness_receipt",
         MAX_RECEIPT_REF_BYTES,
     )?;
+    Ok(())
+}
+
+fn require_fresh_uncontaminated_run(
+    metadata: &BehavioralTrialRunMetadata,
+) -> Result<(), BehavioralTrialRunError> {
     if !metadata.fresh_session {
         return Err(BehavioralTrialRunError::new(
-            "behavioral-trial run requires fresh_session=true",
+            "behavioral-trial admitted pair requires fresh_session=true",
         ));
     }
     if metadata.prior_condition_exposure {
         return Err(BehavioralTrialRunError::new(
-            "behavioral-trial run requires prior_condition_exposure=false",
+            "behavioral-trial admitted pair requires prior_condition_exposure=false",
         ));
     }
     Ok(())

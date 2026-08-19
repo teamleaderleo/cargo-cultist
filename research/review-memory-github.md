@@ -184,6 +184,61 @@ outcome        patch_changed (historical evidence)
 
 This is the first real provider replay of #198's central distinction: one review concern can retain thread lineage after the patch moves while its old outcome loses exact-head applicability.
 
+### Executed receipt
+
+PR #206 executed the live carrier successfully.
+
+```text
+workflow run
+  32250963882
+
+artifact
+  9364380361
+
+artifact digest
+  sha256:f4d85deb54ed7c7a5a5b74930800b63974eb423b2bc90524cf76a8203bf9397b
+
+review comments scanned
+  33
+
+root review comment
+  numeric id 3355870564
+  node_id PRRC_kwDOJ4EDks7IBoVk
+  reviewed commit 8fb9e4e86b4794d39afba2d62413571cbc04a744
+  original commit 8fb9e4e86b4794d39afba2d62413571cbc04a744
+  path pr_agent/git_providers/github_provider.py
+  original range 418..436
+
+resolution reply
+  numeric id 3355925719
+  node_id PRRC_kwDOJ4EDks7IB1zX
+  in_reply_to_id 3355870564
+  commit 8fb9e4e86b4794d39afba2d62413571cbc04a744
+
+current PR head
+  f6070fb1a45516565bbb8deeb02a1f66cec13d91
+```
+
+The Rust evaluation retained four independent applicability dimensions:
+
+```text
+repository  matched
+revision    mismatched
+work        matched
+scope       matched
+```
+
+and returned:
+
+```text
+disposition    refresh_existing_thread
+match_kind     prior_head
+applicability  invalid
+outcome        patch_changed
+```
+
+This receipt is useful because the invalidation is narrow: the old outcome is stale specifically because the reviewed head moved. The PR identity and path still match.
+
 ## Standard controls
 
 `scripts/review_memory_github_test.py` covers:

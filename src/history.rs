@@ -7,6 +7,8 @@ use std::process::Command;
 
 use serde::Serialize;
 
+use crate::performance;
+
 pub const HISTORY_REPORT_SCHEMA_VERSION: u32 = 1;
 pub const DEFAULT_MAX_COMMITS: usize = 100;
 const DEFAULT_MAX_PATHS_PER_COMMIT: usize = 100;
@@ -281,7 +283,7 @@ fn read_anchor_history(
     // `--full-diff` keeps the pathspec as the commit selector while making
     // `--name-only` report each selected commit's complete change set. This
     // lets one Git process replace the previous log + one-show-per-commit loop.
-    let output = Command::new("git")
+    let output = performance::git_command()
         .arg("-C")
         .arg(root)
         .args([

@@ -39,16 +39,6 @@
           "relation": "re_report_of",
           "source_ref": "github:issue/57507",
           "evidence": "**Re-reporting** the bug from #31294 (closed-as-inactive 2026-04-11 by github-actions bot, not because it was fixed)."
-        },
-        "duplicate_challenge": {
-          "suggestion_comment_id": 4008755017,
-          "suggestion_source_ref": "github:issue/31294/comment/4008755017",
-          "suggestion_actor": "github-actions[bot]",
-          "suggestion_evidence": "Found 3 possible duplicate issues: #25140, #27942, and #29423. The bot announced possible automatic closure unless the reporter responded.",
-          "rejection_comment_id": 4008815491,
-          "rejection_source_ref": "github:issue/31294/comment/4008815491",
-          "rejection_actor": "Mationetap",
-          "rejection_evidence": "Not a duplicate of the suggested issues. The reporter distinguished all three suggested issues from the `memory: user|project|local` Task() subagent failure."
         }
       }
     }

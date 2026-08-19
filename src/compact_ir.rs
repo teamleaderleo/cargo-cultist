@@ -4,9 +4,14 @@ use std::fmt;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
+use crate::finding::{
+    AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location, REPORT_SCHEMA_VERSION,
+};
 
 const GRAMMAR_HEADER: &str = "C1";
+pub const MAX_C1_BYTES: usize = 1024 * 1024;
+pub const MAX_C1_RECORDS: usize = 4096;
+pub const MAX_C1_RECORD_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CompactError {
@@ -49,7 +54,9 @@ enum ClaimTarget {
 
 type WireLocation = Option<(String, Option<usize>)>;
 
-pub fn encode_report(report: &AnalysisReport) -> Result<String, serde_json::Error> {
+pub fn encode_report(report: &AnalysisReport) -> Result<String, CompactError> {
+    validate_report_schema(report.schema_version, None)?;
+
     let mut output = String::new();
     output.push_str(GRAMMAR_HEADER);
     output.push('\n');
@@ -88,10 +95,13 @@ pub fn encode_report(report: &AnalysisReport) -> Result<String, serde_json::Erro
         }
     }
 
+    validate_transport_bounds(&output)?;
     Ok(output)
 }
 
 pub fn decode_report(input: &str) -> Result<AnalysisReport, CompactError> {
+    validate_transport_bounds(input)?;
+
     let mut lines = input.lines().enumerate();
     let Some((_, header)) = lines.next() else {
         return Err(CompactError::new("missing grammar header"));
@@ -131,6 +141,7 @@ pub fn decode_report(input: &str) -> Result<AnalysisReport, CompactError> {
                 }
                 let (schema_version, analysis, repository): (u32, String, String) =
                     parse_payload(payload, line_number)?;
+                validate_report_schema(schema_version, Some(line_number))?;
                 report = Some(AnalysisReport {
                     schema_version,
                     analysis,
@@ -241,7 +252,7 @@ pub fn decode_report(input: &str) -> Result<AnalysisReport, CompactError> {
     report.ok_or_else(|| CompactError::new("missing R record"))
 }
 
-fn encode_claim(output: &mut String, tag: char, claim: &Claim) -> Result<(), serde_json::Error> {
+fn encode_claim(output: &mut String, tag: char, claim: &Claim) -> Result<(), CompactError> {
     push_record(
         output,
         tag,
@@ -264,10 +275,63 @@ fn push_record<T: Serialize + ?Sized>(
     output: &mut String,
     tag: char,
     payload: &T,
-) -> Result<(), serde_json::Error> {
+) -> Result<(), CompactError> {
+    let payload = serde_json::to_string(payload)
+        .map_err(|error| CompactError::new(format!("could not serialize record: {error}")))?;
     output.push(tag);
-    output.push_str(&serde_json::to_string(payload)?);
+    output.push_str(&payload);
     output.push('\n');
+    Ok(())
+}
+
+fn validate_report_schema(
+    schema_version: u32,
+    line: Option<usize>,
+) -> Result<(), CompactError> {
+    if schema_version == REPORT_SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    let message = format!(
+        "unsupported AnalysisReport schema {schema_version}; expected {REPORT_SCHEMA_VERSION}"
+    );
+    Err(match line {
+        Some(line) => CompactError::at(line, message),
+        None => CompactError::new(message),
+    })
+}
+
+fn validate_transport_bounds(input: &str) -> Result<(), CompactError> {
+    if input.len() > MAX_C1_BYTES {
+        return Err(CompactError::new(format!(
+            "input is {} bytes; maximum C1 size is {MAX_C1_BYTES} bytes",
+            input.len()
+        )));
+    }
+
+    let mut records = 0usize;
+    for (zero_based, line) in input.lines().enumerate() {
+        let line_number = zero_based + 1;
+        if line.len() > MAX_C1_RECORD_BYTES {
+            return Err(CompactError::at(
+                line_number,
+                format!(
+                    "record is {} bytes; maximum record size is {MAX_C1_RECORD_BYTES} bytes",
+                    line.len()
+                ),
+            ));
+        }
+        if line_number > 1 {
+            records += 1;
+            if records > MAX_C1_RECORDS {
+                return Err(CompactError::at(
+                    line_number,
+                    format!("record count exceeds maximum {MAX_C1_RECORDS}"),
+                ));
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -319,7 +383,6 @@ fn location_from_wire(location: WireLocation) -> Option<Location> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::finding::REPORT_SCHEMA_VERSION;
 
     fn full_report() -> AnalysisReport {
         AnalysisReport {
@@ -355,7 +418,7 @@ mod tests {
     #[test]
     fn exact_small_encoding_is_stable() {
         let report = AnalysisReport {
-            schema_version: 1,
+            schema_version: REPORT_SCHEMA_VERSION,
             analysis: "a".to_string(),
             repository: "r".to_string(),
             claims: vec![Claim::new(ClaimKind::Observed, "m")],
@@ -401,6 +464,56 @@ mod tests {
     #[test]
     fn rejects_unknown_grammar_header() {
         assert!(decode_report("C2\nR[1,\"a\",\"r\"]\n").is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_report_schema_on_encode_and_decode() {
+        let mut report = full_report();
+        report.schema_version = REPORT_SCHEMA_VERSION + 1;
+        let encode_error = encode_report(&report).unwrap_err();
+        assert!(encode_error.to_string().contains("unsupported AnalysisReport schema"));
+
+        let input = format!(
+            "C1\nR[{},\"a\",\"r\"]\n",
+            REPORT_SCHEMA_VERSION + 1
+        );
+        let decode_error = decode_report(&input).unwrap_err();
+        assert!(decode_error.to_string().contains("unsupported AnalysisReport schema"));
+    }
+
+    #[test]
+    fn rejects_input_over_total_byte_budget() {
+        let input = "x".repeat(MAX_C1_BYTES + 1);
+        let error = decode_report(&input).unwrap_err();
+        assert!(error.to_string().contains("maximum C1 size"));
+    }
+
+    #[test]
+    fn rejects_record_over_byte_budget() {
+        let message = "x".repeat(MAX_C1_RECORD_BYTES);
+        let input = format!("C1\nR[1,\"a\",\"r\"]\nC[\"O\",\"{message}\"]\n");
+        let error = decode_report(&input).unwrap_err();
+        assert!(error.to_string().contains("maximum record size"));
+    }
+
+    #[test]
+    fn rejects_too_many_records() {
+        let mut input = "C1\nR[1,\"a\",\"r\"]\n".to_string();
+        for _ in 0..MAX_C1_RECORDS {
+            input.push_str("C[\"O\",\"m\"]\n");
+        }
+        let error = decode_report(&input).unwrap_err();
+        assert!(error.to_string().contains("record count exceeds maximum"));
+    }
+
+    #[test]
+    fn encoder_does_not_emit_packet_outside_decoder_bounds() {
+        let mut report = full_report();
+        report.claims = vec![Claim::new(
+            ClaimKind::Observed,
+            "x".repeat(MAX_C1_RECORD_BYTES),
+        )];
+        assert!(encode_report(&report).is_err());
     }
 
     #[test]

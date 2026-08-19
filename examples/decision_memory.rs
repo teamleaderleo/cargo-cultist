@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
@@ -8,32 +10,33 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 
 const SCHEMA_VERSION: u32 = 1;
+const DEFAULT_RECORDS_DIRECTORY: &str = "research/decision-memory";
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-struct DecisionScope {
-    path_prefix: String,
+pub struct DecisionScope {
+    pub path_prefix: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-struct DecisionAuthority {
-    kind: String,
-    reference: String,
+pub struct DecisionAuthority {
+    pub kind: String,
+    pub reference: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-struct DecisionRecord {
-    schema_version: u32,
-    id: String,
-    kind: String,
-    scope: DecisionScope,
-    reason: String,
-    authority: Vec<DecisionAuthority>,
+pub struct DecisionRecord {
+    pub schema_version: u32,
+    pub id: String,
+    pub kind: String,
+    pub scope: DecisionScope,
+    pub reason: String,
+    pub authority: Vec<DecisionAuthority>,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
-struct ResolvedDecision {
-    source_file: String,
-    record: DecisionRecord,
+#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+pub struct ResolvedDecision {
+    pub source_file: String,
+    pub record: DecisionRecord,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -106,6 +109,24 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
+}
+
+pub fn resolve_repository_decisions(
+    root: &Path,
+    target: &Path,
+) -> Result<Vec<ResolvedDecision>, Box<dyn Error>> {
+    let records = root.join(DEFAULT_RECORDS_DIRECTORY);
+    if !records.exists() {
+        return Ok(Vec::new());
+    }
+    if !records.is_dir() {
+        return Err(format!(
+            "default decision-memory path is not a directory: {}",
+            records.display()
+        )
+        .into());
+    }
+    resolve_decisions(root, &records, target)
 }
 
 fn absolute_from(cwd: &Path, path: &Path) -> PathBuf {

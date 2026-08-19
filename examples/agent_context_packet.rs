@@ -7,7 +7,10 @@ use std::process::Command;
 
 use serde::Serialize;
 
-const SCHEMA_VERSION: u32 = 2;
+#[path = "decision_memory.rs"]
+mod decision_memory;
+
+const SCHEMA_VERSION: u32 = 3;
 const DEFAULT_MAX_HISTORY: usize = 20;
 const DEFAULT_MAX_COMPANIONS: usize = 8;
 const DEFAULT_MAX_EXAMPLES: usize = 2;
@@ -42,6 +45,7 @@ struct AgentContextPacket {
     serialized_bytes: usize,
     direct_evidence: Vec<EvidenceItem>,
     guidance: Vec<GuidanceFile>,
+    reviewed_decisions: Vec<decision_memory::ResolvedDecision>,
     recent_history: Vec<CommitSummary>,
     historical_companions: Vec<HistoricalCompanion>,
     companion_exclusions: Vec<ExcludedCommit>,
@@ -147,6 +151,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let budget = PacketBudget::default();
     let guidance = applicable_guidance(&root, &target)?;
+    let reviewed_decisions =
+        decision_memory::resolve_repository_decisions(&root, &relative_target)?;
     let (recent_history, history_truncated) =
         recent_commits(&root, &relative_target, budget.max_history_commits)?;
     let CompanionAnalysis {
@@ -196,15 +202,17 @@ fn run() -> Result<(), Box<dyn Error>> {
             },
         }],
         guidance,
+        reviewed_decisions,
         recent_history,
         historical_companions,
         companion_exclusions,
         unknowns: vec![
             "Applicable guidance files are surfaced as source artifacts; this research example does not interpret their natural-language rules.".to_string(),
-            "Remote pull request, issue, and review rationale is unavailable in this local-only packet.".to_string(),
+            "Repository decision-memory records are surfaced as a distinct evidence layer; this packet does not yet encode whether a record was merely proposed, reviewed, or merged.".to_string(),
+            "Remote pull request, issue, and review rationale outside repository decision memory is unavailable in this local-only packet.".to_string(),
             "Chronological proximity between commits is not evidence that one change caused another.".to_string(),
             "Current Cargo Cultist analyzer findings are not yet composed into this standalone research example.".to_string(),
-            "This v2 research packet measures serialized bytes but does not yet enforce a hard byte budget or eviction policy.".to_string(),
+            "This v3 research packet measures serialized bytes but does not yet enforce a hard byte budget or eviction policy.".to_string(),
         ],
         truncation,
     };

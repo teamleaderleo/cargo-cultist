@@ -117,7 +117,7 @@ jobs:
               echo "noncanonical scope unexpectedly succeeded: $scope" >&2
               exit 1
             fi
-            grep -F 'not canonical repository-relative path syntax' research-output/scope.err
+            grep -F 'is not canonical' research-output/scope.err
             rm -rf "$records"
           done
 

@@ -1,35 +1,69 @@
 # External GitHub reference policy
 
-Cultist often preserves evidence from public GitHub issues, pull requests, reviews, and commits. Keep source identity exact without creating unnecessary cross-repository backlinks from human-facing GitHub conversations.
+Cultist studies public GitHub history heavily. Internal research can churn. Third-party interaction text must stay quiet unless a human deliberately chooses otherwise.
 
-## Human-facing GitHub conversations
+The prevention boundary is **before the GitHub write**. A CI job that inspects a pull-request body runs after GitHub has already processed that body, so CI is only a detector and cleanup aid.
 
-In issue bodies, pull-request bodies, and comments, use GitHub's backlink-avoiding host for external GitHub references:
+## Automated-worker invariant
+
+Every third-party GitHub reference an automated worker creates in human-facing interaction text must already be backlink-safe before the write occurs.
+
+Default to non-linking wording:
+
+```text
+OWNER/REPOSITORY issue 123
+OWNER/REPOSITORY PR 456
+OWNER/REPOSITORY discussion 789
+```
+
+If click-through is useful, use the literal redirect host:
 
 ```text
 https://redirect.github.com/OWNER/REPOSITORY/issues/123
 https://redirect.github.com/OWNER/REPOSITORY/pull/456
+https://redirect.github.com/OWNER/REPOSITORY/discussions/789
 https://redirect.github.com/OWNER/REPOSITORY/commit/SHA
 ```
 
-Do not use the cross-repository shorthand `OWNER/REPOSITORY#123` when a backlink is unnecessary; GitHub autolinks that form in conversations.
+Automated interaction text must not contain:
 
-Same-repository references such as `#109`, `#137`, or `#198` may stay short when the cross-reference is intentional.
+- direct third-party `github.com` URLs;
+- third-party `OWNER/REPOSITORY#123` shorthand;
+- an intentional-evidence marker used to bypass the interaction rule.
 
-## Repository files
+Repositories under `teamleaderleo/*` are first-party coordination surfaces for this policy. Ordinary links and shorthand among those repositories are allowed.
 
-Research notes may prefer a non-linking source identity when click-through adds little value:
+## Interaction preflight
 
-```text
-`The-PR-Agent/pr-agent#2424`
-`anthropics/claude-code#57507`
+Before an automated worker creates or edits an issue, pull request, comment, review, inline review comment, or discussion that mentions third-party GitHub work, run the scanner against the **exact text that will be written**:
+
+```sh
+python scripts/external_github_reference_guard.py \
+  --repository teamleaderleo/cultist \
+  --stdin < proposed-body.md
 ```
 
-When a clickable external GitHub reference is useful in Markdown, use `redirect.github.com`.
+The GitHub write happens only after this command succeeds.
 
-## Machine and evidence boundaries
+Interaction preflight is intentionally stricter than repository-file detection:
 
-Keep canonical provider coordinates unchanged when they are part of the evidence or required by tooling:
+- it scans direct third-party URLs even inside code blocks;
+- it rejects third-party cross-repository shorthand;
+- it has no automated evidence-marker exception.
+
+A post-write workflow cannot undo a backlink that GitHub has already emitted.
+
+## Commit messages
+
+Do not put clickable third-party issue/PR/discussion references, direct URLs, or `OWNER/REPOSITORY#123` shorthand in automated commit messages.
+
+Use plain non-linking wording such as `ProjectName PR 123`, or omit the external coordinate from the commit message and preserve it in the research receipt instead.
+
+## Repository files and machine evidence
+
+Ordinary tracked files do not create issue/PR conversation backlinks the same way GitHub interaction text does, but automated workers should still use one consistent presentation rule: non-linking wording by default, redirect links when click-through helps.
+
+Canonical provider coordinates may remain exact where identity requires them:
 
 ```text
 https://github.com/...
@@ -44,39 +78,37 @@ Examples include:
 - workflow inputs consumed by GitHub tooling;
 - source payloads copied verbatim as evidence.
 
-Do not rewrite evidence merely to satisfy presentation hygiene. Apply the redirect rule at the human-facing rendering layer.
-
-## Changed-prose guard
-
-CI checks newly added Markdown lines and pull-request bodies for direct external `https://github.com/...` references outside code examples. Existing historical Markdown is not rescanned on unrelated changes.
-
-The guard accepts:
-
-```text
-https://redirect.github.com/OWNER/REPOSITORY/issues/123
-https://github.com/teamleaderleo/cultist/issues/123
-https://api.github.com/repos/OWNER/REPOSITORY/issues/123
-```
-
-Canonical external GitHub source text may remain in Markdown when exact wording is evidence. Keep the exception local by placing this marker on the same line or immediately before the evidence line:
+For a rare exact canonical evidence line in changed Markdown, the changed-file detector still accepts one local marker:
 
 ```html
 <!-- cultist:allow-canonical-github-evidence -->
 ```
 
-Do not use the marker as a file- or section-level bypass. It applies to one prose line only. Prefer `redirect.github.com` for ordinary clickable references.
+That marker applies only to repository-file detection. It never exempts automated interaction preflight.
+
+## CI detector
+
+CI scans newly added Markdown lines and pull-request bodies after the write. Existing historical Markdown is not rescanned on unrelated changes.
+
+The CI detector is useful for catching drift and cleaning up presentation. It is not the mechanism that prevents a third-party backlink.
 
 ## Rule of thumb
 
 ```text
-provider identity / machine input
-  canonical URL
+third-party human-facing mention
+  OWNER/REPOSITORY issue|PR|discussion NUMBER
 
-human-facing external GitHub link
+third-party human-facing link
   redirect.github.com
 
-human-facing source mention with no click-through need
-  literal owner/repo#number
+owned teamleaderleo/* reference
+  ordinary GitHub reference allowed
+
+provider identity / machine input
+  canonical URL when exact identity requires it
+
+GitHub interaction write
+  exact text passes --stdin preflight first
 ```
 
-The goal is precise provenance with fewer incidental backlinks, while keeping machine behavior and retained source evidence exact.
+The goal is high-volume internal research without high-volume third-party GitHub cross-reference noise.

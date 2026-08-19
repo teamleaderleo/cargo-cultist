@@ -196,6 +196,7 @@ struct ReplayIdentity {
     worker_identity: &'static str,
     harness_identity: &'static str,
     affordance_identity: &'static str,
+    sampling_config_fingerprint: &'static str,
     completion_contract_fingerprint: &'static str,
 }
 
@@ -210,12 +211,14 @@ enum RunOutcome {
 struct RunReceipt {
     identity: ReplayIdentity,
     decisive_evidence_present: bool,
+    fresh_session: bool,
+    prior_condition_exposure: bool,
     outcome: RunOutcome,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum RetirementVerdict {
-    ObservedPairedRetirement,
+    PairedRetirementSignal,
     CorrectEscalationThenSuccess,
     NoDemandObserved,
     DemandPersists,
@@ -224,7 +227,12 @@ enum RetirementVerdict {
 }
 
 fn evaluate_pair(baseline: &RunReceipt, treatment: &RunReceipt) -> RetirementVerdict {
-    if baseline.identity != treatment.identity {
+    if baseline.identity != treatment.identity
+        || !baseline.fresh_session
+        || !treatment.fresh_session
+        || baseline.prior_condition_exposure
+        || treatment.prior_condition_exposure
+    {
         return RetirementVerdict::Confounded;
     }
     if baseline.decisive_evidence_present || !treatment.decisive_evidence_present {
@@ -232,7 +240,7 @@ fn evaluate_pair(baseline: &RunReceipt, treatment: &RunReceipt) -> RetirementVer
     }
 
     match (baseline.outcome, treatment.outcome) {
-        (RunOutcome::Failed, RunOutcome::Success) => RetirementVerdict::ObservedPairedRetirement,
+        (RunOutcome::Failed, RunOutcome::Success) => RetirementVerdict::PairedRetirementSignal,
         (RunOutcome::CorrectEscalation, RunOutcome::Success) => {
             RetirementVerdict::CorrectEscalationThenSuccess
         }
@@ -250,6 +258,7 @@ fn fixed_identity() -> ReplayIdentity {
         worker_identity: "worker-a@v1",
         harness_identity: "harness-a@v1",
         affordance_identity: "read-only-review-tools@v1",
+        sampling_config_fingerprint: "sampling-config@v1",
         completion_contract_fingerprint: "block-index-limit@v1",
     }
 }
@@ -262,6 +271,8 @@ fn run(
     RunReceipt {
         identity,
         decisive_evidence_present,
+        fresh_session: true,
+        prior_condition_exposure: false,
         outcome,
     }
 }
@@ -276,13 +287,13 @@ fn assert_confounded(changed: ReplayIdentity) {
 }
 
 #[test]
-fn fixed_worker_failure_then_treatment_success_is_local_retirement_evidence() {
+fn fixed_worker_failure_then_treatment_success_is_a_signal_not_replication() {
     let baseline = run(fixed_identity(), false, RunOutcome::Failed);
     let treatment = run(fixed_identity(), true, RunOutcome::Success);
 
     assert_eq!(
         evaluate_pair(&baseline, &treatment),
-        RetirementVerdict::ObservedPairedRetirement
+        RetirementVerdict::PairedRetirementSignal
     );
 }
 
@@ -320,7 +331,7 @@ fn treatment_failure_preserves_residual_capability_demand() {
 }
 
 #[test]
-fn every_frozen_identity_axis_can_confound_a_retirement_claim() {
+fn every_frozen_identity_axis_can_confound_a_retirement_signal() {
     let mut changed = fixed_identity();
     changed.repository_revision = "repo@different";
     assert_confounded(changed);
@@ -350,8 +361,31 @@ fn every_frozen_identity_axis_can_confound_a_retirement_claim() {
     assert_confounded(changed);
 
     let mut changed = fixed_identity();
+    changed.sampling_config_fingerprint = "sampling-config@v2";
+    assert_confounded(changed);
+
+    let mut changed = fixed_identity();
     changed.completion_contract_fingerprint = "different-oracle@v2";
     assert_confounded(changed);
+}
+
+#[test]
+fn reused_or_treatment_contaminated_sessions_confound_the_pair() {
+    let mut baseline = run(fixed_identity(), false, RunOutcome::Failed);
+    let treatment = run(fixed_identity(), true, RunOutcome::Success);
+    baseline.fresh_session = false;
+    assert_eq!(
+        evaluate_pair(&baseline, &treatment),
+        RetirementVerdict::Confounded
+    );
+
+    let baseline = run(fixed_identity(), false, RunOutcome::Failed);
+    let mut treatment = run(fixed_identity(), true, RunOutcome::Success);
+    treatment.prior_condition_exposure = true;
+    assert_eq!(
+        evaluate_pair(&baseline, &treatment),
+        RetirementVerdict::Confounded
+    );
 }
 
 #[test]

@@ -63,11 +63,7 @@ fn exact_id_scoring_can_false_negative_an_evaluator_owned_equivalent_clone() {
         "skill-a-uuid-2222"
     ));
     assert_eq!(
-        semantic_score(
-            &registrations,
-            "skill-a-uuid-1111",
-            "skill-a-uuid-2222"
-        ),
+        semantic_score(&registrations, "skill-a-uuid-1111", "skill-a-uuid-2222"),
         SemanticScore::EquivalentEvaluatorClone
     );
 }
@@ -81,11 +77,7 @@ fn exact_id_scoring_remains_correct_when_the_expected_clone_is_triggered() {
         "skill-a-uuid-1111"
     ));
     assert_eq!(
-        semantic_score(
-            &registrations,
-            "skill-a-uuid-1111",
-            "skill-a-uuid-1111"
-        ),
+        semantic_score(&registrations, "skill-a-uuid-1111", "skill-a-uuid-1111"),
         SemanticScore::ExactIdentity
     );
 }
@@ -102,11 +94,7 @@ fn different_semantics_do_not_get_equivalence_credit_merely_for_sharing_a_namesp
         "skill-b-uuid-2222"
     ));
     assert_eq!(
-        semantic_score(
-            &registrations,
-            "skill-a-uuid-1111",
-            "skill-b-uuid-2222"
-        ),
+        semantic_score(&registrations, "skill-a-uuid-1111", "skill-b-uuid-2222"),
         SemanticScore::DifferentSemantics
     );
 }
@@ -120,11 +108,7 @@ fn unregistered_trigger_identity_is_not_guessed_as_an_equivalent_clone() {
         "skill-a-uuid-9999"
     ));
     assert_eq!(
-        semantic_score(
-            &registrations,
-            "skill-a-uuid-1111",
-            "skill-a-uuid-9999"
-        ),
+        semantic_score(&registrations, "skill-a-uuid-1111", "skill-a-uuid-9999"),
         SemanticScore::UnknownIdentity
     );
 }
@@ -135,19 +119,11 @@ fn evaluator_clone_equivalence_is_local_and_does_not_create_durable_semantic_lin
     let later_run = [clone("skill-a-uuid-3333", "semantic-candidate-v2")];
 
     assert_eq!(
-        semantic_score(
-            &first_run,
-            "skill-a-uuid-1111",
-            "skill-a-uuid-1111"
-        ),
+        semantic_score(&first_run, "skill-a-uuid-1111", "skill-a-uuid-1111"),
         SemanticScore::ExactIdentity
     );
     assert_eq!(
-        semantic_score(
-            &later_run,
-            "skill-a-uuid-3333",
-            "skill-a-uuid-3333"
-        ),
+        semantic_score(&later_run, "skill-a-uuid-3333", "skill-a-uuid-3333"),
         SemanticScore::ExactIdentity
     );
 

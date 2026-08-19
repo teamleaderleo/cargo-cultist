@@ -71,6 +71,18 @@ jobs:
           persist-credentials: false
           path: cloud-hypervisor
 
+      - name: Fetch Cloud Hypervisor base ancestry
+        env:
+          BASE: ${{ steps.cloud.outputs.base }}
+          FETCH_DEPTH: ${{ steps.cloud.outputs.fetch_depth }}
+        run: |
+          set -euo pipefail
+          if [[ "$FETCH_DEPTH" == "0" ]]; then
+            git -C cloud-hypervisor fetch --no-tags origin "$BASE"
+          else
+            git -C cloud-hypervisor fetch --no-tags --depth="$FETCH_DEPTH" origin "$BASE"
+          fi
+
       - name: Run current Cloud Hypervisor replay
         env:
           HISTORY_FILE: ${{ steps.cloud.outputs.history_file }}

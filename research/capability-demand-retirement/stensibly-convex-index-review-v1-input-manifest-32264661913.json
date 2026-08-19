@@ -1,0 +1,44 @@
+{
+  "conditions": {
+    "file_local_jei": {
+      "decisive_evidence_present": false,
+      "packet": {
+        "bytes": 14086,
+        "sha256": "e4549a10f86448779a21307d97ea75f2ae1acfd15b43099cbca6f600f0781bdf"
+      }
+    },
+    "scoped_jei": {
+      "decisive_evidence_present": true,
+      "decisive_evidence_refs": [
+        "ca5d2c7fdf89666e523972ab6e81610d17b9611b",
+        "85cecf2608ad9e734a67518577fa85b9a08a550c"
+      ],
+      "packet": {
+        "bytes": 18795,
+        "sha256": "2e6acd81e324f3b290b9f93c5bf0ec3d9a66004bd44a855069cc65802f94af46"
+      }
+    }
+  },
+  "evaluator_only": {
+    "oracle": {
+      "bytes": 322,
+      "sha256": "bce60719e97d861a9223661d349b3171ee3eafb3f87e9042999a32a6bd39771b"
+    }
+  },
+  "repository": "teamleaderleo/stensibly",
+  "revision": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+  "schema_version": 1,
+  "target_blob_sha": "7fdd51e2f9fba80d1c0a814cea708d601a7b9925",
+  "target_path": "convex/schema.ts",
+  "trial_id": "stensibly-convex-index-review-v1",
+  "worker_visible_common": {
+    "patch": {
+      "bytes": 321,
+      "sha256": "647281f95818f22784c7468e208bd2b9b5cb2c34ecb38be4b929cf4019c89ba5"
+    },
+    "task": {
+      "bytes": 223,
+      "sha256": "84aaf8f8d3b6880017d25432c763fea5732306117144fc37415992969754f873"
+    }
+  }
+}

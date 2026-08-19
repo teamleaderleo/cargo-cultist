@@ -197,6 +197,61 @@ disposition       inspect_prior_failure
 
 The important property is that closing #57507 again does not retroactively manufacture a clearing receipt for #31294.
 
+### Executed receipt
+
+PR #212 executed the live carrier successfully.
+
+```text
+workflow run
+  32251752639
+
+artifact
+  9364678861
+
+artifact digest
+  sha256:922bc95b6fc63236226f15ffc65ef1ee6efc6524e7a14ff62e557d447beb0438
+
+prior issue #31294
+  created  2026-03-06T00:41:05Z
+  closed   2026-04-11T22:11:48Z
+  closed_by github-actions[bot]
+  state_reason not_planned
+
+closure comment
+  4230270046
+  github-actions[bot]
+  administrative_inactive
+
+later issue #57507
+  created  2026-05-09T00:48:52Z
+  closed   2026-06-09T11:10:27Z
+  closed_by github-actions[bot]
+  state_reason not_planned
+
+re-report evidence
+  **Re-reporting** the bug from #31294 (closed-as-inactive 2026-04-11 by github-actions bot, not because it was fixed). ...
+
+duplicate challenge
+  suggestion comment 4008755017 by github-actions[bot]
+  rejection comment  4008815491 by Mationetap
+
+prior issue comments scanned
+  5
+```
+
+The independent Rust evaluation returned:
+
+```text
+prior_state        closed
+later_state        closed
+closure_kind       administrative_inactive
+re_report_observed true
+clearance          unknown
+disposition        inspect_prior_failure
+```
+
+The sequence therefore demonstrates the exact distinction under test: lifecycle closure is established twice, while no clearing state is manufactured from either closure event.
+
 ## Product pressure test
 
 The next behavioral question for #137 is small:

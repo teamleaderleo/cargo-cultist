@@ -94,6 +94,45 @@ The repaired standard harness requires:
 - #194 wrong-subject isolation and mixed-state precedence remain intact;
 - the exact #201 moved-head and missing-current-revision cases now produce INVALID/UNKNOWN frontiers instead of CURRENT.
 
+## Executed GitHub receipt
+
+The v2 repair was compacted to one semantic commit directly on #201's exact green counterexample head.
+
+Exact semantic head:
+
+```text
+5c84155eb1616b6774f0c5ac764f17ac5d61fa9b
+```
+
+GitHub Actions CI run `32251969947` / run number `1417` completed successfully. The job passed:
+
+- `cargo fmt --check`;
+- `cargo clippy --all-targets -- -D warnings`;
+- active-work preflight;
+- full `cargo test`, including the v2 discriminator enumeration controls, exact-subject frontier controls, and the two #201 closure tests using the real shared applicability evaluator;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON plus positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+The first repair attempt stopped only at rustfmt before Clippy or tests. The exact formatter deltas touched the three v2 test files only. After those mechanical edits, the intermediate head passed the full gate; the branch was then compacted back to the one semantic commit above and revalidated through CI #1417.
+
+Because #210 is a stacked research PR, the ordinary CI workflow is its authoritative gate; generated-provenance PR dogfood is not part of this stack's trigger set.
+
+The central closure is now executable:
+
+```text
+KNOWN old value + applicability INVALID
+  -> frontier INVALID
+  -> known old value preserved
+
+KNOWN old value + applicability UNKNOWN
+  -> frontier UNKNOWN
+  -> known old value preserved
+```
+
+Stale knowledge can no longer suppress a current observation frontier.
+
 ## Phase B consequence
 
 #190 probe planning must consume the repaired frontier semantics.

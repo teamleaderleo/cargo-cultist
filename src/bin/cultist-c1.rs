@@ -1,5 +1,7 @@
+#[allow(dead_code)]
 #[path = "../compact_ir.rs"]
 mod compact_ir;
+#[allow(dead_code)]
 #[path = "../finding.rs"]
 mod finding;
 

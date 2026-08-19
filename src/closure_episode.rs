@@ -145,8 +145,9 @@ pub fn parse_closure_episode(bytes: &[u8]) -> Result<IssueClosureEpisode, Closur
             "closure episode exceeds the {MAX_CLOSURE_EPISODE_BYTES}-byte limit"
         )));
     }
-    let episode: IssueClosureEpisode = serde_json::from_slice(bytes)
-        .map_err(|error| ClosureEpisodeError::new(format!("invalid closure-episode JSON: {error}")))?;
+    let episode: IssueClosureEpisode = serde_json::from_slice(bytes).map_err(|error| {
+        ClosureEpisodeError::new(format!("invalid closure-episode JSON: {error}"))
+    })?;
     validate_episode(&episode)?;
     Ok(episode)
 }
@@ -205,7 +206,11 @@ fn validate_issue(issue: &IssueSnapshot, label: &str) -> Result<(), ClosureEpiso
     }
     validate_single_line(&issue.title, &format!("{label} title"), MAX_TITLE_BYTES)?;
     if let Some(reason) = &issue.state_reason {
-        validate_single_line(reason, &format!("{label} state_reason"), MAX_COORDINATE_BYTES)?;
+        validate_single_line(
+            reason,
+            &format!("{label} state_reason"),
+            MAX_COORDINATE_BYTES,
+        )?;
     }
     validate_timestamp(&issue.created_at, &format!("{label} created_at"))?;
     if let Some(closed_by) = &issue.closed_by {
@@ -255,7 +260,11 @@ fn validate_closure(
             "closure comment id must be positive",
         ));
     }
-    validate_single_line(&closure.source_ref, "closure source_ref", MAX_COORDINATE_BYTES)?;
+    validate_single_line(
+        &closure.source_ref,
+        "closure source_ref",
+        MAX_COORDINATE_BYTES,
+    )?;
     validate_single_line(&closure.actor, "closure actor", MAX_COORDINATE_BYTES)?;
     validate_evidence(&closure.evidence, "closure evidence")?;
     if closure.kind == ClosureKind::AdministrativeInactive {
@@ -327,7 +336,10 @@ fn validate_duplicate_challenge(
         "duplicate suggestion actor",
         MAX_COORDINATE_BYTES,
     )?;
-    validate_evidence(&challenge.suggestion_evidence, "duplicate suggestion evidence")?;
+    validate_evidence(
+        &challenge.suggestion_evidence,
+        "duplicate suggestion evidence",
+    )?;
     validate_single_line(
         &challenge.rejection_source_ref,
         "duplicate rejection source_ref",
@@ -338,7 +350,10 @@ fn validate_duplicate_challenge(
         "duplicate rejection actor",
         MAX_COORDINATE_BYTES,
     )?;
-    validate_evidence(&challenge.rejection_evidence, "duplicate rejection evidence")?;
+    validate_evidence(
+        &challenge.rejection_evidence,
+        "duplicate rejection evidence",
+    )?;
     Ok(())
 }
 
@@ -364,7 +379,10 @@ fn re_report_target(evidence: &str) -> Option<u64> {
         cursor += 1;
     }
     if cursor < bytes.len()
-        && !matches!(bytes[cursor], b' ' | b'(' | b'.' | b',' | b':' | b';' | b'-')
+        && !matches!(
+            bytes[cursor],
+            b' ' | b'(' | b'.' | b',' | b':' | b';' | b'-'
+        )
     {
         return None;
     }

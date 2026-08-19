@@ -14,6 +14,7 @@ const MANIFEST: &[u8] = include_bytes!(
     "../research/capability-demand-retirement/stensibly-convex-index-review-v1-input-manifest-32264661913.json"
 );
 
+const TRIAL_SPEC_SHA: &str = "296e575ad228b3b82adcf2d0d2f13c2e39cc0157cc0a322e02630b5eadbceb1e";
 const TASK_SHA: &str = "84aaf8f8d3b6880017d25432c763fea5732306117144fc37415992969754f873";
 const PATCH_SHA: &str = "647281f95818f22784c7468e208bd2b9b5cb2c34ecb38be4b929cf4019c89ba5";
 const ORACLE_SHA: &str = "bce60719e97d861a9223661d349b3171ee3eafb3f87e9042999a32a6bd39771b";
@@ -44,6 +45,7 @@ fn receipt(condition: &str, sequence_index: u32, outcome: RunOutcome) -> WorkerR
     WorkerRunReceipt {
         schema_version: 1,
         trial_id: "stensibly-convex-index-review-v1".into(),
+        trial_spec_sha256: TRIAL_SPEC_SHA.into(),
         pair_id: "pair-001".into(),
         run_id: format!("run-{sequence_index}"),
         condition_id: condition.into(),
@@ -75,6 +77,8 @@ fn receipt(condition: &str, sequence_index: u32, outcome: RunOutcome) -> WorkerR
 fn retained_manifest_binds_the_executed_input_artifacts() {
     let (trial, manifest) = trial_and_manifest();
     assert_eq!(manifest.trial_id, trial.trial_id);
+    assert_eq!(trial.source_sha256, TRIAL_SPEC_SHA);
+    assert_eq!(manifest.trial_spec_sha256, TRIAL_SPEC_SHA);
     assert_eq!(manifest.worker_visible_common.task.sha256, TASK_SHA);
     assert_eq!(manifest.worker_visible_common.task.bytes, 223);
     assert_eq!(manifest.worker_visible_common.patch.sha256, PATCH_SHA);
@@ -86,13 +90,84 @@ fn retained_manifest_binds_the_executed_input_artifacts() {
         BASELINE_PACKET_SHA
     );
     assert_eq!(manifest.conditions["file_local_jei"].packet.bytes, 14_086);
+    assert_eq!(
+        manifest.conditions["file_local_jei"].packet_kind,
+        capability_demand_retirement::PacketKind::FileLocal
+    );
+    assert_eq!(manifest.conditions["file_local_jei"].budget_bytes, 32_768);
+    assert!(manifest.conditions["file_local_jei"].scope.is_none());
     assert!(!manifest.conditions["file_local_jei"].decisive_evidence_present);
     assert_eq!(
         manifest.conditions["scoped_jei"].packet.sha256,
         TREATMENT_PACKET_SHA
     );
     assert_eq!(manifest.conditions["scoped_jei"].packet.bytes, 18_795);
+    assert_eq!(
+        manifest.conditions["scoped_jei"].packet_kind,
+        capability_demand_retirement::PacketKind::Scoped
+    );
+    assert_eq!(manifest.conditions["scoped_jei"].budget_bytes, 32_768);
+    assert_eq!(
+        manifest.conditions["scoped_jei"].scope.as_deref(),
+        Some("convex")
+    );
     assert!(manifest.conditions["scoped_jei"].decisive_evidence_present);
+}
+
+#[test]
+fn substituted_manifest_common_artifacts_reject_before_pair_interpretation() {
+    let (trial, manifest) = trial_and_manifest();
+    let forged = "d".repeat(64);
+
+    let mut task_manifest = manifest.clone();
+    task_manifest.worker_visible_common.task.sha256 = forged.clone();
+    let mut baseline = receipt("file_local_jei", 1, RunOutcome::Failed);
+    let mut treatment = receipt("scoped_jei", 2, RunOutcome::Success);
+    baseline.task_sha256 = forged.clone();
+    treatment.task_sha256 = forged.clone();
+    let error = evaluate_pair(&trial, &task_manifest, &baseline, &treatment).unwrap_err();
+    assert!(error.contains("task artifact does not match frozen trial spec"));
+
+    let mut patch_manifest = manifest.clone();
+    patch_manifest.worker_visible_common.patch.sha256 = forged.clone();
+    let mut baseline = receipt("file_local_jei", 1, RunOutcome::Failed);
+    let mut treatment = receipt("scoped_jei", 2, RunOutcome::Success);
+    baseline.patch_sha256 = forged.clone();
+    treatment.patch_sha256 = forged.clone();
+    let error = evaluate_pair(&trial, &patch_manifest, &baseline, &treatment).unwrap_err();
+    assert!(error.contains("patch artifact does not match frozen trial spec"));
+
+    let mut oracle_manifest = manifest;
+    oracle_manifest.evaluator_only.oracle.sha256 = forged.clone();
+    let mut baseline = receipt("file_local_jei", 1, RunOutcome::Failed);
+    let mut treatment = receipt("scoped_jei", 2, RunOutcome::Success);
+    baseline.completion_contract_sha256 = forged.clone();
+    treatment.completion_contract_sha256 = forged;
+    let error = evaluate_pair(&trial, &oracle_manifest, &baseline, &treatment).unwrap_err();
+    assert!(error.contains("oracle artifact does not match frozen trial spec"));
+}
+
+#[test]
+fn substituted_manifest_condition_recipe_rejects_before_pair_interpretation() {
+    let (trial, mut manifest) = trial_and_manifest();
+    manifest.conditions.get_mut("scoped_jei").unwrap().scope = Some("src".into());
+    let baseline = receipt("file_local_jei", 1, RunOutcome::Failed);
+    let treatment = receipt("scoped_jei", 2, RunOutcome::Success);
+    let error = evaluate_pair(&trial, &manifest, &baseline, &treatment).unwrap_err();
+    assert!(error.contains("materialization recipe drifted"));
+}
+
+#[test]
+fn substituted_trial_spec_fingerprint_rejects_before_pair_interpretation() {
+    let (trial, mut manifest) = trial_and_manifest();
+    let forged = "e".repeat(64);
+    manifest.trial_spec_sha256 = forged.clone();
+    let mut baseline = receipt("file_local_jei", 1, RunOutcome::Failed);
+    let mut treatment = receipt("scoped_jei", 2, RunOutcome::Success);
+    baseline.trial_spec_sha256 = forged.clone();
+    treatment.trial_spec_sha256 = forged;
+    let error = evaluate_pair(&trial, &manifest, &baseline, &treatment).unwrap_err();
+    assert!(error.contains("exact frozen trial-spec bytes"));
 }
 
 #[test]

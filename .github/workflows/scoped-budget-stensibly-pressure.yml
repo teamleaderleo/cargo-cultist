@@ -1,0 +1,232 @@
+name: Stensibly scoped JEI budget pressure
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/scoped-budget-stensibly-pressure.yml"
+      - "tests/scoped_budget_action_loss.rs"
+      - "examples/agent_context_packet.rs"
+      - "examples/scoped_agent_context_packet.rs"
+      - "examples/support/scoped_agent_context_packet_impl.rs"
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    if: github.head_ref == 'research/scoped-budget-action-loss'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          fetch-depth: 1
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build scoped packet example
+        run: cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
+
+      - name: Checkout exact pre-guard Stensibly state
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/stensibly
+          ref: 85cecf2608ad9e734a67518577fa85b9a08a550c
+          fetch-depth: 256
+          persist-credentials: false
+          path: target
+
+      - name: Verify exact discriminator coordinate
+        run: |
+          set -euo pipefail
+          test "$(git -C target rev-parse HEAD)" = "85cecf2608ad9e734a67518577fa85b9a08a550c"
+          test -f target/convex/schema.ts
+          test -d target/convex
+
+          target_history="$(git -C target log --no-merges --format='%s' -n 20 -- convex/schema.ts)"
+          ! grep -F "Keep Gmail semantic-admission indexes deployable (#1571)" <<<"$target_history"
+          ! grep -F "Keep Gmail mailbox-disposition indexes deployable (#1573)" <<<"$target_history"
+
+          scope_history="$(git -C target log --no-merges --format='%s' -n 20 -- convex)"
+          grep -F "Keep Gmail semantic-admission indexes deployable (#1571)" <<<"$scope_history"
+          grep -F "Keep Gmail mailbox-disposition indexes deployable (#1573)" <<<"$scope_history"
+
+      - name: Sweep semantic budgets
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/raw
+          exe="$PWD/cultist/target/release/examples/scoped_agent_context_packet"
+          target="$PWD/target/convex/schema.ts"
+
+          python - "$exe" "$target" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          exe = sys.argv[1]
+          target = sys.argv[2]
+          budgets = [
+              32768,
+              18794,
+              18793,
+              18500,
+              18000,
+              17500,
+              17000,
+              16750,
+              16500,
+              16250,
+              16000,
+              15750,
+              15500,
+              15000,
+              14500,
+              14000,
+              13000,
+              12000,
+              10000,
+              8000,
+              6000,
+              4096,
+          ]
+          required = [
+              "Keep Gmail semantic-admission indexes deployable (#1571)",
+              "Keep Gmail mailbox-disposition indexes deployable (#1573)",
+          ]
+          rows = []
+          raw_dir = Path("artifacts/raw")
+
+          for budget in budgets:
+              env = os.environ.copy()
+              env["CARGO_CULTIST_PACKET_MAX_BYTES"] = str(budget)
+              completed = subprocess.run(
+                  [exe, target, "--scope", "convex"],
+                  env=env,
+                  capture_output=True,
+                  text=True,
+              )
+              if completed.returncode != 0:
+                  stderr = completed.stderr.strip()
+                  if "protected scoped packet evidence requires" not in stderr:
+                      raise SystemExit(
+                          f"unexpected scoped packet failure at {budget}: {stderr}"
+                      )
+                  rows.append({
+                      "budget": budget,
+                      "status": "protected_core_too_large",
+                      "stderr": stderr,
+                  })
+                  continue
+
+              path = raw_dir / f"{budget}.json"
+              path.write_text(completed.stdout, encoding="utf-8")
+              envelope = json.loads(completed.stdout)
+              if envelope["serialized_bytes"] > budget:
+                  raise SystemExit(f"selected bytes exceed budget {budget}")
+              if envelope["target"] != "convex/schema.ts" or envelope["scope"] != "convex":
+                  raise SystemExit(f"wrong scoped identity at budget {budget}")
+
+              scope_subjects = [row["subject"] for row in envelope["scope_recent_history"]]
+              target_subjects = [row["subject"] for row in envelope["file_packet"]["recent_history"]]
+              presence = {
+                  subject: any(subject in observed for observed in scope_subjects)
+                  for subject in required
+              }
+              if any(any(subject in observed for observed in target_subjects) for subject in required):
+                  raise SystemExit(f"distributed lesson leaked into target-local history at {budget}")
+
+              rows.append({
+                  "budget": budget,
+                  "status": "selected",
+                  "candidate_serialized_bytes": envelope["candidate_serialized_bytes"],
+                  "serialized_bytes": envelope["serialized_bytes"],
+                  "scope_history_count": len(envelope["scope_recent_history"]),
+                  "scope_history_truncated": envelope["scope_history_truncated"],
+                  "scope_semantic_evictions": envelope["semantic_evictions"],
+                  "file_packet_semantic_evictions": envelope["file_packet"]["semantic_evictions"],
+                  "lesson_presence": presence,
+                  "preserves_all_required": all(presence.values()),
+                  "target_recent_history_count": len(envelope["file_packet"]["recent_history"]),
+              })
+
+          selected = [row for row in rows if row["status"] == "selected"]
+          if not selected:
+              raise SystemExit("no selected scoped envelopes in sweep")
+          if not next(row for row in rows if row["budget"] == 32768)["preserves_all_required"]:
+              raise SystemExit("32 KiB acceptance no longer preserves both lessons")
+
+          preserving = [row["budget"] for row in selected if row["preserves_all_required"]]
+          losing = [row["budget"] for row in selected if not row["preserves_all_required"]]
+          failures = [row["budget"] for row in rows if row["status"] != "selected"]
+          receipt = {
+              "schema_version": 1,
+              "repository": "teamleaderleo/stensibly",
+              "revision": "85cecf2608ad9e734a67518577fa85b9a08a550c",
+              "target": "convex/schema.ts",
+              "scope": "convex",
+              "required_history_subjects": required,
+              "rows": rows,
+              "summary": {
+                  "minimum_tested_budget_preserving_all_required": min(preserving) if preserving else None,
+                  "maximum_tested_budget_losing_required": max(losing) if losing else None,
+                  "first_loss_descending": next((row["budget"] for row in rows if row["status"] == "selected" and not row["preserves_all_required"]), None),
+                  "first_protected_core_failure_descending": next((row["budget"] for row in rows if row["status"] != "selected"), None),
+                  "tested_loss": bool(losing),
+                  "tested_protected_core_failure": bool(failures),
+              },
+          }
+          Path("artifacts/stensibly-scoped-budget-sweep.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(receipt["summary"], indent=2, sort_keys=True))
+          PY
+
+      - name: Write pressure summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("artifacts/stensibly-scoped-budget-sweep.json")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Stensibly scoped JEI budget pressure\n\n")
+              if not path.is_file():
+                  out.write("Sweep receipt unavailable.\n")
+                  raise SystemExit(0)
+              receipt = json.loads(path.read_text(encoding="utf-8"))
+              summary = receipt["summary"]
+              out.write(f"Minimum tested budget preserving both lessons: `{summary['minimum_tested_budget_preserving_all_required']}`  \n")
+              out.write(f"First tested loss descending: `{summary['first_loss_descending']}`  \n")
+              out.write(f"First protected-core failure descending: `{summary['first_protected_core_failure_descending']}`\n\n")
+              out.write("| budget | status | bytes | scope rows | lessons | scope evictions | file evictions |\n")
+              out.write("|---:|---|---:|---:|---|---|---|\n")
+              for row in receipt["rows"]:
+                  if row["status"] != "selected":
+                      out.write(f"| {row['budget']} | protected core | — | — | — | — | — |\n")
+                      continue
+                  out.write(
+                      f"| {row['budget']} | selected | {row['serialized_bytes']} | "
+                      f"{row['scope_history_count']} | "
+                      f"{'both' if row['preserves_all_required'] else 'lost'} | "
+                      f"`{row['scope_semantic_evictions']}` | "
+                      f"`{row['file_packet_semantic_evictions']}` |\n"
+                  )
+          PY
+
+      - name: Upload pressure receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stensibly-scoped-budget-pressure-${{ github.run_id }}
+          path: artifacts/stensibly-scoped-budget-sweep.json
+          if-no-files-found: error

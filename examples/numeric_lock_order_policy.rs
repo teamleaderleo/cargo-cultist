@@ -69,7 +69,9 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     if bindings.is_empty() {
         println!("\nOBSERVATION");
-        println!("  No supported literal lock definitions matched exact ranked names from the inventory.");
+        println!(
+            "  No supported literal lock definitions matched exact ranked names from the inventory."
+        );
         print_boundary();
         return Ok(());
     }
@@ -240,7 +242,8 @@ fn collect_lock_bindings(
 fn literal_lock_name(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Call(call) => {
-            if constructor_last_segment(call).is_some_and(|name| matches!(name, "new" | "with_name"))
+            if constructor_last_segment(call)
+                .is_some_and(|name| matches!(name.as_str(), "new" | "with_name"))
                 && let Some(name) = call.args.first().and_then(literal_string)
             {
                 return Some(name);
@@ -259,11 +262,14 @@ fn literal_lock_name(expr: &Expr) -> Option<String> {
     }
 }
 
-fn constructor_last_segment(call: &ExprCall) -> Option<&str> {
+fn constructor_last_segment(call: &ExprCall) -> Option<String> {
     let Expr::Path(path) = &*call.func else {
         return None;
     };
-    path.path.segments.last().map(|segment| segment.ident.to_string()).as_deref()
+    path.path
+        .segments
+        .last()
+        .map(|segment| segment.ident.to_string())
 }
 
 fn literal_string(expr: &Expr) -> Option<String> {

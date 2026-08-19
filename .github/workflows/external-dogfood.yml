@@ -9,7 +9,7 @@ on:
         default: ""
         type: string
       repository:
-        description: Ad hoc public or token-accessible owner/repository; ignored when case_id is set
+        description: Ad hoc public owner/repository; ignored when case_id is set
         required: true
         default: teamleaderleo/smolrunner
         type: string
@@ -114,6 +114,19 @@ jobs:
           fetch-depth: ${{ steps.target.outputs.fetch_depth }}
           persist-credentials: false
           path: target
+
+      - name: Fetch bounded diff-base ancestry
+        if: steps.target.outputs.base != ''
+        env:
+          TARGET_BASE: ${{ steps.target.outputs.base }}
+          TARGET_FETCH_DEPTH: ${{ steps.target.outputs.fetch_depth }}
+        run: |
+          set -euo pipefail
+          if [[ "$TARGET_FETCH_DEPTH" == "0" ]]; then
+            git -C target fetch --no-tags origin "$TARGET_BASE"
+          else
+            git -C target fetch --no-tags --depth="$TARGET_FETCH_DEPTH" origin "$TARGET_BASE"
+          fi
 
       - name: Run bounded dogfood probes
         id: probes

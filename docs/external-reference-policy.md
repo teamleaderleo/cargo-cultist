@@ -46,6 +46,26 @@ Examples include:
 
 Do not rewrite evidence merely to satisfy presentation hygiene. Apply the redirect rule at the human-facing rendering layer.
 
+## Changed-prose guard
+
+CI checks newly added Markdown lines and pull-request bodies for direct external `https://github.com/...` references outside code examples. Existing historical Markdown is not rescanned on unrelated changes.
+
+The guard accepts:
+
+```text
+https://redirect.github.com/OWNER/REPOSITORY/issues/123
+https://github.com/teamleaderleo/cultist/issues/123
+https://api.github.com/repos/OWNER/REPOSITORY/issues/123
+```
+
+Canonical external GitHub source text may remain in Markdown when exact wording is evidence. Keep the exception local by placing this marker on the same line or immediately before the evidence line:
+
+```html
+<!-- cultist:allow-canonical-github-evidence -->
+```
+
+Do not use the marker as a file- or section-level bypass. It applies to one prose line only. Prefer `redirect.github.com` for ordinary clickable references.
+
 ## Rule of thumb
 
 ```text

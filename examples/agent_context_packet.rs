@@ -379,7 +379,9 @@ fn record_semantic_eviction(packet: &mut AgentContextPacket, class: &'static str
         receipt.count += 1;
         return;
     }
-    packet.semantic_evictions.push(SemanticEviction { class, count: 1 });
+    packet
+        .semantic_evictions
+        .push(SemanticEviction { class, count: 1 });
 }
 
 fn git_repo_root(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
@@ -674,7 +676,10 @@ mod tests {
                     support: 9,
                     opportunities: 10,
                     support_percent: 90.0,
-                    examples: vec![summary("high-support-a", 900), summary("high-support-b", 900)],
+                    examples: vec![
+                        summary("high-support-a", 900),
+                        summary("high-support-b", 900),
+                    ],
                     examples_omitted: 7,
                     counterexamples: vec![summary("high-counter", 900)],
                     counterexamples_omitted: 0,
@@ -696,7 +701,8 @@ mod tests {
                 changed_paths: 101,
             }],
             unknowns: vec![
-                "Material UNKNOWN remains protected across semantic budget compilation.".to_string(),
+                "Material UNKNOWN remains protected across semantic budget compilation."
+                    .to_string(),
             ],
             truncation: Vec::new(),
         }
@@ -734,7 +740,10 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&rendered).unwrap();
 
         assert!(rendered.len() <= max);
-        assert_eq!(json["serialized_bytes"].as_u64().unwrap() as usize, rendered.len());
+        assert_eq!(
+            json["serialized_bytes"].as_u64().unwrap() as usize,
+            rendered.len()
+        );
         assert!(
             json["candidate_serialized_bytes"].as_u64().unwrap()
                 > json["serialized_bytes"].as_u64().unwrap()

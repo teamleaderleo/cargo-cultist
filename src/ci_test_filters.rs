@@ -8,13 +8,7 @@ use walkdir::WalkDir;
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
 use crate::rust_facts::scan_rust_repository;
 
-const SKIPPED_RUST_DIRS: &[&str] = &[
-    ".git",
-    "target",
-    "node_modules",
-    ".venv",
-    "vendor",
-];
+const SKIPPED_RUST_DIRS: &[&str] = &[".git", "target", "node_modules", ".venv", "vendor"];
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ExplicitTest {

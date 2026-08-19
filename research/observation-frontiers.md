@@ -90,6 +90,43 @@ cargo run --example observation_frontiers < request.json
 
 The request embeds the bounded #185 observation batch and a bounded requirement list. The reader validates and prints only frontier receipts.
 
+## Executed GitHub receipt
+
+Draft PR #194 was compacted to one semantic commit on #187's exact green receipt head.
+
+Exact semantic head:
+
+```text
+b54ed3213994c96ec818ef36bb9728b0dc1f7eb6
+```
+
+GitHub Actions CI run `32249440070` / run number `1293` completed successfully. The job passed:
+
+- `cargo fmt --check`;
+- `cargo clippy --all-targets -- -D warnings`;
+- active-work preflight;
+- full `cargo test`, including current coverage for all four selected #179/#187 requirements, explicit missing after observation removal, wrong-subject isolation, UNKNOWN/INVALID states, mixed-state receipt preservation and precedence, duplicate requirement rejection, deterministic ordering, bounded request parsing, and JSON round trip;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON plus positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+The first CI attempt stopped at rustfmt before Clippy or tests. The exact formatter delta was applied, then the branch was compacted back to the single semantic commit above before the successful run.
+
+The central Phase A result is now executable:
+
+```text
+same discriminator + wrong subject
+  -> other_subject receipt remains visible
+  -> exact required frontier stays missing
+```
+
+and mixed source states preserve their receipts while current usability follows:
+
+```text
+current > unknown > invalid > missing
+```
+
 ## Boundary
 
 Phase A performs zero acquisition work:
@@ -105,7 +142,7 @@ UNKNOWN/INVALID reason and applicability references remain source-owned strings.
 
 ## Phase B discriminator
 
-After Phase A survives CI, test one explicit source-owned adapter mapping:
+Phase A survived CI. The next experiment can test one explicit source-owned adapter mapping:
 
 ```text
 missing observation D@S
@@ -127,7 +164,7 @@ similarly named probe
 
 Effect authorization remains #145's existing responsibility.
 
-The bridge should be a separate carrier because #190 currently spans two independent research stacks: #179/#187 frontier semantics and #159/#164 probe planning. Proving Phase A first avoids copying #145 types into this read-only layer just to make the stacks meet.
+The bridge should be a separate carrier because #190 currently spans two independent research stacks: #179/#187 frontier semantics and #159/#164 probe planning. Phase A now gives that bridge a precise input without copying #145 types into the read-only frontier layer.
 
 North star:
 

@@ -23,6 +23,14 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+      - name: Project-memory lineage controls
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/project_memory_github_issue.py \
+            scripts/project_memory_github_lineage.py \
+            scripts/project_memory_github_lineage_test.py
+          python scripts/project_memory_github_lineage_test.py
       - name: Active work heads-up
         if: github.event_name == 'pull_request'
         continue-on-error: true

@@ -125,11 +125,7 @@ fn git_repo_root(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "{} is outside a Git repository: {stderr}",
-            path.display()
-        )
-        .into());
+        return Err(format!("{} is outside a Git repository: {stderr}", path.display()).into());
     }
 
     Ok(PathBuf::from(String::from_utf8(output.stdout)?.trim()).canonicalize()?)
@@ -270,7 +266,10 @@ fn canonical_scope(value: &str, source: &Path) -> Result<PathBuf, Box<dyn Error>
                 })?;
                 parts.push(part.to_string());
             }
-            Component::CurDir | Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+            Component::CurDir
+            | Component::ParentDir
+            | Component::RootDir
+            | Component::Prefix(_) => {
                 return Err(format!(
                     "decision scope `{value}` in {} is not canonical repository-relative path syntax",
                     source.display()

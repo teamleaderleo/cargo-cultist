@@ -4,10 +4,10 @@
 mod applicability;
 #[path = "../src/closure_episode.rs"]
 mod closure_episode;
-#[path = "../src/review_memory.rs"]
-mod review_memory;
 #[path = "../src/prior_episode_front.rs"]
 mod prior_episode_front;
+#[path = "../src/review_memory.rs"]
+mod review_memory;
 
 use applicability::{ApplicabilityStatus, EvaluationContext, PathScope, PathScopeMode};
 use closure_episode::{
@@ -327,7 +327,12 @@ fn surfaced_items_preserve_admitted_input_order_across_species() {
         },
         PriorEpisodeInput::ReviewMemory {
             id: "review:quiet".to_string(),
-            query: review_query(Vec::new(), Some(HEAD_A), Some("github:pull/7"), Some("src/lib.rs")),
+            query: review_query(
+                Vec::new(),
+                Some(HEAD_A),
+                Some("github:pull/7"),
+                Some("src/lib.rs"),
+            ),
         },
         PriorEpisodeInput::IssueClosure {
             id: "issue:third".to_string(),
@@ -353,10 +358,19 @@ fn surfaced_items_preserve_admitted_input_order_across_species() {
 fn duplicate_packet_local_ids_reject_before_source_projection() {
     let input = PriorEpisodeInput::ReviewMemory {
         id: "duplicate".to_string(),
-        query: review_query(Vec::new(), Some(HEAD_A), Some("github:pull/7"), Some("src/lib.rs")),
+        query: review_query(
+            Vec::new(),
+            Some(HEAD_A),
+            Some("github:pull/7"),
+            Some("src/lib.rs"),
+        ),
     };
     let error = evaluate_prior_episode_front(&front(vec![input.clone(), input])).unwrap_err();
-    assert!(error.to_string().contains("duplicate prior-episode input id"));
+    assert!(
+        error
+            .to_string()
+            .contains("duplicate prior-episode input id")
+    );
 }
 
 #[test]

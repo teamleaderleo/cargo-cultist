@@ -138,14 +138,22 @@ pub fn evaluate_observation_reconciliation(
     } else if !claim
         .observation_evidence
         .contains(&claim.authoritative_value_marker)
-        || !claim.observation_evidence.contains(&claim.lagging_value_marker)
+        || !claim
+            .observation_evidence
+            .contains(&claim.lagging_value_marker)
     {
         ObservationReconciliationStatus::DivergentObservationMissing
-    } else if !claim.convergence_evidence.contains(&claim.convergence_marker) {
+    } else if !claim
+        .convergence_evidence
+        .contains(&claim.convergence_marker)
+    {
         ObservationReconciliationStatus::ConvergencePolicyMissing
     } else if !claim.exhaustion_evidence.contains(&claim.exhaustion_marker) {
         ObservationReconciliationStatus::PermanentDivergenceControlMissing
-    } else if !reconciler.changed_paths.contains(&claim.implementation_path) {
+    } else if !reconciler
+        .changed_paths
+        .contains(&claim.implementation_path)
+    {
         ObservationReconciliationStatus::ImplementationPathMissing
     } else if !reconciler.changed_paths.contains(&claim.test_path) {
         ObservationReconciliationStatus::TestPathMissing
@@ -223,7 +231,10 @@ impl ObservationReconciliationClaim {
         }
         for (label, marker) in [
             ("authority_marker", &self.authority_marker),
-            ("authoritative_value_marker", &self.authoritative_value_marker),
+            (
+                "authoritative_value_marker",
+                &self.authoritative_value_marker,
+            ),
             ("lagging_value_marker", &self.lagging_value_marker),
             ("convergence_marker", &self.convergence_marker),
             ("exhaustion_marker", &self.exhaustion_marker),

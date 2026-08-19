@@ -26,7 +26,7 @@ It does not invoke target `cargo`, build scripts, tests, generators, package man
 
 The GitHub workflow has read-only `contents` permission and is `workflow_dispatch` only. It therefore adds no network-heavy external corpus work to ordinary push or pull-request CI.
 
-The first workflow is intended for public repositories and repositories the workflow token can read. A future private-repository adapter should use an explicit credential boundary instead of silently widening token authority.
+The durable workflow currently targets public repositories. A future private-repository adapter should use an explicit credential boundary instead of silently widening token authority.
 
 ## Progressive history cost
 
@@ -56,6 +56,8 @@ history question survives those gates
   -> deeper/full checkout deliberately
 ```
 
+A bounded diff replay admits both sides explicitly. If a base is supplied, the workflow fetches the same bounded ancestry for that base before Cultist runs. The first Cloud Hypervisor carrier exposed why: a shallow exact-head checkout can have ample head history while lacking a newer base tip, and `git merge-base` should refuse that incomplete object set.
+
 The aim is to learn from large histories without making every edit-loop invocation pay for them.
 
 ## Local use
@@ -83,7 +85,30 @@ python scripts/external_dogfood.py \
   --history-max 100
 ```
 
-A specific change can add `--base REV` and run the existing diff analyzer against the checked-out target.
+A specific change can add `--base REV` and run the existing diff analyzer against the checked-out target. The local caller is responsible for making that base object and enough ancestry available in the checkout.
+
+## Pinned corpus registry
+
+`research/external-dogfood-cases.json` is the durable queue of external questions.
+
+Each case has one of three statuses:
+
+```text
+replayable
+  exact repository/revision coordinates + today's Cultist evidence can run the question
+
+adapter_gap
+  exact case is pinned, but today's product does not ingest the evidence needed for the interesting question
+
+needs_pin
+  useful historical story still needs an exact revision/evidence coordinate before replay
+```
+
+Registered replay cases use exact 40-hex revisions. PR and issue numbers remain provenance labels rather than executable identity.
+
+`scripts/external_dogfood_case.py` validates the registry, refuses non-replayable cases, and resolves a selected case into the manual workflow's normalized checkout/probe inputs. The same resolver validates ad hoc public-repository inputs when no case ID is supplied.
+
+The registry is intentionally small metadata. Adding fifty historical questions should add roughly fifty descriptors, not fifty default CI jobs or fifty repository clones.
 
 ## First external carrier: SmolRunner
 
@@ -94,7 +119,7 @@ teamleaderleo/smolrunner@ed3b70e375a57eabce26f2311f798f75b33bdeb0
 src/disposable_clone_runtime.rs
 ```
 
-That target is a good first carrier because it has known earned-history discriminators and counterexamples. The generic manual workflow defaults to the living `main` branch so it can also reveal drift; an exact SHA can be supplied whenever a reproducible historical replay is desired.
+That target is a good first carrier because it has known earned-history discriminators and counterexamples. An exact SHA should be used whenever a reproducible historical replay is desired.
 
 ### Executed receipt
 
@@ -152,21 +177,134 @@ src/disposable_worker_coordinator.rs               4/14
 src/unix_personal_worker_store/disposable_clone_transaction.rs  4/14
 ```
 
-The cold repository scan also surfaced four existing naming findings. Those are now useful signal-quality corpus candidates; this carrier records them without declaring them useful or noisy before review.
+The cold repository scan also surfaced four existing naming findings. Those are useful signal-quality corpus candidates; the carrier records them before deciding whether they are useful or noisy.
 
-The temporary PR-only carrier is removed after this receipt. The generic local runner and manual workflow remain.
+## Three-repository coverage carrier
+
+PR #138 expanded the external lane with one exact Rust diff plus two adapter-gap controls.
+
+Successful carrier receipt:
+
+```text
+workflow run: 32241829802
+artifact:     9361136959
+sha256:       c7ccd98334e58c7100c5c725642f71e9b2daf805a801fdb8600b093fce26e29b
+```
+
+### Cloud Hypervisor #8734 — canonical precedent tension
+
+Exact coordinate:
+
+```text
+teamleaderleo/cloud-hypervisor@439ff52249e819f41570a5f3f3bf535d4bfb3e6e
+base 1b004a7459ac752e1d7ad5a48237a1cb8608003b
+pci/src/vfio.rs
+```
+
+The patch adds `#[cfg(test)] mod unit_tests` before an existing `#[cfg(test)] mod tests`.
+
+The repository scan found:
+
+```text
+128 test-gated modules
+unit_tests=89
+tests=33
+test_util=4
+external_fds_tests=1
+mock_vmm=1
+```
+
+The exact diff emitted one `test-module-precedent-tension` finding:
+
+```text
+changed declaration: unit_tests
+repository precedent excluding changed declaration: unit_tests=88 of 127
+same-file existing precedent: tests
+observation: repository-wide and file-local precedent disagree
+alignment: change follows repository-wide precedent and differs from file-local precedent
+claim boundary: repository evidence alone does not establish which scope should govern
+```
+
+Work receipts:
+
+```text
+cold scan:  4 Git, 294 parses,   3 hits, 659355 us, 8 findings
+warm scan:  4 Git,   0 parses, 297 hits,  16206 us, 8 findings
+ci-tests:   1 Git,   0 parses,   0 hits,   1496 us, 0 findings
+history:    2 Git,   0 parses,              7791 us, 5 discovered / 4 considered commits
+diff:       9 Git,   1 parse,  296 hits,   38510 us, 1 finding
+```
+
+This is the canonical scope-tension discriminator from #16 in executable form. A preliminary carrier failed because the shallow checkout lacked the explicit base tip; that negative receipt led to the bounded-base-fetch rule above.
+
+### Stensibly — current product coverage control
+
+Pinned current coordinate:
+
+```text
+teamleaderleo/stensibly@1cc5e00040f0267705c6e9328dde1088d65cd880
+```
+
+Current scan:
+
+```text
+4 Git processes
+0 Rust files parsed
+0 findings
+53937 us
+```
+
+CI-test inventory:
+
+```text
+1 Git process
+0 Rust files parsed
+0 findings
+1666 us
+```
+
+This is a clean adapter-gap discriminator. Stensibly's useful organizational history lives in TypeScript, provider state, PR/issue relationships, policy files, and longitudinal event evidence. Today's Rust/local analyzer surface sees essentially none of it.
+
+### Linux Fieldwork — research-memory coverage control
+
+Pinned current coordinate:
+
+```text
+teamleaderleo/linux-fieldwork@b835ed842299f7654afc00f4988f7586e0be63bc
+```
+
+Current scan:
+
+```text
+4 Git processes
+2 Rust files parsed
+0 findings
+34482 us
+```
+
+CI-test inventory:
+
+```text
+1 Git process
+0 Rust files parsed
+0 findings
+1620 us
+```
+
+The useful Fieldwork corpus spans issues, investigations, notes, bug-species synthesis, and counterexamples. The quiet source scan therefore confirms the product boundary instead of disproving the value of the corpus.
 
 ## Corpus direction
 
-This harness is the execution primitive for #16 rather than a fixed list of repositories. Candidate cases already include:
+The current registry starts with:
 
-- Cultist self-dogfood for quiet controls;
 - SmolRunner for earned local history and agent-context work;
-- Cloud Hypervisor for the canonical repository-vs-file precedent tension;
+- Cloud Hypervisor for repository-vs-file precedent tension;
 - Stensibly for longitudinal agentic churn and handoff/recovery questions;
-- Linux Fieldwork for real bug-species controls.
+- Linux Fieldwork for bug-species and research-memory controls.
 
-The next useful layer is a small, reviewed manifest of pinned cases and expected questions. The harness should stay generic; corpus policy decides which cases deserve deeper history.
+The next evidence frontier is project memory and non-Rust repository evidence: issues, PRs, explicit references, policy evolution, and selected textual artifacts. The pinned `adapter_gap` cases define what that work must recover before it deserves product promotion.
+
+History can now accumulate as descriptors first. A case only pays checkout/history cost when selected for an analyzer, a regression, or a current task.
 
 ## Receipts
 
@@ -179,4 +317,4 @@ Each run writes:
 
 Findings do not make a dogfood run fail. Process failures, malformed JSON, or a missing/invalid performance receipt do, because those make the evaluation itself unreliable.
 
-Refs #16 #48 #49 #62.
+Refs #16 #29 #41 #48 #49 #62 #129.

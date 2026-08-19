@@ -15,7 +15,7 @@
       "question": "Does bounded local history recover the earned disposable-clone companion evidence and counterexamples?"
     },
     {
-      "id": "cloud-hypervisor-8734-current-vfio",
+      "id": "cloud-hypervisor-8734-precedent-tension",
       "status": "replayable",
       "repository": "teamleaderleo/cloud-hypervisor",
       "ref": "439ff52249e819f41570a5f3f3bf535d4bfb3e6e",
@@ -25,21 +25,7 @@
       "base": "1b004a7459ac752e1d7ad5a48237a1cb8608003b",
       "repeat_scan": true,
       "source": "cloud-hypervisor/cloud-hypervisor#8734@439ff52249e819f41570a5f3f3bf535d4bfb3e6e",
-      "question": "What does current Cultist surface on the exact live VFIO sparse-DMA change, independently of the older #8734 precedent-tension story?"
-    },
-    {
-      "id": "cloud-hypervisor-8734-legacy-precedent-tension",
-      "status": "needs_pin",
-      "repository": "cloud-hypervisor/cloud-hypervisor",
-      "ref": null,
-      "fetch_depth": 256,
-      "history_file": null,
-      "history_max": 100,
-      "base": null,
-      "repeat_scan": false,
-      "source": "cultist#16 / historical cloud-hypervisor#8734",
-      "question": "Does a changed test-module name expose repository-wide unit_tests precedent while the same file carries tests precedent?",
-      "reason": "The live PR number now points at a different VFIO change/head. Recover the original exact head/base/file coordinate before treating this as a replay fixture."
+      "question": "Does the exact diff expose the new unit_tests declaration against the existing file-local tests declaration and repository precedent without collapsing those scopes?"
     },
     {
       "id": "stensibly-1575-guard-promotion",

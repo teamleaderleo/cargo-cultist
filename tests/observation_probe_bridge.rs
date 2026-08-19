@@ -4,12 +4,12 @@
 mod applicability;
 #[path = "../src/discriminator_observation.rs"]
 mod discriminator_observation;
-#[path = "../src/justification.rs"]
-mod justification;
 #[path = "../src/durable_obligation.rs"]
 mod durable_obligation;
 #[path = "../src/evidence_planner.rs"]
 mod evidence_planner;
+#[path = "../src/justification.rs"]
+mod justification;
 #[path = "../src/observation_frontier.rs"]
 mod observation_frontier;
 #[path = "../src/observation_probe_bridge.rs"]

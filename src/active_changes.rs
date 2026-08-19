@@ -307,10 +307,9 @@ fn scoped_paths(paths: &[String], scope: Option<&Path>) -> BTreeSet<PathBuf> {
 fn read_bounded_inventory(path: &Path) -> Result<Vec<u8>, Box<dyn Error>> {
     let metadata = std::fs::metadata(path)?;
     if metadata.len() > MAX_INVENTORY_BYTES as u64 {
-        return Err(format!(
-            "active-work inventory exceeds the {MAX_INVENTORY_BYTES}-byte limit"
-        )
-        .into());
+        return Err(
+            format!("active-work inventory exceeds the {MAX_INVENTORY_BYTES}-byte limit").into(),
+        );
     }
 
     let mut bytes = Vec::new();
@@ -318,10 +317,9 @@ fn read_bounded_inventory(path: &Path) -> Result<Vec<u8>, Box<dyn Error>> {
         .take((MAX_INVENTORY_BYTES + 1) as u64)
         .read_to_end(&mut bytes)?;
     if bytes.len() > MAX_INVENTORY_BYTES {
-        return Err(format!(
-            "active-work inventory exceeds the {MAX_INVENTORY_BYTES}-byte limit"
-        )
-        .into());
+        return Err(
+            format!("active-work inventory exceeds the {MAX_INVENTORY_BYTES}-byte limit").into(),
+        );
     }
     Ok(bytes)
 }
@@ -340,16 +338,12 @@ fn validate_inventory(
     validate_bounded_text(&document.observed_at, "observed_at", MAX_TIME_BYTES, false)?;
 
     if document.active_work.len() > MAX_ACTIVE_WORK {
-        return Err(format!(
-            "active-work inventory exceeds the {MAX_ACTIVE_WORK}-candidate limit"
-        )
-        .into());
+        return Err(
+            format!("active-work inventory exceeds the {MAX_ACTIVE_WORK}-candidate limit").into(),
+        );
     }
     if document.coordination_edges.len() > MAX_EDGES {
-        return Err(format!(
-            "active-work inventory exceeds the {MAX_EDGES}-edge limit"
-        )
-        .into());
+        return Err(format!("active-work inventory exceeds the {MAX_EDGES}-edge limit").into());
     }
 
     let mut total_paths = 0usize;
@@ -391,7 +385,12 @@ fn validate_inventory(
             )
             .into());
         }
-        if !seen_edges.insert((edge.kind, edge.from.clone(), edge.to.clone(), edge.source.clone())) {
+        if !seen_edges.insert((
+            edge.kind,
+            edge.from.clone(),
+            edge.to.clone(),
+            edge.source.clone(),
+        )) {
             return Err(format!(
                 "duplicate coordination edge `{}` from `{}` to `{}`",
                 edge.kind.as_str(),
@@ -558,15 +557,22 @@ mod tests {
         let analysis = analyze_inventory(Path::new("/repo"), &inventory, None);
 
         assert!(analysis.findings.is_empty());
-        assert!(analysis.claims.iter().any(|claim| {
-            claim.message.contains("excluded 1 self candidate")
-        }));
+        assert!(
+            analysis
+                .claims
+                .iter()
+                .any(|claim| { claim.message.contains("excluded 1 self candidate") })
+        );
     }
 
     #[test]
     fn explicit_coordination_survives_disjoint_paths() {
         let current = work("#748", "aaa", &["preflight-cli/src/AgentJarStaging.java"]);
-        let other = work("#703", "bbb", &["preflight-desktop/src/report_authority.rs"]);
+        let other = work(
+            "#703",
+            "bbb",
+            &["preflight-desktop/src/report_authority.rs"],
+        );
         let edge = serde_json::json!({
             "kind": "hold_merge_while",
             "from": "#748",
@@ -576,9 +582,12 @@ mod tests {
         let inventory = parse(document(current, vec![other], vec![edge])).unwrap();
         let analysis = analyze_inventory(Path::new("/repo"), &inventory, None);
 
-        assert!(analysis.findings.iter().all(|finding| {
-            finding.kind != "preflight-inventory-path-overlap"
-        }));
+        assert!(
+            analysis
+                .findings
+                .iter()
+                .all(|finding| { finding.kind != "preflight-inventory-path-overlap" })
+        );
         let coordination: Vec<_> = analysis
             .findings
             .iter()
@@ -588,13 +597,18 @@ mod tests {
         assert!(coordination[0].claims.iter().any(|claim| {
             claim.kind == ClaimKind::Observed && claim.message.contains("hold_merge_while")
         }));
-        assert!(coordination[0]
-            .claims
-            .iter()
-            .any(|claim| claim.kind == ClaimKind::Unknown));
-        assert!(coordination[0].claims[0].evidence.iter().any(|evidence| {
-            evidence.message.contains("github:pull/748")
-        }));
+        assert!(
+            coordination[0]
+                .claims
+                .iter()
+                .any(|claim| claim.kind == ClaimKind::Unknown)
+        );
+        assert!(
+            coordination[0].claims[0]
+                .evidence
+                .iter()
+                .any(|evidence| { evidence.message.contains("github:pull/748") })
+        );
     }
 
     #[test]
@@ -628,7 +642,8 @@ mod tests {
 
         assert!(analysis.findings.is_empty());
         assert!(analysis.claims.iter().any(|claim| {
-            claim.message
+            claim
+                .message
                 .contains("no explicit coordination edge involving the current work")
         }));
     }

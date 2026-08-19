@@ -683,6 +683,6 @@ mod tests {
         ))
         .unwrap_err();
 
-        assert!(error.to_string().contains("effectful executions"));
+        assert!(error.to_string().contains("effectful execution"));
     }
 }

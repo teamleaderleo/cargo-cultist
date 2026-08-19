@@ -2,23 +2,20 @@
 
 #[path = "../src/applicability.rs"]
 mod applicability;
-#[path = "../src/justification.rs"]
-mod justification;
 #[path = "../src/durable_obligation.rs"]
 mod durable_obligation;
 #[path = "../src/evidence_planner.rs"]
 mod evidence_planner;
+#[path = "../src/justification.rs"]
+mod justification;
 
-use applicability::{
-    EvaluationContext, EvidenceRequirements, PathScope, PathScopeMode,
-};
+use applicability::{EvaluationContext, EvidenceRequirements, PathScope, PathScopeMode};
 use durable_obligation::{
-    ClearingCondition, DiscriminatorKey, DurableObligation,
-    DURABLE_OBLIGATION_SCHEMA_VERSION,
+    ClearingCondition, DURABLE_OBLIGATION_SCHEMA_VERSION, DiscriminatorKey, DurableObligation,
 };
 use evidence_planner::{
-    plan_evidence, EvidencePlanStatus, EvidenceProbe, EVIDENCE_PLANNER_SCHEMA_VERSION,
-    ProbeCandidateStatus, ProbeCost, ProbeEffect, ProbePlanRequest, ProbeSelectionPolicy,
+    EVIDENCE_PLANNER_SCHEMA_VERSION, EvidencePlanStatus, EvidenceProbe, ProbeCandidateStatus,
+    ProbeCost, ProbeEffect, ProbePlanRequest, ProbeSelectionPolicy, plan_evidence,
 };
 
 const REPOSITORY: &str = "owner/repo";

@@ -4,6 +4,8 @@
 
 Cultist is an experiment in repository-aware evidence for software work: recover deterministic facts, keep provenance and counterexamples visible, and ask useful questions before inventing project rules.
 
+A second product test is increasingly important: **does the selected evidence change the next justified action, prevent an expensive wrong turn, or spare a later worker from repeating manual investigation?** Issue #137 tracks that behavioral pressure test while the existing JEI, review, decision-memory, applicability, representation, and analyzer research continues in parallel.
+
 > Status: early prototype. The current Rust distribution is named `cargo-cultist`; its public analyzer commands are deterministic, local, and read-only. Remote/project adapters that build evidence inventories live outside the core analyzer boundary.
 
 Rust is the first deep semantic adapter, not the product boundary. Several useful primitives are repository-generic already: Git history, claim provenance, concurrent-change preflight, active-work inventories, and repo-local decision-memory research.
@@ -17,6 +19,7 @@ Traditional linters are strongest after a rule is known. Cultist starts earlier.
 - Is another current change touching the same repository surface?
 - Why does this exception or guard exist?
 - What lesson from this completed work should be recoverable by the next worker?
+- Which current evidence changes what I should inspect, validate, coordinate, or preserve next?
 
 The core claim vocabulary is:
 
@@ -41,14 +44,19 @@ cargo cultist
 cargo cultist --format json
 ```
 
-### Diff-aware precedent
+### Change-time evidence
 
-`cargo cultist diff` analyzes the current change and applies supported change-time evidence such as Rust test-module precedent and generated-companion evidence.
+`cargo cultist check` and `cargo cultist diff` run the same existing change analyzer. `check` is a task-oriented alias; `diff` remains available for compatibility and for callers that prefer the exact underlying concept.
+
+The analyzer applies supported change-time evidence such as Rust test-module precedent and generated-companion evidence.
 
 ```bash
+cargo cultist check
+cargo cultist check --base origin/main
+cargo cultist check --base origin/main --format json
+
 cargo cultist diff
 cargo cultist diff --base origin/main
-cargo cultist diff --base origin/main --format json
 ```
 
 With `--base REV`, Cultist uses the merge base while still including local staged and unstaged work. Changed-file parse failures remain explicit uncertainty instead of becoming false absence claims.
@@ -117,6 +125,9 @@ C1 / compact IR (#113, #115)
 
 decision memory (#10 and research)
   -> WHAT reviewed rationale should survive for later workers?
+
+behavioral product pressure (#137)
+  -> DID the selected evidence change the next justified action or reduce rediscovery?
 ```
 
 A new view should reuse authority, provenance, freshness, counterexample, unknown, and omission semantics rather than inventing a parallel vocabulary merely because its output layout is different.
@@ -128,6 +139,8 @@ Research under #62 asks the pre-edit question:
 > What repository evidence would I regret missing before I modify this target?
 
 The packet work emphasizes bounded defaults, truncation receipts, explicit guidance, history, companions/counterexamples, decisions, and useful `UNKNOWN`s rather than giant repository summaries.
+
+The next complementary gate is behavioral: compare fresh workers with and without the selected packet and record whether evidence is consulted earlier, changes a decision, prevents a repeated failed approach, or only consumes attention.
 
 ### Compact C1 evidence grammar
 
@@ -153,7 +166,7 @@ BEFORE
   recover bounded evidence for the target
 
 DURING
-  reconcile the live diff with precedent, guidance, active work,
+  reconcile the live change with check/diff, precedent, guidance, active work,
   counterexamples, decisions, trust boundaries, and unknowns
 
 AFTER
@@ -169,7 +182,7 @@ Or more compactly:
 retrieve -> work -> reconcile -> preserve -> retrieve
 ```
 
-The product goal is not to make an agent understand Cultist as a separate ceremony. A worker should be able to ask for the evidence it needs, do the work, and leave useful reviewed knowledge behind.
+The product goal is to make Cultist fade into the work itself. A worker should be able to ask for the evidence it needs, do the work, and leave useful reviewed knowledge behind. The most prominent automatic evidence should earn its interruption by changing inspection, validation, coordination, or preservation behavior often enough to justify the attention cost.
 
 ## Research discipline
 
@@ -188,10 +201,23 @@ Some research examples intentionally execute repository tooling. Those effectful
 
 A successful experiment does not automatically become a lint or public feature. Failed experiments are retained when they expose a useful boundary.
 
+Behavioral evidence adds another useful promotion question:
+
+```text
+surfaced
+-> consulted?
+-> changed the next action?
+-> prevented or reversed a wrong turn?
+-> ignored / irrelevant / stale / needed stronger evidence?
+```
+
+This is an inspectable scorecard, not a single opaque risk or quality number.
+
 ## Usage while developing
 
 ```bash
 cargo run -- /path/to/a/rust/repository
+cargo run -- check --base origin/main /path/to/a/rust/repository
 cargo run -- diff --base origin/main /path/to/a/rust/repository
 cargo run -- preflight --against some-ref /path/to/a/repository
 cargo run -- preflight --inventory /path/to/active-work.json /path/to/a/repository
@@ -205,6 +231,7 @@ After installing locally:
 cargo install --path .
 cd /path/to/a/repository
 cargo cultist
+cargo cultist check
 cargo cultist diff
 cargo cultist preflight --against other-ref
 cargo cultist history src/file.rs
@@ -219,6 +246,8 @@ CI runs formatting, Clippy, tests, and the public analyzers against Cultist itse
 
 Dogfood is product input. When work exposes duplicate effort, a missed repository fact, stale evidence, misleading metadata, a false assumption, a useful counterexample, or repeated manual investigation, preserve the exact evidence and ask whether the smallest useful Cultist improvement can surface it earlier next time.
 
+Also record the downstream consequence when it is visible: did the evidence change the next inspection, validation step, coordination decision, or implementation? Did the worker ignore it? Did a natural quiet case remain quiet? Those receipts help decide which evidence families deserve automatic delivery.
+
 Do not turn task friction into a universal rule without a discriminator and negative control.
 
 ## Current direction
@@ -226,6 +255,7 @@ Do not turn task friction into a universal rule without a discriminator and nega
 Near-term work is increasingly about composing independent evidence instead of adding broad opaque heuristics:
 
 - bounded pre-edit JEI and lifecycle integration;
+- behavioral A/B evaluation of selected evidence across held-out tasks (#137);
 - review-attention projections over the same evidence;
 - active-change coordination with explicit identity/freshness boundaries;
 - decision-memory authority/applicability research;
@@ -233,6 +263,7 @@ Near-term work is increasingly about composing independent evidence instead of a
 - explicit repository guidance and instruction freshness;
 - compact interoperable machine representations;
 - performance work proportional to the evidence actually needed;
+- promotion, demotion, or quieting of evidence families based on inspectable interruption outcomes;
 - promotion of repeated, well-understood consensus into deterministic policy.
 
 Optional model-assisted explanation can sit on top of bounded evidence later. The deterministic evidence packet must remain useful without a model.

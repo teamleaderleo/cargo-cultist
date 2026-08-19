@@ -85,7 +85,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         args.remove(0);
     }
 
-    if args.first().is_some_and(|arg| arg == "diff") {
+    if args.first().is_some_and(|arg| is_change_command(arg)) {
         args.remove(0);
         return run_diff(args);
     }
@@ -120,6 +120,10 @@ fn run() -> Result<(), Box<dyn Error>> {
     let report = analyze_test_modules(&root)?;
     let analysis = build_test_module_analysis(&root, &report);
     emit_analysis(&analysis, format)
+}
+
+fn is_change_command(arg: &str) -> bool {
+    matches!(arg, "check" | "diff")
 }
 
 fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
@@ -470,67 +474,115 @@ fn parse_output_format(value: &str) -> Result<OutputFormat, String> {
 
 fn print_help() {
     println!(
-        "cargo-cultist {VERSION}\n\
-Repository-aware analysis for Rust codebases.\n\n\
-USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist preflight --against REV [--format text|json] [PATH]\n    cargo cultist preflight --inventory FILE [--format text|json] [PATH]\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n    cargo cultist ci-tests [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist preflight --against REV [--format text|json] [PATH]\n    cargo-cultist preflight --inventory FILE [--format text|json] [PATH]\n    cargo-cultist history [--max-commits N] [--format text|json] FILE\n    cargo-cultist ci-tests [--format text|json] [PATH]\n\n\
-COMMANDS:\n    diff       Inspect changed Rust code against repository precedent.\n    preflight  Compare concurrent change sets for collision evidence.\n    history    Explore which paths historically change with one file.\n    ci-tests   Compare supported CI test filters with explicit test-name evidence.\n\n\
-Without a command, cargo-cultist inspects repository-wide test-module naming\n\
-conventions without inventing a universal rule."
+        r#"cargo-cultist {VERSION}
+Recover repository evidence that can change the next justified action.
+
+USAGE:
+    cargo cultist [--format text|json] [PATH]
+    cargo cultist check [--base REV] [--format text|json] [PATH]
+    cargo cultist diff [--base REV] [--format text|json] [PATH]
+    cargo cultist preflight --against REV [--format text|json] [PATH]
+    cargo cultist preflight --inventory FILE [--format text|json] [PATH]
+    cargo cultist history [--max-commits N] [--format text|json] FILE
+    cargo cultist ci-tests [--format text|json] [PATH]
+    cargo-cultist [--format text|json] [PATH]
+    cargo-cultist check [--base REV] [--format text|json] [PATH]
+    cargo-cultist diff [--base REV] [--format text|json] [PATH]
+    cargo-cultist preflight --against REV [--format text|json] [PATH]
+    cargo-cultist preflight --inventory FILE [--format text|json] [PATH]
+    cargo-cultist history [--max-commits N] [--format text|json] FILE
+    cargo-cultist ci-tests [--format text|json] [PATH]
+
+COMMANDS:
+    check      Inspect live work using the same analyzer and report model as diff.
+    diff       Inspect live work against repository evidence and precedent.
+    preflight  Compare concurrent change sets for collision evidence.
+    history    Explore which paths historically change with one file.
+    ci-tests   Compare supported CI test filters with explicit test-name evidence.
+
+Without a command, cargo-cultist inspects repository-wide test-module naming
+conventions without inventing a universal rule."#
     );
 }
 
 fn print_diff_help() {
     println!(
-        "cargo-cultist diff\n\n\
-USAGE:\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n\n\
-By default, compares the working tree (including staged changes) against HEAD.\n\
-With --base REV, compares changes from the merge base of REV and HEAD.\n\n\
-The first diff-aware check looks for added or renamed #[cfg(test)] modules and\n\
-compares their names with repository-wide and same-file precedent."
+        r#"cargo-cultist check / diff
+
+USAGE:
+    cargo cultist check [--base REV] [--format text|json] [PATH]
+    cargo cultist diff [--base REV] [--format text|json] [PATH]
+
+`check` and `diff` execute the same change analyzer and emit the same report.
+By default, the analyzer compares the working tree (including staged changes) against HEAD.
+With --base REV, it compares changes from the merge base of REV and HEAD.
+
+Supported evidence currently includes changed Rust test-module precedent and
+generated-companion analysis when the repository provides the required evidence."#
     );
 }
 
 fn print_preflight_help() {
     println!(
-        "cargo-cultist preflight\n\n\
-USAGE:\n    cargo cultist preflight --against REV [--format text|json] [PATH]\n    cargo cultist preflight --inventory FILE [--format text|json] [PATH]\n\n\
-With --against, compares current work with REV from their merge base and reports\n\
-direct path overlap as PROVEN collision evidence. Current work includes committed\n\
-branch changes plus staged and unstaged tracked changes.\n\n\
-With --inventory, admits one bounded local active-change JSON snapshot, compares\n\
-its recorded changed paths, and surfaces typed explicit coordination edges as\n\
-OBSERVED supplied evidence. Inventory mode performs no provider/network fetch."
+        r#"cargo-cultist preflight
+
+USAGE:
+    cargo cultist preflight --against REV [--format text|json] [PATH]
+    cargo cultist preflight --inventory FILE [--format text|json] [PATH]
+
+With --against, compares current work with REV from their merge base and reports
+direct path overlap as PROVEN collision evidence. Current work includes committed
+branch changes plus staged and unstaged tracked changes.
+
+With --inventory, admits one bounded local active-change JSON snapshot, compares
+its recorded changed paths, and surfaces typed explicit coordination edges as
+OBSERVED supplied evidence. Inventory mode performs no provider/network fetch."#
     );
 }
 
 fn print_history_help() {
     println!(
-        "cargo-cultist history\n\n\
-USAGE:\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n\n\
-Explores the most recent non-merge commits touching FILE and reports which\n\
-other paths changed in the same considered commits. Revert commits and broad\n\
-commits changing more than 100 paths are excluded from the first-pass cohort.\n\n\
-This is research instrumentation for temporal and negative-space precedent.\n\
-It reports associations, examples, and counterexamples without turning\n\
-co-change frequency into a correctness claim."
+        r#"cargo-cultist history
+
+USAGE:
+    cargo cultist history [--max-commits N] [--format text|json] FILE
+
+Explores the most recent non-merge commits touching FILE and reports which
+other paths changed in the same considered commits. Revert commits and broad
+commits changing more than 100 paths are excluded from the first-pass cohort.
+
+This is research instrumentation for temporal and negative-space precedent.
+It reports associations, examples, and counterexamples without turning
+co-change frequency into a correctness claim."#
     );
 }
 
 fn print_ci_tests_help() {
     println!(
-        "cargo-cultist ci-tests\n\n\
-USAGE:\n    cargo cultist ci-tests [--format text|json] [PATH]\n\n\
-Research instrumentation for CI test-filter drift. The first slice recognizes\n\
-literal single-line `cargo [ +TOOLCHAIN ] test --lib FILTER` commands in GitHub Actions and\n\
-compares FILTER with explicit #[test] function names plus declared Rust module names.\n\n\
-A zero syntax match remains a question. Macro-generated or build-time tests\n\
-are represented as UNKNOWN until authoritative test-listing evidence exists."
+        r#"cargo-cultist ci-tests
+
+USAGE:
+    cargo cultist ci-tests [--format text|json] [PATH]
+
+Research instrumentation for CI test-filter drift. The first slice recognizes
+literal single-line `cargo [ +TOOLCHAIN ] test --lib FILTER` commands in GitHub Actions and
+compares FILTER with explicit #[test] function names plus declared Rust module names.
+
+A zero syntax match remains a question. Macro-generated or build-time tests
+are represented as UNKNOWN until authoritative test-listing evidence exists."#
     );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recognizes_check_and_diff_as_the_same_change_command() {
+        assert!(is_change_command("check"));
+        assert!(is_change_command("diff"));
+        assert!(!is_change_command("history"));
+    }
 
     #[test]
     fn parses_diff_base_path_and_format() {

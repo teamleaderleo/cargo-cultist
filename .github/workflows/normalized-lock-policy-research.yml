@@ -43,18 +43,23 @@ jobs:
       - name: Check WGPU successor-DAG decisions
         run: |
           set -euo pipefail
+          policy=corpus/wgpu/wgpu-core/src/lock/rank.rs
+
           cargo run --quiet --manifest-path cultist/Cargo.toml --example normalized_lock_policy -- \
-            dag corpus/wgpu/wgpu-core/src/lock/rank.rs \
-            DEVICE_COMMAND_INDICES QUEUE_PENDING_WRITES \
+            dag "$policy" DEVICE_COMMAND_INDICES QUEUE_PENDING_WRITES \
             | tee /tmp/wgpu-allow.txt
           grep -F 'encoding: successor-dag' /tmp/wgpu-allow.txt
           grep -F 'decision: ALLOW' /tmp/wgpu-allow.txt
 
           cargo run --quiet --manifest-path cultist/Cargo.toml --example normalized_lock_policy -- \
-            dag corpus/wgpu/wgpu-core/src/lock/rank.rs \
-            QUEUE_PENDING_WRITES DEVICE_COMMAND_INDICES \
+            dag "$policy" QUEUE_PENDING_WRITES DEVICE_COMMAND_INDICES \
             | tee /tmp/wgpu-deny.txt
           grep -F 'decision: DENY' /tmp/wgpu-deny.txt
+
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example normalized_lock_policy -- \
+            dag "$policy" DEVICE_COMMAND_INDICES MISSING_RANK \
+            | tee /tmp/wgpu-unknown.txt
+          grep -F 'decision: UNKNOWN' /tmp/wgpu-unknown.txt
 
       - name: Checkout pinned asupersync
         uses: actions/checkout@v4
@@ -79,3 +84,8 @@ jobs:
             numeric "$inventory" tasks_queue config_cache \
             | tee /tmp/numeric-deny.txt
           grep -F 'decision: DENY' /tmp/numeric-deny.txt
+
+          cargo run --quiet --manifest-path cultist/Cargo.toml --example normalized_lock_policy -- \
+            numeric "$inventory" config_cache missing_lock \
+            | tee /tmp/numeric-unknown.txt
+          grep -F 'decision: UNKNOWN' /tmp/numeric-unknown.txt

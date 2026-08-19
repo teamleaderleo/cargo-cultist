@@ -1,0 +1,177 @@
+name: External corpus registry carrier
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Validate registry and resolver
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            cultist/scripts/external_dogfood.py \
+            cultist/scripts/external_dogfood_case.py
+          python cultist/scripts/external_dogfood_case.py \
+            --registry cultist/research/external-dogfood-cases.json \
+            --list > registry.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          cases = json.loads(Path("registry.json").read_text())
+          by_id = {case["id"]: case for case in cases}
+          assert by_id["smolrunner-disposable-clone-history"]["status"] == "replayable"
+          assert by_id["cloud-hypervisor-8734-current-vfio"]["status"] == "replayable"
+          assert by_id["cloud-hypervisor-8734-legacy-precedent-tension"]["status"] == "needs_pin"
+          assert by_id["stensibly-1575-guard-promotion"]["status"] == "adapter_gap"
+          assert by_id["linux-fieldwork-bestiary-675"]["status"] == "adapter_gap"
+          PY
+          set +e
+          python cultist/scripts/external_dogfood_case.py \
+            --registry cultist/research/external-dogfood-cases.json \
+            --case cloud-hypervisor-8734-legacy-precedent-tension >/tmp/blocked.out 2>/tmp/blocked.err
+          blocked_status=$?
+          set -e
+          test "$blocked_status" -eq 2
+          grep -q "needs_pin" /tmp/blocked.err
+
+      - name: Resolve current Cloud Hypervisor case
+        id: cloud
+        run: |
+          python cultist/scripts/external_dogfood_case.py \
+            --registry cultist/research/external-dogfood-cases.json \
+            --case cloud-hypervisor-8734-current-vfio \
+            --github-output "$GITHUB_OUTPUT" \
+            > cloud-case.json
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build Cultist
+        run: cargo build --release --manifest-path cultist/Cargo.toml
+
+      - name: Checkout current Cloud Hypervisor case
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.cloud.outputs.repository }}
+          ref: ${{ steps.cloud.outputs.ref }}
+          fetch-depth: ${{ steps.cloud.outputs.fetch_depth }}
+          persist-credentials: false
+          path: cloud-hypervisor
+
+      - name: Run current Cloud Hypervisor replay
+        env:
+          HISTORY_FILE: ${{ steps.cloud.outputs.history_file }}
+          HISTORY_MAX: ${{ steps.cloud.outputs.history_max }}
+          BASE: ${{ steps.cloud.outputs.base }}
+          FETCH_DEPTH: ${{ steps.cloud.outputs.fetch_depth }}
+        run: |
+          python cultist/scripts/external_dogfood.py \
+            --cultist "$PWD/cultist/target/release/cargo-cultist" \
+            --repo "$PWD/cloud-hypervisor" \
+            --output-dir "$PWD/artifacts/cloud-hypervisor" \
+            --cache-dir "$RUNNER_TEMP/cloud-hypervisor-cache" \
+            --checkout-depth "$FETCH_DEPTH" \
+            --repeat-scan \
+            --history-file "$HISTORY_FILE" \
+            --history-max "$HISTORY_MAX" \
+            --base "$BASE"
+
+      - name: Assert Cloud Hypervisor replay
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected = "439ff52249e819f41570a5f3f3bf535d4bfb3e6e"
+          root = Path("artifacts/cloud-hypervisor")
+          summary = json.loads((root / "summary.json").read_text())
+          assert summary["target"]["head"] == expected, summary["target"]
+          probes = {probe["name"]: probe for probe in summary["probes"]}
+          assert set(probes) == {"scan", "scan-warm", "ci-tests", "history", "diff"}, probes
+          for probe in probes.values():
+              assert probe["errors"] == [], probe
+          warm = probes["scan-warm"]["performance"]
+          assert warm["rust_files_parsed"] == 0, warm
+          assert warm["rust_cache_hits"] > 0, warm
+          history = json.loads((root / "history.json").read_text())
+          assert history["anchor"] == "pci/src/vfio.rs", history
+          assert history["considered_commits"] > 0, history
+          PY
+
+      - name: Checkout current Stensibly
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/stensibly
+          ref: 1cc5e00040f0267705c6e9328dde1088d65cd880
+          fetch-depth: 1
+          persist-credentials: false
+          path: stensibly
+
+      - name: Scan current Stensibly product coverage
+        run: |
+          python cultist/scripts/external_dogfood.py \
+            --cultist "$PWD/cultist/target/release/cargo-cultist" \
+            --repo "$PWD/stensibly" \
+            --output-dir "$PWD/artifacts/stensibly" \
+            --cache-dir "$RUNNER_TEMP/stensibly-cache" \
+            --checkout-depth 1
+
+      - name: Checkout current Linux Fieldwork
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/linux-fieldwork
+          ref: b835ed842299f7654afc00f4988f7586e0be63bc
+          fetch-depth: 1
+          persist-credentials: false
+          path: linux-fieldwork
+
+      - name: Scan current Linux Fieldwork product coverage
+        run: |
+          python cultist/scripts/external_dogfood.py \
+            --cultist "$PWD/cultist/target/release/cargo-cultist" \
+            --repo "$PWD/linux-fieldwork" \
+            --output-dir "$PWD/artifacts/linux-fieldwork" \
+            --cache-dir "$RUNNER_TEMP/linux-fieldwork-cache" \
+            --checkout-depth 1
+
+      - name: Assert adapter-gap controls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for name, expected_head in {
+              "stensibly": "1cc5e00040f0267705c6e9328dde1088d65cd880",
+              "linux-fieldwork": "b835ed842299f7654afc00f4988f7586e0be63bc",
+          }.items():
+              summary = json.loads(Path(f"artifacts/{name}/summary.json").read_text())
+              assert summary["target"]["head"] == expected_head, summary["target"]
+              assert summary["safety"] == {
+                  "target_build_executed": False,
+                  "target_tests_executed": False,
+                  "target_commands_executed": False,
+              }, summary["safety"]
+              for probe in summary["probes"]:
+                  assert probe["errors"] == [], probe
+          PY
+
+      - name: Upload corpus carrier receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-corpus-registry-carrier-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: error

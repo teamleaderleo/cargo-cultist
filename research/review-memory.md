@@ -91,6 +91,8 @@ That demonstrates real demand for stable cross-run concern identity. It also sup
 
 Review of PR-Agent #2424 found a GitHub-path defect in the first implementation: fingerprints were computed with `target_line_no=None` even though an absolute line coordinate already existed. That made same-text comments on different lines in one file indistinguishable to the dedup layer and could incorrectly drop a real second concern.
 
+The retained review receipt is especially useful because it is line-bound: the review comment targets `pr_agent/git_providers/github_provider.py` lines 434–462 and explicitly says the missing anchor causes distinct same-file concerns to collapse. The suggested repair is to carry the already-derived absolute/inline position into the fingerprint and test two identical bodies at different anchors.
+
 Cultist's v0 reaction is conservative:
 
 - concern identity is producer-owned, not inferred by fuzzy prose similarity;
@@ -180,11 +182,13 @@ cargo run --quiet --example review_memory \
 - missing required scope context -> need context even when the head also moved;
 - multiple prior events remain visible without latest-event inference;
 - unrelated concern keys do not create thread identity;
-- empty memory -> new thread;
+- empty memory with complete current identity -> new thread;
 - duplicate and conflicting event IDs reject;
 - reviewed/current revisions are exact lowercase 40-hex Git object IDs;
 - resolved/open outcome references obey their state contract;
 - retained PR-Agent fixture evaluates to refresh + invalid old resolution.
+
+`tests/review_memory_identity.rs` separately requires missing current repository, work, or exact head to return `need_context` even when the memory store is empty.
 
 ## Boundary and next discriminator
 
@@ -198,6 +202,8 @@ exact work identity
 scope/target coordinate
 explicit outcome / resolution evidence
 ```
+
+The #2424 counterexample makes the next target requirement concrete: path identity alone is too coarse for inline concerns. The next provider replay should carry a stable line/range or semantic-item coordinate and show how that coordinate survives or is invalidated as the patch moves.
 
 The next useful replay is a real merged PR with a review thread that changes state across at least two exact heads. That can test whether `refresh_existing_thread` reduces interruption while still reopening a concern when the patch invalidates its old resolution.
 

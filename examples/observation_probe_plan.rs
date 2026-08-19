@@ -8,14 +8,14 @@ mod applicability;
 #[path = "../src/discriminator_observation.rs"]
 mod discriminator_observation;
 #[allow(dead_code)]
-#[path = "../src/justification.rs"]
-mod justification;
-#[allow(dead_code)]
 #[path = "../src/durable_obligation.rs"]
 mod durable_obligation;
 #[allow(dead_code)]
 #[path = "../src/evidence_planner.rs"]
 mod evidence_planner;
+#[allow(dead_code)]
+#[path = "../src/justification.rs"]
+mod justification;
 #[allow(dead_code)]
 #[path = "../src/observation_frontier.rs"]
 mod observation_frontier;

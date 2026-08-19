@@ -92,7 +92,10 @@ fn selected_guard_action_does_not_yet_carry_the_oracles_operational_limit() {
         "../research/capability-demand-retirement/stensibly-convex-index-review-v1.json"
     ))
     .unwrap();
-    assert_eq!(trial.oracle.blocking_reason, "convex_index_identifier_limit");
+    assert_eq!(
+        trial.oracle.blocking_reason,
+        "convex_index_identifier_limit"
+    );
     assert_eq!(trial.oracle.max_identifier_length, 64);
     assert_eq!(trial.oracle.proposed_identifier_length, 68);
     assert_eq!(

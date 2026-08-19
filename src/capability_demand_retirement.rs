@@ -263,9 +263,7 @@ pub fn evaluate_pair(
         RetirementVerdict::InvalidEvidencePair
     } else {
         match (baseline.evaluated_outcome, treatment.evaluated_outcome) {
-            (RunOutcome::Failed, RunOutcome::Success) => {
-                RetirementVerdict::PairedRetirementSignal
-            }
+            (RunOutcome::Failed, RunOutcome::Success) => RetirementVerdict::PairedRetirementSignal,
             (RunOutcome::CorrectEscalation, RunOutcome::Success) => {
                 RetirementVerdict::CorrectEscalationThenSuccess
             }
@@ -299,7 +297,10 @@ pub fn evaluate_pair(
 
 fn validate_trial_spec(spec: &TrialSpec) -> Result<(), String> {
     if spec.schema_version != 1 {
-        return Err(format!("unsupported trial schema version {}", spec.schema_version));
+        return Err(format!(
+            "unsupported trial schema version {}",
+            spec.schema_version
+        ));
     }
     validate_id(&spec.trial_id, "trial_id")?;
     validate_id(&spec.repository, "repository")?;
@@ -551,9 +552,13 @@ fn validate_path(value: &str, field: &str) -> Result<(), String> {
         || value.starts_with("./")
         || value.ends_with('/')
         || value.contains('\\')
-        || value.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+        || value
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
     {
-        return Err(format!("{field} must be a canonical repository-relative path"));
+        return Err(format!(
+            "{field} must be a canonical repository-relative path"
+        ));
     }
     Ok(())
 }
@@ -568,7 +573,9 @@ fn validate_sha256(value: &str, field: &str) -> Result<(), String> {
 
 fn validate_hex(value: &str, length: usize, field: &str) -> Result<(), String> {
     if value.len() != length || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(format!("{field} must be exactly {length} hexadecimal characters"));
+        return Err(format!(
+            "{field} must be exactly {length} hexadecimal characters"
+        ));
     }
     Ok(())
 }

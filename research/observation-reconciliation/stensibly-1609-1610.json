@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/stensibly",
+  "candidate_id": "stensibly-worker-provider-origin-convergence",
+  "predecessor": {
+    "kind": "pull_request",
+    "number": 1609
+  },
+  "reconciler": {
+    "kind": "pull_request",
+    "number": 1610
+  },
+  "semantic_axis_id": "worker_deployed_version_observation",
+  "authoritative_source_ref": "cloudflare_provider_current",
+  "lagging_source_ref": "workers_dev_public_origin",
+  "authoritative_value_ref": "d5bf6ea5-621f-411a-9078-bd097d2e6f63",
+  "lagging_value_ref": "4c2ea61c-8f96-46c0-a3a7-7d08bf26206f",
+  "implementation_path": "scripts/worker-production-receipt.ts",
+  "test_path": "test/worker-production-receipt.test.ts",
+  "reconciler_predecessor_evidence": "Repair the production Worker receipt race exposed by the #1609 deployment: Cloudflare provider-current had already promoted the exact candidate to 100%, while the raw `workers.dev` hostname briefly served the previous Worker version. The release itself succeeded; the receipt failed on transient public-origin propagation.",
+  "authority_evidence": "- keep Cloudflare provider-current as the authoritative exact-version fence;",
+  "observation_evidence": "The failed #1609 production job deployed Worker version `d5bf6ea5-621f-411a-9078-bd097d2e6f63` at 100%. Provider deployment inventory then reported that exact version current, while the raw `workers.dev` health endpoint still returned previous version `4c2ea61c-8f96-46c0-a3a7-7d08bf26206f`. `api.stensibly.com` subsequently returned the new version. This packet treats that bounded propagation interval as convergence rather than contradiction.",
+  "convergence_evidence": "- verify each public origin up to 8 times with 5-second bounded spacing;",
+  "exhaustion_evidence": "- preserve hard failure when an origin never converges;",
+  "authority_marker": "authoritative exact-version fence",
+  "authoritative_value_marker": "d5bf6ea5-621f-411a-9078-bd097d2e6f63",
+  "lagging_value_marker": "4c2ea61c-8f96-46c0-a3a7-7d08bf26206f",
+  "convergence_marker": "up to 8 times with 5-second bounded spacing",
+  "exhaustion_marker": "hard failure when an origin never converges"
+}

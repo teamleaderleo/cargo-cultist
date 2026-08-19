@@ -3,6 +3,7 @@ enum FailureBoundary {
     None,
     SpecificationGap,
     EvidenceAbsent,
+    EvidenceMisrepresented,
     SelectionMiss,
     AttentionMiss,
     InterpretationMiss,
@@ -32,6 +33,7 @@ struct EpisodeFacts {
     specification_complete: bool,
     decisive_evidence_required: bool,
     decisive_evidence_available: bool,
+    decisive_evidence_semantics_valid: bool,
     decisive_evidence_selected: bool,
     decisive_evidence_recovered_manually: bool,
     decisive_evidence_inspected: bool,
@@ -50,6 +52,7 @@ impl EpisodeFacts {
             specification_complete: true,
             decisive_evidence_required: true,
             decisive_evidence_available: true,
+            decisive_evidence_semantics_valid: true,
             decisive_evidence_selected: true,
             decisive_evidence_recovered_manually: false,
             decisive_evidence_inspected: true,
@@ -75,6 +78,8 @@ fn assess_episode(facts: EpisodeFacts) -> EpisodeAssessment {
         FailureBoundary::SpecificationGap
     } else if facts.decisive_evidence_required && !facts.decisive_evidence_available {
         FailureBoundary::EvidenceAbsent
+    } else if facts.decisive_evidence_required && !facts.decisive_evidence_semantics_valid {
+        FailureBoundary::EvidenceMisrepresented
     } else if facts.decisive_evidence_required && !facts.decisive_evidence_selected {
         FailureBoundary::SelectionMiss
     } else if facts.decisive_evidence_required && !facts.decisive_evidence_inspected {
@@ -155,6 +160,19 @@ fn identical_failed_outcome_does_not_imply_identical_worker_skill_failure() {
     assert_ne!(
         assess_episode(selection_miss),
         assess_episode(interpretation_miss)
+    );
+}
+
+#[test]
+fn wrong_machine_semantics_are_upstream_of_worker_interpretation() {
+    let mut facts = EpisodeFacts::baseline_failure();
+    facts.decisive_evidence_semantics_valid = false;
+    facts.interpretation_matches_oracle = Some(false);
+    facts.plan_matches_contract = None;
+
+    assert_eq!(
+        assess_episode(facts).boundary,
+        FailureBoundary::EvidenceMisrepresented
     );
 }
 

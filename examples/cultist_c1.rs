@@ -9,7 +9,7 @@ use std::env;
 use std::error::Error;
 use std::io::{self, Read, Write};
 
-use compact_ir::{decode_report, encode_report};
+use compact_ir::{MAX_C1_BYTES, decode_report, encode_report};
 use finding::AnalysisReport;
 
 const USAGE: &str = "usage: cargo run --example cultist_c1 -- [--decode] < input";
@@ -29,8 +29,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         _ => return Err(USAGE.into()),
     };
 
-    let mut input = String::new();
-    io::stdin().read_to_string(&mut input)?;
+    let input = read_bounded_stdin()?;
 
     let stdout = io::stdout();
     let mut output = stdout.lock();
@@ -44,4 +43,17 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn read_bounded_stdin() -> Result<String, Box<dyn Error>> {
+    let mut bytes = Vec::new();
+    io::stdin()
+        .take((MAX_C1_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_C1_BYTES {
+        return Err(
+            format!("input exceeds research converter limit of {MAX_C1_BYTES} bytes").into(),
+        );
+    }
+    Ok(String::from_utf8(bytes)?)
 }

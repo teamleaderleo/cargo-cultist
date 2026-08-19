@@ -3,6 +3,7 @@ use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+#[cfg(test)]
 use std::process::Command;
 
 use proc_macro2::Span;

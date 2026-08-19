@@ -2,12 +2,13 @@
 
 Merged #245 gives Cultist a blindable paired behavioral-trial protocol. Merged #249 gives the temporal prior-episode path one source-owned post-selection detail packet for the Stensibly Convex index-limit guard.
 
-This experiment freezes the first paired plan that composes those two primitives.
+Merged #254 freezes the first paired plan that composes those two primitives.
 
 Human-facing references use `redirect.github.com`:
 
 - [Cultist #245](https://redirect.github.com/teamleaderleo/cultist/pull/245)
 - [Cultist #249](https://redirect.github.com/teamleaderleo/cultist/pull/249)
+- [Cultist #254](https://redirect.github.com/teamleaderleo/cultist/pull/254)
 - [Stensibly #1571](https://redirect.github.com/teamleaderleo/stensibly/pull/1571)
 - [Stensibly #1573](https://redirect.github.com/teamleaderleo/stensibly/pull/1573)
 - [Stensibly #1575](https://redirect.github.com/teamleaderleo/stensibly/pull/1575)
@@ -61,7 +62,7 @@ same-class repairs       pull_request#1571, pull_request#1573
 automatic authority      false
 ```
 
-It does not contain:
+The explicit threshold text is absent from control:
 
 ```text
 64-character identifier limit
@@ -85,21 +86,42 @@ guard source evidence
   "fails when any exceed 64 characters"
 ```
 
-No evaluator-only capability-demand oracle fields are copied:
+Evaluator-only capability-demand oracle fields remain absent from both arms:
 
 ```text
 max_identifier_length
 corrective_action
 ```
 
-The decisive rule comes from the admitted historical source detail, not the retirement oracle.
+The decisive rule comes from the admitted historical source detail, independent of the retirement oracle.
 
-Worker-visible context sizes are frozen:
+Worker-visible context sizes are frozen and asserted in the ordinary test suite:
 
 ```text
 control    1082 bytes
 treatment  1775 bytes
 ```
+
+## Post-selection contrast vs the retirement leak control
+
+This plan reuses the **task and patch** from the capability-demand retirement corpus, while asking a later question after project-memory selection has already happened.
+
+The original retirement experiment prohibited worker-visible fragments such as `#1571`, `#1573`, `64`, and `identifier limit` so it could test whether broader scoped evidence retired a capability demand.
+
+This trial intentionally starts later:
+
+```text
+both arms
+  compact selected prior episode
+  #1571 / #1573 / #1575 coordinates
+  use_accepted_guard
+  index_identifier_limit
+
+treatment only
+  exact accepted-guard operational detail
+```
+
+The isolation rule for this question is byte-level: every worker-visible byte before the selected-detail suffix is identical across arms.
 
 ## Exact fingerprints
 
@@ -129,6 +151,7 @@ The materialized worker packet omits organizer-only `context_ref` / arm identity
 
 - known plan and worker-packet fingerprints;
 - identical task/action vocabulary across arms;
+- exact 1082/1775 worker-visible context sizes;
 - treatment starts with the exact complete control context;
 - the only worker-visible suffix is selected accepted-guard detail;
 - both arms carry the same compact front and proposed patch;
@@ -149,11 +172,29 @@ treatment first action
   block_and_shorten_identifier
 ```
 
-only to verify pair mapping and `same_first_action=false`. It is not represented as a real worker result or evidence that the treatment improves behavior.
+only to verify pair mapping and `same_first_action=false`. It is never represented as a real worker result or evidence that the treatment improves behavior.
+
+## Executed semantic receipt
+
+The final semantic head merged in #254 was:
+
+```text
+head:       c9fccae8877ba6a1f684b803420943e3d1946b79
+CI:         32268660788 success
+provenance: 32268660723 success
+```
+
+That run passed formatter, strict all-target Clippy, exact fingerprint/context-isolation tests, full tests, project-memory/review/closure controls, external GitHub reference controls, the pull-request redirect guard, and normal Cultist repository/history/CI/diff dogfood. Provider-specific carriers skipped on their path filters.
+
+The frozen plan merged as:
+
+```text
+0eabd231a23dfc243c167d336b7ad9836aff2bcc
+```
+
+The durable receipt text missed that merge because the PR merged while the note-only commit was being written. This follow-up changes only this note and validates the already-merged plan on current main, which also contains the later source-owned discriminator-observation work and the capability-demand frozen-manifest binding repair.
 
 ## Execution boundary
-
-This PR freezes the plan only.
 
 Merged [#246](https://redirect.github.com/teamleaderleo/cultist/pull/246) owns capability-demand run receipts for its registered retirement protocol. This #245 plan has its own generic observation/reconciliation format and still requires genuinely independent worker executions before any descriptive treatment/control pair exists.
 
@@ -172,4 +213,4 @@ A later runner may materialize both blind packets from this registered plan and 
 
 This isolates one narrower question than capability success: does the selected source detail change what the worker does first?
 
-Refs #41 #137 #217 #219 #237 #244 #245 #246 #249.
+Refs #41 #137 #179 #187 #217 #219 #237 #244 #245 #246 #249 #254.

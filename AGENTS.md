@@ -44,6 +44,22 @@ When proposing a Cultist improvement from dogfood:
 
 A successful task can still expose a product problem. A failed task can still produce useful evidence. Neither automatically proves a general rule.
 
+## Keep external GitHub references precise without incidental backlinks
+
+Cultist frequently cites public GitHub issues, pull requests, reviews, and commits as research evidence. Separate the machine/source coordinate from the human-facing link form.
+
+In issue bodies, pull-request bodies, and comments:
+
+- use `https://redirect.github.com/OWNER/REPOSITORY/...` for external GitHub links when a backlink is unnecessary;
+- avoid cross-repository shorthand such as `OWNER/REPOSITORY#123` in conversations when it would create an incidental backlink;
+- keep same-repository references such as `#109` or `#137` short when the cross-reference is intentional.
+
+In repository files, a literal source identity such as `` `The-PR-Agent/pr-agent#2424` `` is often enough. Use a `redirect.github.com` link when human click-through is useful.
+
+Do not rewrite canonical provider evidence merely for presentation hygiene. Keep `github.com` / `api.github.com` URLs unchanged when they are API inputs, exact source receipts, parser fixtures, workflow inputs, or copied source evidence. Apply backlink avoidance at the human-facing rendering layer.
+
+See `docs/external-reference-policy.md` for the durable policy and examples.
+
 ## Dogfood the interruption
 
 When Cultist or repository evidence surfaces something during real work, preserve the consequence when it is observable. A small receipt can classify the episode without inventing a universal score:

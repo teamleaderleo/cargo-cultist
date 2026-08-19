@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "generated-companion-canonical-provenance-v1",
+  "kind": "provenance-implementation-boundary",
+  "scope": {
+    "path_prefix": "src/generated_diff.rs"
+  },
+  "reason": "Generated-companion diff analysis must consume generator ownership from the canonical proven-root implementation in src/generator_ownership.rs. It should not own a second repository-root or path-I/O parser, because the prior product copy drifted from stricter provenance semantics and had to be contained until the canonical implementation was shared.",
+  "authority": [
+    {
+      "kind": "issue",
+      "reference": "#80"
+    },
+    {
+      "kind": "pull_request",
+      "reference": "#90"
+    },
+    {
+      "kind": "pull_request",
+      "reference": "#82"
+    },
+    {
+      "kind": "research",
+      "reference": "#70"
+    }
+  ]
+}

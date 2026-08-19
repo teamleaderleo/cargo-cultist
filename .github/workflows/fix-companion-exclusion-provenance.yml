@@ -1,20 +1,20 @@
 name: Fix companion exclusion provenance
 
 on:
-  push:
-    branches: [fix/protect-companion-exclusion-receipts]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   repair:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'fix/protect-companion-exclusion-receipts' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/protect-companion-exclusion-receipts
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Install stable Rust
@@ -38,19 +38,19 @@ jobs:
           }
 
           None
-          }'''
+          }'''.replace('          ', '')
           new = '''    if packet.recent_history.pop().is_some() {
               return Some("recent_history_summary");
           }
 
           None
-          }'''
+          }'''.replace('          ', '')
           if text.count(old) != 1:
               raise SystemExit('expected exact companion-exclusion eviction block once')
           text = text.replace(old, new)
 
           marker = '''    #[test]
-          fn impossible_protected_core_fails_instead_of_hiding_unknown() {'''
+          fn impossible_protected_core_fails_instead_of_hiding_unknown() {'''.replace('          ', '')
           test = '''    #[test]
           fn companion_exclusion_receipts_are_protected_from_semantic_eviction() {
               let mut packet = synthetic_packet(usize::MAX);
@@ -65,7 +65,10 @@ jobs:
               assert!(packet.historical_companions.is_empty());
               assert_eq!(packet.companion_exclusions, expected);
               assert!(!classes.contains(&"companion_exclusion_detail"));
-              assert_eq!(packet.companion_exclusions[0].commit.sha, format!("{:<0width$}", "excluded", width = 40));
+              assert_eq!(
+                  packet.companion_exclusions[0].commit.sha,
+                  format!("{:0<40}", "excluded")
+              );
               assert_eq!(packet.companion_exclusions[0].reason, "broad commit");
           }
 
@@ -86,7 +89,7 @@ jobs:
           }
 
           #[test]
-          fn impossible_protected_core_fails_instead_of_hiding_unknown() {'''
+          fn impossible_protected_core_fails_instead_of_hiding_unknown() {'''.replace('          ', '')
           if text.count(marker) != 1:
               raise SystemExit('expected impossible-core test marker once')
           text = text.replace(marker, test)

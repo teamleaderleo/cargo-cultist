@@ -1,0 +1,218 @@
+name: GitHub project-memory lineage
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Public GitHub owner/repository
+        required: true
+        default: The-PR-Agent/pr-agent
+        type: string
+      anchor_kind:
+        description: GitHub artifact kind
+        required: true
+        default: issue
+        type: choice
+        options:
+          - issue
+          - pull_request
+      anchor_number:
+        description: Issue or pull-request number to use as the lineage anchor
+        required: true
+        default: "2627"
+        type: string
+      max_depth:
+        description: Maximum explicit relationship depth, 0 through 3
+        required: true
+        default: "2"
+        type: string
+      max_artifacts:
+        description: Maximum admitted artifacts including anchor, 1 through 32
+        required: true
+        default: "8"
+        type: string
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lineage:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'research/project-memory-lineage'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Run collector regression controls
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/project_memory_github_issue.py \
+            scripts/project_memory_github_lineage.py \
+            scripts/project_memory_github_lineage_test.py
+          python scripts/project_memory_github_lineage_test.py
+
+      - name: Resolve carrier inputs
+        id: carrier
+        env:
+          INPUT_REPOSITORY: ${{ inputs.repository }}
+          INPUT_ANCHOR_KIND: ${{ inputs.anchor_kind }}
+          INPUT_ANCHOR_NUMBER: ${{ inputs.anchor_number }}
+          INPUT_MAX_DEPTH: ${{ inputs.max_depth }}
+          INPUT_MAX_ARTIFACTS: ${{ inputs.max_artifacts }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            repository="The-PR-Agent/pr-agent"
+            anchor_kind="issue"
+            anchor_number="2627"
+            max_depth="2"
+            max_artifacts="8"
+            carrier="true"
+          else
+            repository="$INPUT_REPOSITORY"
+            anchor_kind="$INPUT_ANCHOR_KIND"
+            anchor_number="$INPUT_ANCHOR_NUMBER"
+            max_depth="$INPUT_MAX_DEPTH"
+            max_artifacts="$INPUT_MAX_ARTIFACTS"
+            carrier="false"
+          fi
+          {
+            echo "repository=$repository"
+            echo "anchor_kind=$anchor_kind"
+            echo "anchor_number=$anchor_number"
+            echo "max_depth=$max_depth"
+            echo "max_artifacts=$max_artifacts"
+            echo "carrier=$carrier"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect bounded explicit lineage
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ steps.carrier.outputs.repository }}
+          TARGET_KIND: ${{ steps.carrier.outputs.anchor_kind }}
+          TARGET_NUMBER: ${{ steps.carrier.outputs.anchor_number }}
+          MAX_DEPTH: ${{ steps.carrier.outputs.max_depth }}
+          MAX_ARTIFACTS: ${{ steps.carrier.outputs.max_artifacts }}
+        run: |
+          set -euo pipefail
+          if [[ "$TARGET_KIND" == "pull_request" ]]; then
+            anchor=(--anchor-pr "$TARGET_NUMBER")
+          elif [[ "$TARGET_KIND" == "issue" ]]; then
+            anchor=(--anchor-issue "$TARGET_NUMBER")
+          else
+            echo "unsupported anchor kind: $TARGET_KIND" >&2
+            exit 1
+          fi
+          python scripts/project_memory_github_lineage.py \
+            --repository "$TARGET_REPOSITORY" \
+            "${anchor[@]}" \
+            --max-depth "$MAX_DEPTH" \
+            --max-artifacts "$MAX_ARTIFACTS" \
+            --output project-memory-lineage.json \
+            --receipt-output project-memory-lineage-receipt.json \
+            > /tmp/project-memory-lineage.stdout
+
+      - name: Validate with offline packet reader
+        run: |
+          cargo run --quiet --example project_memory_packet \
+            < project-memory-lineage.json \
+            > project-memory-lineage-summary.json
+
+      - name: Assert PR-Agent closed-issue carrier
+        if: steps.carrier.outputs.carrier == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packet = json.loads(Path("project-memory-lineage.json").read_text())
+          receipt = json.loads(Path("project-memory-lineage-receipt.json").read_text())
+
+          assert packet["repository"] == "The-PR-Agent/pr-agent", packet
+          assert packet["anchor"] == {"kind": "issue", "number": 2627}, packet
+          assert [a["reference"] for a in packet["artifacts"]] == [
+              {"kind": "issue", "number": 2627},
+              {"kind": "issue", "number": 2573},
+          ], packet
+          assert [a["state"] for a in packet["artifacts"]] == ["closed", "closed"], packet
+          assert packet["edges"] == [
+              {
+                  "from": {"kind": "issue", "number": 2627},
+                  "relation": "follow_up_to",
+                  "to": {"kind": "issue", "number": 2573},
+                  "evidence": (
+                      "Follow-up to #2573: releases since 0.39.0 (v0.40.0 through v0.42.0) "
+                      "are still not on PyPI, so `pip install pr-agent` succeeds but silently "
+                      "installs 0.39.0, now three releases behind."
+                  ),
+              }
+          ], packet
+          assert receipt["artifact_count"] == 2, receipt
+          assert receipt["edge_count"] == 1, receipt
+          assert receipt["depth_frontier"] == [], receipt
+          PY
+
+      - name: Write job summary
+        env:
+          TARGET_REPOSITORY: ${{ steps.carrier.outputs.repository }}
+          TARGET_KIND: ${{ steps.carrier.outputs.anchor_kind }}
+          TARGET_NUMBER: ${{ steps.carrier.outputs.anchor_number }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          packet_path = Path("project-memory-lineage.json")
+          packet = json.loads(packet_path.read_text())
+          receipt = json.loads(Path("project-memory-lineage-receipt.json").read_text())
+          digest = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## GitHub project-memory lineage\n\n")
+              out.write(
+                  f"Anchor: `{os.environ['TARGET_REPOSITORY']} "
+                  f"{os.environ['TARGET_KIND']} #{os.environ['TARGET_NUMBER']}`\n\n"
+              )
+              out.write(
+                  f"Artifacts: **{receipt['artifact_count']}** · "
+                  f"explicit edges: **{receipt['edge_count']}** · "
+                  f"max depth: **{receipt['requested_max_depth']}**\n\n"
+              )
+              out.write(f"Packet SHA-256: `{digest}`\n\n")
+              out.write("| source | relation | target |\n|---|---|---|\n")
+              for edge in packet["edges"]:
+                  source = edge["from"]
+                  target = edge["to"]
+                  out.write(
+                      f"| {source['kind']} #{source['number']} | {edge['relation']} | "
+                      f"{target['kind']} #{target['number']} |\n"
+                  )
+              out.write("\nUnexpanded depth frontier:\n\n")
+              if receipt["depth_frontier"]:
+                  for artifact in receipt["depth_frontier"]:
+                      out.write(f"- `{artifact['kind']} #{artifact['number']}`\n")
+              else:
+                  out.write("- empty\n")
+              out.write(
+                  "\nOnly explicitly admitted same-repository relationships create edges. "
+                  "Chronology and title similarity create none.\n"
+              )
+          PY
+
+      - name: Upload lineage receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-memory-lineage-${{ github.run_id }}
+          path: |
+            project-memory-lineage.json
+            project-memory-lineage-receipt.json
+            project-memory-lineage-summary.json
+          if-no-files-found: error

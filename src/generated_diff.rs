@@ -3,9 +3,9 @@ use std::error::Error;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 #[cfg(test)]
 use std::process::Command;
+use std::process::Stdio;
 use std::str::FromStr;
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};

@@ -1,3 +1,4 @@
+mod active_changes;
 mod ci_test_filters;
 mod diff;
 mod finding;
@@ -14,6 +15,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::process;
 
+use active_changes::build_active_inventory_analysis_report;
 use ci_test_filters::{analyze_ci_test_filters, build_ci_test_filter_analysis};
 use diff::{build_diff_analysis_report, git_repo_root};
 use finding::AnalysisReport;
@@ -42,8 +44,14 @@ struct DiffArgs {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+enum PreflightSource {
+    Against(String),
+    Inventory(PathBuf),
+}
+
+#[derive(Debug, Eq, PartialEq)]
 struct PreflightArgs {
-    against: String,
+    source: PreflightSource,
     path: Option<PathBuf>,
     format: OutputFormat,
 }
@@ -129,7 +137,7 @@ fn run_preflight(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     }
 
     let PreflightArgs {
-        against,
+        source,
         path,
         format,
     } = parse_preflight_args(args)?;
@@ -149,7 +157,27 @@ fn run_preflight(args: Vec<String>) -> Result<(), Box<dyn Error>> {
         .map_err(|_| "preflight path is outside the resolved Git repository")?;
     let scope = (!relative.as_os_str().is_empty()).then(|| relative.to_path_buf());
 
-    let analysis = build_preflight_analysis_report(&root, &against, scope.as_deref())?;
+    let analysis = match source {
+        PreflightSource::Against(against) => {
+            build_preflight_analysis_report(&root, &against, scope.as_deref())?
+        }
+        PreflightSource::Inventory(inventory) => {
+            let inventory = if inventory.is_absolute() {
+                inventory
+            } else {
+                env::current_dir()?.join(inventory)
+            };
+            let inventory = inventory.canonicalize()?;
+            if !inventory.is_file() {
+                return Err(format!(
+                    "active-change inventory is not a file: {}",
+                    inventory.display()
+                )
+                .into());
+            }
+            build_active_inventory_analysis_report(&root, &inventory, scope.as_deref())?
+        }
+    };
     emit_analysis(&analysis, format)
 }
 
@@ -309,6 +337,7 @@ fn parse_diff_args(args: Vec<String>) -> Result<DiffArgs, Box<dyn Error>> {
 
 fn parse_preflight_args(args: Vec<String>) -> Result<PreflightArgs, Box<dyn Error>> {
     let mut against = None;
+    let mut inventory = None;
     let mut path = None;
     let mut format = OutputFormat::Text;
     let mut args = args.into_iter();
@@ -320,6 +349,14 @@ fn parse_preflight_args(args: Vec<String>) -> Result<PreflightArgs, Box<dyn Erro
                     return Err("`--against` may only be specified once".into());
                 }
                 against = Some(args.next().ok_or("`--against` requires a Git revision")?);
+            }
+            "--inventory" => {
+                if inventory.is_some() {
+                    return Err("`--inventory` may only be specified once".into());
+                }
+                inventory = Some(PathBuf::from(
+                    args.next().ok_or("`--inventory` requires a JSON file")?,
+                ));
             }
             "--format" => {
                 format = parse_output_format(
@@ -344,8 +381,21 @@ fn parse_preflight_args(args: Vec<String>) -> Result<PreflightArgs, Box<dyn Erro
         }
     }
 
+    let source = match (against, inventory) {
+        (Some(against), None) => PreflightSource::Against(against),
+        (None, Some(inventory)) => PreflightSource::Inventory(inventory),
+        (Some(_), Some(_)) => {
+            return Err("preflight accepts only one of `--against REV` or `--inventory FILE`".into());
+        }
+        (None, None) => {
+            return Err(
+                "preflight requires exactly one of `--against REV` or `--inventory FILE`".into(),
+            );
+        }
+    };
+
     Ok(PreflightArgs {
-        against: against.ok_or("preflight requires `--against REV`")?,
+        source,
         path,
         format,
     })
@@ -414,7 +464,7 @@ fn print_help() {
     println!(
         "cargo-cultist {VERSION}\n\
 Repository-aware analysis for Rust codebases.\n\n\
-USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist preflight --against REV [--format text|json] [PATH]\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n    cargo cultist ci-tests [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist preflight --against REV [--format text|json] [PATH]\n    cargo-cultist history [--max-commits N] [--format text|json] FILE\n    cargo-cultist ci-tests [--format text|json] [PATH]\n\n\
+USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist preflight --against REV [--format text|json] [PATH]\n    cargo cultist preflight --inventory FILE [--format text|json] [PATH]\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n    cargo cultist ci-tests [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist preflight --against REV [--format text|json] [PATH]\n    cargo-cultist preflight --inventory FILE [--format text|json] [PATH]\n    cargo-cultist history [--max-commits N] [--format text|json] FILE\n    cargo-cultist ci-tests [--format text|json] [PATH]\n\n\
 COMMANDS:\n    diff       Inspect changed Rust code against repository precedent.\n    preflight  Compare concurrent change sets for collision evidence.\n    history    Explore which paths historically change with one file.\n    ci-tests   Compare supported CI test filters with explicit test-name evidence.\n\n\
 Without a command, cargo-cultist inspects repository-wide test-module naming\n\
 conventions without inventing a universal rule."
@@ -435,12 +485,13 @@ compares their names with repository-wide and same-file precedent."
 fn print_preflight_help() {
     println!(
         "cargo-cultist preflight\n\n\
-USAGE:\n    cargo cultist preflight --against REV [--format text|json] [PATH]\n\n\
-Compares current work with REV from their merge base and reports direct path\n\
-overlap as PROVEN collision evidence. Current work includes committed branch\n\
-changes plus staged and unstaged tracked changes.\n\n\
-Different paths remain semantically UNKNOWN in this first slice; future\n\
-enrichments can add generated, historical, policy, and behavioral evidence."
+USAGE:\n    cargo cultist preflight --against REV [--format text|json] [PATH]\n    cargo cultist preflight --inventory FILE [--format text|json] [PATH]\n\n\
+With --against, compares current work with REV from their merge base and reports\n\
+direct path overlap as PROVEN collision evidence. Current work includes committed\n\
+branch changes plus staged and unstaged tracked changes.\n\n\
+With --inventory, admits one bounded local active-change JSON snapshot, compares\n\
+its recorded changed paths, and surfaces typed explicit coordination edges as\n\
+OBSERVED supplied evidence. Inventory mode performs no provider/network fetch."
     );
 }
 
@@ -500,14 +551,49 @@ mod tests {
         ])
         .unwrap();
 
-        assert_eq!(parsed.against, "other-agent");
+        assert_eq!(
+            parsed.source,
+            PreflightSource::Against("other-agent".to_string())
+        );
         assert_eq!(parsed.path, Some(PathBuf::from("src")));
         assert_eq!(parsed.format, OutputFormat::Json);
     }
 
     #[test]
-    fn rejects_preflight_without_against() {
+    fn parses_preflight_inventory_path_and_format() {
+        let parsed = parse_preflight_args(vec![
+            "--inventory".to_string(),
+            "active.json".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+            "src".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            parsed.source,
+            PreflightSource::Inventory(PathBuf::from("active.json"))
+        );
+        assert_eq!(parsed.path, Some(PathBuf::from("src")));
+        assert_eq!(parsed.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn rejects_preflight_without_source() {
         assert!(parse_preflight_args(vec![]).is_err());
+    }
+
+    #[test]
+    fn rejects_preflight_with_both_sources() {
+        assert!(
+            parse_preflight_args(vec![
+                "--against".to_string(),
+                "other".to_string(),
+                "--inventory".to_string(),
+                "active.json".to_string(),
+            ])
+            .is_err()
+        );
     }
 
     #[test]

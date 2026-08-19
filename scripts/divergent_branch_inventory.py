@@ -10,10 +10,32 @@ import subprocess
 import sys
 from urllib.parse import quote
 
-from active_work_heads_up_ci import build_inventory
+from active_work_heads_up_ci import build_inventory, graphql, page_info
 
 BASE_REF = "origin/main"
 MAX_BRANCH_CANDIDATES = 20
+MAX_RECENT_CLOSED_PRS = 100
+
+RECENT_CLOSED_PR_HEADS_QUERY = r"""
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(
+      states: [CLOSED, MERGED]
+      first: 100
+      orderBy: {field: UPDATED_AT, direction: DESC}
+    ) {
+      nodes {
+        number
+        headRefName
+        headRefOid
+        mergedAt
+        closedAt
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
 
 
 def git_text(args: list[str]) -> str:
@@ -55,6 +77,34 @@ def unmerged_remote_refs() -> set[str]:
             ]
         )
     )
+
+
+def recent_closed_pr_heads(repo: str) -> tuple[set[tuple[str, str]], bool]:
+    owner, name = repo.split("/", 1)
+    result = graphql(
+        RECENT_CLOSED_PR_HEADS_QUERY,
+        {"owner": owner, "name": name},
+    )
+    data = result.get("data")
+    repository = data.get("repository") if isinstance(data, dict) else None
+    pull_requests = (
+        repository.get("pullRequests") if isinstance(repository, dict) else None
+    )
+    if not isinstance(pull_requests, dict):
+        raise RuntimeError("could not retrieve recent closed pull requests")
+    nodes = pull_requests.get("nodes")
+    if not isinstance(nodes, list):
+        raise RuntimeError("recent closed pull-request connection is missing nodes")
+
+    heads = {
+        (str(node["headRefName"]), str(node["headRefOid"]))
+        for node in nodes
+        if isinstance(node, dict)
+        and node.get("headRefName")
+        and node.get("headRefOid")
+    }
+    truncated, _cursor = page_info(pull_requests)
+    return heads, truncated
 
 
 def changed_paths(ref: str) -> list[str]:
@@ -103,10 +153,12 @@ def build_combined_inventory(repo: str, current_number: int) -> dict[str, object
         for work in active_work
         if isinstance(work, dict) and work.get("kind") == "pull_request"
     }
+    retired_exact_heads, retired_window_truncated = recent_closed_pr_heads(repo)
 
     metadata = remote_ref_metadata()
     unmerged = unmerged_remote_refs()
     candidates: list[tuple[str, str, str]] = []
+    retired_exact_branch_heads_excluded = 0
     for ref in unmerged:
         if ref in {"origin/HEAD", BASE_REF} or not ref.startswith("origin/"):
             continue
@@ -117,6 +169,9 @@ def build_combined_inventory(repo: str, current_number: int) -> dict[str, object
         if values is None:
             continue
         sha, committed_at = values
+        if (branch, sha) in retired_exact_heads:
+            retired_exact_branch_heads_excluded += 1
+            continue
         candidates.append((ref, sha, committed_at))
 
     candidates.sort(key=lambda item: (item[2], item[0]), reverse=True)
@@ -129,17 +184,27 @@ def build_combined_inventory(repo: str, current_number: int) -> dict[str, object
     ]
     branch_work = [work for work in branch_work if work["changed_paths"]]
 
-    inventory["source"] = "github_pull_requests+git_remote_divergent_branches"
+    inventory["source"] = (
+        "github_pull_requests+git_remote_divergent_branches+recent_closed_pr_heads"
+    )
     active_work.extend(branch_work)
     inventory["adapter_receipts"] = {
         "branch_base_ref": BASE_REF,
         "open_pr_heads_excluded": len(open_pr_heads),
+        "recent_closed_pr_heads_seen": len(retired_exact_heads),
+        "recent_closed_pr_head_limit": MAX_RECENT_CLOSED_PRS,
+        "recent_closed_pr_head_window_truncated": retired_window_truncated,
+        "retired_exact_branch_heads_excluded": retired_exact_branch_heads_excluded,
         "unmerged_non_pr_branch_candidates": len(candidates),
         "branch_candidates_returned": len(branch_work),
         "branch_candidates_omitted": omitted,
         "max_branch_candidates": MAX_BRANCH_CANDIDATES,
         "selection": "most recent commit timestamp first",
         "branch_name_similarity_used": False,
+        "retirement_rule": (
+            "exclude branch only when current branch name+head SHA exactly matches "
+            "a recent closed/merged PR head; an advanced head becomes eligible again"
+        ),
     }
     return inventory
 
@@ -159,7 +224,8 @@ def main() -> None:
         "branch inventory: "
         f"{receipts['branch_candidates_returned']} returned, "
         f"{receipts['branch_candidates_omitted']} omitted, "
-        f"{receipts['open_pr_heads_excluded']} open-PR head(s) excluded"
+        f"{receipts['open_pr_heads_excluded']} open-PR head(s) excluded, "
+        f"{receipts['retired_exact_branch_heads_excluded']} exact closed-PR head(s) retired"
     )
 
 

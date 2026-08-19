@@ -75,6 +75,8 @@ fn plan_changes_only_worker_visible_selected_detail_after_the_compact_front() {
     );
     assert_eq!(control.task_instruction, treatment.task_instruction);
     assert_eq!(control.allowed_first_actions, treatment.allowed_first_actions);
+    assert_eq!(control.context.as_bytes().len(), 1_082);
+    assert_eq!(treatment.context.as_bytes().len(), 1_775);
 
     assert!(treatment.context.starts_with(&control.context));
     let suffix = treatment.context.strip_prefix(&control.context).unwrap();

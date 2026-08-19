@@ -20,6 +20,12 @@ struct CargoAlias {
     command: String,
 }
 
+#[derive(Debug, Default)]
+struct PathBindings {
+    repository_roots: BTreeSet<String>,
+    paths: BTreeMap<String, String>,
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("rust-generator-ownership: {error}");
@@ -102,7 +108,12 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
 
     println!("\nEVIDENCE BOUNDARY");
-    println!("  A read/write pair is derived from literal repository paths in one Rust function.");
+    println!(
+        "  A read/write pair is derived from literal paths joined to a binding whose repository-root provider is explicitly recognized."
+    );
+    println!(
+        "  The first provider vocabulary is deliberately narrow; unresolved path roots are omitted instead of inferred from variable names."
+    );
     println!(
         "  Cargo aliases are reported independently when their command names the generator package."
     );
@@ -130,7 +141,8 @@ fn collect_function_io(file: &File) -> Vec<FunctionIo> {
 fn collect_one_function(function: &ItemFn) -> FunctionIo {
     let bindings = collect_path_bindings(function);
     let mut visitor = IoVisitor {
-        bindings: &bindings,
+        repository_roots: &bindings.repository_roots,
+        bindings: &bindings.paths,
         reads: BTreeSet::new(),
         writes: BTreeSet::new(),
     };
@@ -142,8 +154,8 @@ fn collect_one_function(function: &ItemFn) -> FunctionIo {
     }
 }
 
-fn collect_path_bindings(function: &ItemFn) -> BTreeMap<String, String> {
-    let mut bindings = BTreeMap::new();
+fn collect_path_bindings(function: &ItemFn) -> PathBindings {
+    let mut bindings = PathBindings::default();
     for stmt in &function.block.stmts {
         let Stmt::Local(local) = stmt else {
             continue;
@@ -154,14 +166,20 @@ fn collect_path_bindings(function: &ItemFn) -> BTreeMap<String, String> {
         let Some(init) = &local.init else {
             continue;
         };
-        if let Some(path) = literal_join_path(&init.expr) {
-            bindings.insert(pat.ident.to_string(), path);
+        let name = pat.ident.to_string();
+        if expression_uses_repository_root_provider(&init.expr) {
+            bindings.repository_roots.insert(name);
+            continue;
+        }
+        if let Some(path) = literal_join_path(&init.expr, &bindings.repository_roots) {
+            bindings.paths.insert(name, path);
         }
     }
     bindings
 }
 
 struct IoVisitor<'a> {
+    repository_roots: &'a BTreeSet<String>,
     bindings: &'a BTreeMap<String, String>,
     reads: BTreeSet<String>,
     writes: BTreeSet<String>,
@@ -171,7 +189,7 @@ impl<'ast> Visit<'ast> for IoVisitor<'_> {
     fn visit_expr_call(&mut self, call: &'ast ExprCall) {
         if let Some(kind) = fs_call_kind(&call.func)
             && let Some(first) = call.args.first()
-            && let Some(path) = resolve_path_expr(first, self.bindings)
+            && let Some(path) = resolve_path_expr(first, self.repository_roots, self.bindings)
         {
             match kind {
                 IoKind::Read => {
@@ -207,11 +225,17 @@ fn fs_call_kind(expr: &Expr) -> Option<IoKind> {
     }
 }
 
-fn resolve_path_expr(expr: &Expr, bindings: &BTreeMap<String, String>) -> Option<String> {
+fn resolve_path_expr(
+    expr: &Expr,
+    repository_roots: &BTreeSet<String>,
+    bindings: &BTreeMap<String, String>,
+) -> Option<String> {
     match expr {
-        Expr::Reference(reference) => resolve_path_expr(&reference.expr, bindings),
-        Expr::Paren(paren) => resolve_path_expr(&paren.expr, bindings),
-        Expr::MethodCall(call) => literal_join_path_from_call(call),
+        Expr::Reference(reference) => {
+            resolve_path_expr(&reference.expr, repository_roots, bindings)
+        }
+        Expr::Paren(paren) => resolve_path_expr(&paren.expr, repository_roots, bindings),
+        Expr::MethodCall(call) => literal_join_path_from_call(call, repository_roots),
         Expr::Path(path) if path.path.segments.len() == 1 => bindings
             .get(&path.path.segments[0].ident.to_string())
             .cloned(),
@@ -219,15 +243,21 @@ fn resolve_path_expr(expr: &Expr, bindings: &BTreeMap<String, String>) -> Option
     }
 }
 
-fn literal_join_path(expr: &Expr) -> Option<String> {
+fn literal_join_path(expr: &Expr, repository_roots: &BTreeSet<String>) -> Option<String> {
     let Expr::MethodCall(call) = expr else {
         return None;
     };
-    literal_join_path_from_call(call)
+    literal_join_path_from_call(call, repository_roots)
 }
 
-fn literal_join_path_from_call(call: &ExprMethodCall) -> Option<String> {
-    if call.method != "join" || call.args.len() != 1 {
+fn literal_join_path_from_call(
+    call: &ExprMethodCall,
+    repository_roots: &BTreeSet<String>,
+) -> Option<String> {
+    if call.method != "join"
+        || call.args.len() != 1
+        || !expr_is_repository_root_binding(&call.receiver, repository_roots)
+    {
         return None;
     }
     let Expr::Lit(ExprLit {
@@ -238,6 +268,49 @@ fn literal_join_path_from_call(call: &ExprMethodCall) -> Option<String> {
         return None;
     };
     Some(normalize_repo_path(&value.value()))
+}
+
+fn expr_is_repository_root_binding(expr: &Expr, repository_roots: &BTreeSet<String>) -> bool {
+    match expr {
+        Expr::Reference(reference) => {
+            expr_is_repository_root_binding(&reference.expr, repository_roots)
+        }
+        Expr::Paren(paren) => expr_is_repository_root_binding(&paren.expr, repository_roots),
+        Expr::Path(path) if path.path.segments.len() == 1 => {
+            repository_roots.contains(&path.path.segments[0].ident.to_string())
+        }
+        _ => false,
+    }
+}
+
+fn expression_uses_repository_root_provider(expr: &Expr) -> bool {
+    let mut visitor = RepositoryRootProviderVisitor { found: false };
+    visitor.visit_expr(expr);
+    visitor.found
+}
+
+struct RepositoryRootProviderVisitor {
+    found: bool,
+}
+
+impl<'ast> Visit<'ast> for RepositoryRootProviderVisitor {
+    fn visit_expr_call(&mut self, call: &'ast ExprCall) {
+        if is_repository_root_provider(&call.func) {
+            self.found = true;
+            return;
+        }
+        visit::visit_expr_call(self, call);
+    }
+}
+
+fn is_repository_root_provider(expr: &Expr) -> bool {
+    let Expr::Path(path) = expr else {
+        return false;
+    };
+    let segments: Vec<_> = path.path.segments.iter().collect();
+    segments.len() >= 2
+        && segments[segments.len() - 2].ident == "project_root"
+        && segments[segments.len() - 1].ident == "get_project_root"
 }
 
 fn normalize_repo_path(value: &str) -> String {
@@ -366,10 +439,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extracts_literal_join_paths_from_read_and_write_calls() {
+    fn extracts_literal_join_paths_from_proven_repository_root() {
         let file = syn::parse_file(
             r#"
             fn generate() -> std::io::Result<()> {
+                let root = project_root::get_project_root()
+                    .map_err(|error| std::io::Error::other(error.to_string()))?;
                 let source = std::fs::read_to_string(root.join("src/rules.rs"))?;
                 let target = root.join("src/generated/rules.rs");
                 std::fs::write(&target, source)?;
@@ -385,13 +460,52 @@ mod tests {
     }
 
     #[test]
+    fn ignores_unproven_join_receivers_even_when_named_root() {
+        let file = syn::parse_file(
+            r#"
+            fn generate(root: std::path::PathBuf) -> std::io::Result<()> {
+                let source = std::fs::read_to_string(root.join("src/rules.rs"))?;
+                let target = root.join("src/generated/rules.rs");
+                std::fs::write(&target, source)?;
+                Ok(())
+            }
+            "#,
+        )
+        .unwrap();
+        let functions = collect_function_io(&file);
+        assert!(functions[0].reads.is_empty());
+        assert!(functions[0].writes.is_empty());
+    }
+
+    #[test]
+    fn ignores_collection_and_string_joins_as_repository_paths() {
+        let file = syn::parse_file(
+            r#"
+            fn generate(parts: Vec<&str>, names: Vec<&str>) -> std::io::Result<()> {
+                let separator = parts.join("/");
+                std::fs::read_to_string(&separator)?;
+                let display = names.join("generated/output.rs");
+                std::fs::write(&display, "x")?;
+                Ok(())
+            }
+            "#,
+        )
+        .unwrap();
+        let functions = collect_function_io(&file);
+        assert!(functions[0].reads.is_empty());
+        assert!(functions[0].writes.is_empty());
+    }
+
+    #[test]
     fn ignores_non_fs_calls_with_similar_names() {
         let file = syn::parse_file(
             r#"
-            fn generate() {
+            fn generate() -> std::io::Result<()> {
+                let root = project_root::get_project_root()?;
                 let target = root.join("src/generated/rules.rs");
                 custom::write(&target, "x");
                 parser::read(root.join("src/rules.rs"));
+                Ok(())
             }
             "#,
         )
@@ -406,6 +520,7 @@ mod tests {
         let file = syn::parse_file(
             r#"
             fn generate(name: &str) -> std::io::Result<()> {
+                let root = project_root::get_project_root()?;
                 let target = root.join(name);
                 std::fs::write(&target, "x")?;
                 Ok(())

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/cultist",
+  "revision": "b3e80cfa7e0e238bb6f4aae9fd241d9d3ea4fef9",
+  "task": "issue-41-temporal-precedent-behavioral-followup",
+  "evidence_kind": "prior-episode-front-composition",
+  "evidence_ref": "github:pull/237",
+  "delivery": "surfaced",
+  "consulted": true,
+  "outcome": "changed_next_action",
+  "action": "stop adding isolated temporal episode species and move to behavioral-effect evaluation of selected prior-episode actions"
+}

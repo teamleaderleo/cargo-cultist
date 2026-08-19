@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "rename-lineage-fixture-v1",
+  "kind": "rename-lineage-policy",
+  "scope": {
+    "path_prefix": "research/decision-memory-fixtures/rename/original.rs"
+  },
+  "reason": "This reviewed fixture decision should remain discoverable after the scoped file is renamed, with Git file-lineage provenance exposed explicitly.",
+  "authority": [
+    {
+      "kind": "research",
+      "reference": "rename-lineage-fixture"
+    }
+  ]
+}

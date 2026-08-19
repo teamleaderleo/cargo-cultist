@@ -62,7 +62,7 @@ The research evaluator classifies:
 The selected source requirement is bound to the exact phrase:
 
 ```text
-ordinary conversation comment
+required ordinary conversation comment
 ```
 
 ## Retained memory
@@ -71,14 +71,14 @@ ordinary conversation comment
 
 `research/proof-surface/stensibly-1515.json` preserves the source excerpts plus the exact provider event receipt.
 
-Expected evaluation:
+The retained evaluation is:
 
 ```text
-status                  observed_proof_surface_mismatch
-behavior_passed         true
-required artifact       issue_conversation_comment
-produced artifact       pull_request_review
-proof_valid             false
+status                     observed_proof_surface_mismatch
+behavior_passed            true
+required artifact          issue_conversation_comment
+produced artifact          pull_request_review
+proof_valid                false
 automatic behavior failure false
 automatic acceptance       false
 ```
@@ -103,11 +103,11 @@ The ordinary Rust suite requires:
 1. the retained real event classifies as `pull_request_review` even though its body says “conversation comment”;
 2. an exact `issuecomment-<id>` event with no review state satisfies the required surface;
 3. missing behavior-success marker stays `behavior_evidence_missing`;
-4. retained source excerpt lacking the ordinary-comment requirement stays `requirement_evidence_missing`;
+4. retained source excerpt lacking the required ordinary-comment phrase stays `requirement_evidence_missing`;
 5. missing provider-event body marker stays `provider_event_body_missing`;
 6. URL/ID mismatch stays `produced_artifact_unclassifiable`;
 7. provider event bound to another PR stays unclassifiable;
-8. required artifact kind and canonical source marker must agree;
+8. required artifact kind and canonical `required ...` source marker must agree;
 9. invented source excerpts reject against retained project-memory text;
 10. claim input is bounded before JSON parsing.
 
@@ -118,6 +118,44 @@ cargo run --example proof_surface -- \
   research/project-memory/stensibly-1515.json \
   research/proof-surface/stensibly-1515.json
 ```
+
+## Executed current-main receipt
+
+The formatted semantic code + retained evidence head was:
+
+```text
+head:       f4b2f389dcd498d5a188ef0f7c1f37e9d1199912
+main:       be09462db0f4df2d002bc90d7c5ccc042f737092
+merge view: 8ba904ed75ded2a7a03db003649aa96116bdd6b5
+```
+
+GitHub Actions receipt:
+
+```text
+CI run:                    32261351691  success
+Generated provenance run:  32261351575  success
+```
+
+The merge-view CI passed:
+
+```text
+rustfmt
+all-target Clippy with -D warnings
+project-memory lineage controls
+GitHub review-memory adapter controls
+GitHub issue-closure adapter controls
+external GitHub reference controls
+full Rust tests
+repository scan text + JSON dogfood
+bounded history text + JSON dogfood
+CI test-filter text + JSON dogfood
+positive/control CI-filter fixtures
+pull-request diff text + JSON dogfood
+```
+
+The retained proof-surface tests passed all ten adversarial controls above. The existing live GitHub review-memory carrier skipped on its own path filter, so this replay consumed retained evidence only and performed no provider fetch.
+
+The only change after this semantic receipt is the durable receipt prose in this research note.
 
 ## Product direction
 

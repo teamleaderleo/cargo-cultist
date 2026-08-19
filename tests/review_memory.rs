@@ -7,9 +7,9 @@ mod review_memory;
 
 use applicability::{ApplicabilityStatus, EvaluationContext, PathScope, PathScopeMode};
 use review_memory::{
-    CurrentConcern, ReviewMemoryMatchKind, ReviewMemoryQuery, ReviewMemoryRecord, ReviewOutcome,
-    ReviewSubject, ReviewThreadDisposition, REVIEW_MEMORY_SCHEMA_VERSION, evaluate_review_memory,
-    parse_review_memory_query,
+    CurrentConcern, REVIEW_MEMORY_SCHEMA_VERSION, ReviewMemoryMatchKind, ReviewMemoryQuery,
+    ReviewMemoryRecord, ReviewOutcome, ReviewSubject, ReviewThreadDisposition,
+    evaluate_review_memory, parse_review_memory_query,
 };
 
 const HEAD_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -81,7 +81,10 @@ fn same_exact_head_reuses_current_thread() {
         evaluation.disposition,
         ReviewThreadDisposition::ReuseCurrentThread
     );
-    assert_eq!(evaluation.matches[0].match_kind, ReviewMemoryMatchKind::Current);
+    assert_eq!(
+        evaluation.matches[0].match_kind,
+        ReviewMemoryMatchKind::Current
+    );
     assert_eq!(
         evaluation.matches[0].applicability.status,
         ApplicabilityStatus::Applies
@@ -280,23 +283,11 @@ fn multiple_prior_events_are_retained_without_latest_inference() {
 
 #[test]
 fn records_for_other_concerns_do_not_create_thread_identity() {
-    let mut other = record(
-        "event:other",
-        HEAD_A,
-        "#7",
-        None,
-        ReviewOutcome::Open,
-        None,
-    );
+    let mut other = record("event:other", HEAD_A, "#7", None, ReviewOutcome::Open, None);
     other.concern_key = "review:different-concern".to_string();
 
-    let evaluation = evaluate_review_memory(&query(
-        vec![other],
-        Some(HEAD_A),
-        Some("#7"),
-        None,
-    ))
-    .unwrap();
+    let evaluation =
+        evaluate_review_memory(&query(vec![other], Some(HEAD_A), Some("#7"), None)).unwrap();
 
     assert_eq!(evaluation.disposition, ReviewThreadDisposition::NewThread);
     assert!(evaluation.matches.is_empty());
@@ -304,13 +295,8 @@ fn records_for_other_concerns_do_not_create_thread_identity() {
 
 #[test]
 fn empty_memory_starts_new_thread() {
-    let evaluation = evaluate_review_memory(&query(
-        Vec::new(),
-        Some(HEAD_A),
-        Some("#7"),
-        None,
-    ))
-    .unwrap();
+    let evaluation =
+        evaluate_review_memory(&query(Vec::new(), Some(HEAD_A), Some("#7"), None)).unwrap();
 
     assert_eq!(evaluation.disposition, ReviewThreadDisposition::NewThread);
     assert!(evaluation.matches.is_empty());
@@ -318,14 +304,7 @@ fn empty_memory_starts_new_thread() {
 
 #[test]
 fn duplicate_and_conflicting_event_ids_reject() {
-    let first = record(
-        "event:1",
-        HEAD_A,
-        "#7",
-        None,
-        ReviewOutcome::Open,
-        None,
-    );
+    let first = record("event:1", HEAD_A, "#7", None, ReviewOutcome::Open, None);
     let duplicate = first.clone();
     let mut conflict = first.clone();
     conflict.source_ref = "github:review-comment/999".to_string();
@@ -337,7 +316,11 @@ fn duplicate_and_conflicting_event_ids_reject() {
         None,
     ))
     .unwrap_err();
-    assert!(duplicate_error.to_string().contains("duplicate review event_id"));
+    assert!(
+        duplicate_error
+            .to_string()
+            .contains("duplicate review event_id")
+    );
 
     let conflict_error = evaluate_review_memory(&query(
         vec![first, conflict],
@@ -363,25 +346,15 @@ fn reviewed_revision_must_be_exact_lowercase_sha() {
         ReviewOutcome::Open,
         None,
     );
-    let error = evaluate_review_memory(&query(
-        vec![bad],
-        Some(HEAD_A),
-        Some("#7"),
-        None,
-    ))
-    .unwrap_err();
+    let error =
+        evaluate_review_memory(&query(vec![bad], Some(HEAD_A), Some("#7"), None)).unwrap_err();
     assert!(error.to_string().contains("exact 40-character lowercase"));
 }
 
 #[test]
 fn malformed_current_revision_rejects_even_with_empty_memory() {
-    let error = evaluate_review_memory(&query(
-        Vec::new(),
-        Some("head-main"),
-        Some("#7"),
-        None,
-    ))
-    .unwrap_err();
+    let error = evaluate_review_memory(&query(Vec::new(), Some("head-main"), Some("#7"), None))
+        .unwrap_err();
     assert!(error.to_string().contains("current.context.revision"));
 }
 
@@ -411,7 +384,11 @@ fn resolution_reference_matches_outcome_state() {
         None,
     ))
     .unwrap_err();
-    assert!(open_error.to_string().contains("must not carry resolution_ref"));
+    assert!(
+        open_error
+            .to_string()
+            .contains("must not carry resolution_ref")
+    );
 
     let resolved_error = evaluate_review_memory(&query(
         vec![resolved_without_reference],
@@ -420,7 +397,11 @@ fn resolution_reference_matches_outcome_state() {
         None,
     ))
     .unwrap_err();
-    assert!(resolved_error.to_string().contains("requires resolution_ref"));
+    assert!(
+        resolved_error
+            .to_string()
+            .contains("requires resolution_ref")
+    );
 }
 
 #[test]

@@ -56,7 +56,9 @@ fn id_only_refinement_coverage_can_accept_wrong_subject_while_exact_frontier_is_
 
     let mut wrong_subject = exact.clone();
     wrong_subject.observation_id = "history/oxc-edit-class-v1:wrong-subject-control".to_string();
-    wrong_subject.subject_ref = "oxc-project/oxc@228e8e0f85c0e7aeded02c5e27fd810004d3b41a:crates/oxc_linter/src/other.rs".to_string();
+    wrong_subject.subject_ref =
+        "oxc-project/oxc@228e8e0f85c0e7aeded02c5e27fd810004d3b41a:crates/oxc_linter/src/other.rs"
+            .to_string();
     wrong_subject.source_receipt = "research:wrong-subject-control".to_string();
     wrong_subject.value_state = DiscriminatorValueState::Known {
         value_ref: "syntax_changed".to_string(),

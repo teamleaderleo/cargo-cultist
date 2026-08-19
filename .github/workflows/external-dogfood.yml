@@ -1,0 +1,142 @@
+name: External repository dogfood
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Public or token-accessible owner/repository to inspect
+        required: true
+        default: teamleaderleo/smolrunner
+        type: string
+      ref:
+        description: Target branch, tag, or exact commit
+        required: true
+        default: main
+        type: string
+      fetch_depth:
+        description: Target checkout depth; 0 requests full history
+        required: true
+        default: "256"
+        type: string
+      history_file:
+        description: Optional repository-relative file for bounded history
+        required: false
+        default: src/disposable_clone_runtime.rs
+        type: string
+      history_max:
+        description: History commit bound, from 1 through 1000
+        required: true
+        default: "100"
+        type: string
+      base:
+        description: Optional Git revision for a diff probe
+        required: false
+        default: ""
+        type: string
+      repeat_scan:
+        description: Repeat the repository scan to measure warm reuse
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build Cultist
+        run: cargo build --release --manifest-path cultist/Cargo.toml
+
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+          fetch-depth: ${{ inputs.fetch_depth }}
+          persist-credentials: false
+          path: target
+
+      - name: Run bounded dogfood probes
+        id: probes
+        env:
+          TARGET_FETCH_DEPTH: ${{ inputs.fetch_depth }}
+          TARGET_HISTORY_FILE: ${{ inputs.history_file }}
+          TARGET_HISTORY_MAX: ${{ inputs.history_max }}
+          TARGET_BASE: ${{ inputs.base }}
+          REPEAT_SCAN: ${{ inputs.repeat_scan }}
+        run: |
+          set -euo pipefail
+          args=(
+            python cultist/scripts/external_dogfood.py
+            --cultist "$PWD/cultist/target/release/cargo-cultist"
+            --repo "$PWD/target"
+            --output-dir "$PWD/artifacts"
+            --cache-dir "$RUNNER_TEMP/cultist-cache"
+            --checkout-depth "$TARGET_FETCH_DEPTH"
+            --history-max "$TARGET_HISTORY_MAX"
+          )
+          if [[ -n "$TARGET_HISTORY_FILE" ]]; then
+            args+=(--history-file "$TARGET_HISTORY_FILE")
+          fi
+          if [[ -n "$TARGET_BASE" ]]; then
+            args+=(--base "$TARGET_BASE")
+          fi
+          if [[ "$REPEAT_SCAN" == "true" ]]; then
+            args+=(--repeat-scan)
+          fi
+          "${args[@]}"
+
+      - name: Write job summary
+        if: always()
+        env:
+          TARGET_REPOSITORY: ${{ inputs.repository }}
+          TARGET_REF: ${{ inputs.ref }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary_path = Path("artifacts/summary.json")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## External Cultist dogfood\n\n")
+              out.write(f"Target: `{os.environ['TARGET_REPOSITORY']}@{os.environ['TARGET_REF']}`\n\n")
+              if not summary_path.is_file():
+                  out.write("Probe summary was unavailable.\n")
+                  raise SystemExit(0)
+              summary = json.loads(summary_path.read_text(encoding="utf-8"))
+              target = summary["target"]
+              out.write(
+                  f"HEAD: `{target['head']}` · shallow: `{target['shallow']}` · "
+                  f"checkout depth: `{target['checkout_depth']}`\n\n"
+              )
+              out.write("| probe | findings | git processes | Rust parses | cache hits | wall µs |\n")
+              out.write("|---|---:|---:|---:|---:|---:|\n")
+              for probe in summary["probes"]:
+                  perf = probe.get("performance") or {}
+                  out.write(
+                      f"| {probe['name']} | {probe.get('finding_count')} | "
+                      f"{perf.get('git_subprocesses')} | {perf.get('rust_files_parsed')} | "
+                      f"{perf.get('rust_cache_hits')} | {perf.get('wall_time_us')} |\n"
+                  )
+          PY
+
+      - name: Upload dogfood receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-dogfood-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: error

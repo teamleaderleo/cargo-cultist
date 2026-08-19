@@ -239,7 +239,7 @@ fn workflow_shell_line(line: &str) -> Option<&str> {
 
     let step = trimmed.strip_prefix("- ").map(str::trim).unwrap_or(trimmed);
     let candidate = step.strip_prefix("run:").map(str::trim).unwrap_or(step);
-    if candidate.starts_with("cargo test ") {
+    if candidate.starts_with("cargo test ") || candidate.starts_with("cargo +") {
         Some(candidate)
     } else {
         None
@@ -248,13 +248,24 @@ fn workflow_shell_line(line: &str) -> Option<&str> {
 
 fn parse_filtered_lib_test_command(command: &str) -> Option<String> {
     let tokens: Vec<_> = command.split_whitespace().collect();
-    if tokens.len() < 4 || tokens[0] != "cargo" || tokens[1] != "test" {
+    if tokens.len() < 4 || tokens[0] != "cargo" {
         return None;
     }
 
+    let mut index = 1;
+    if tokens.get(index).is_some_and(|token| token.starts_with('+')) {
+        if !is_simple_toolchain_selector(tokens[index]) {
+            return None;
+        }
+        index += 1;
+    }
+    if tokens.get(index).copied() != Some("test") {
+        return None;
+    }
+    index += 1;
+
     let mut saw_lib = false;
     let mut filter = None;
-    let mut index = 2;
 
     while index < tokens.len() {
         let token = tokens[index];
@@ -300,6 +311,16 @@ fn parse_filtered_lib_test_command(command: &str) -> Option<String> {
     }
 
     saw_lib.then_some(filter?).filter(|value| !value.is_empty())
+}
+
+fn is_simple_toolchain_selector(value: &str) -> bool {
+    let Some(selector) = value.strip_prefix('+') else {
+        return false;
+    };
+    !selector.is_empty()
+        && selector
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'))
 }
 
 fn is_simple_test_filter(value: &str) -> bool {
@@ -383,6 +404,21 @@ mod tests {
             ),
             Some("test_rollback".to_string())
         );
+        assert_eq!(
+            parse_filtered_lib_test_command(
+                "cargo +1.88.0 test --lib test_rollback --locked --no-default-features"
+            ),
+            Some("test_rollback".to_string())
+        );
+    }
+
+    #[test]
+    fn accepts_simple_cargo_toolchain_selectors() {
+        assert!(is_simple_toolchain_selector("+1.88.0"));
+        assert!(is_simple_toolchain_selector("+stable"));
+        assert!(is_simple_toolchain_selector("+nightly-2026-08-19"));
+        assert!(!is_simple_toolchain_selector("+"));
+        assert!(!is_simple_toolchain_selector("+stable;echo"));
     }
 
     #[test]
@@ -407,6 +443,10 @@ mod tests {
             parse_filtered_lib_test_command("cargo test --lib test_rollback && echo ok"),
             None
         );
+        assert_eq!(
+            parse_filtered_lib_test_command("cargo +stable;echo test --lib test_rollback"),
+            None
+        );
     }
 
     #[test]
@@ -414,6 +454,10 @@ mod tests {
         assert_eq!(
             workflow_shell_line("      run: cargo test --lib test_rollback"),
             Some("cargo test --lib test_rollback")
+        );
+        assert_eq!(
+            workflow_shell_line("          cargo +1.88.0 test --lib test_rollback"),
+            Some("cargo +1.88.0 test --lib test_rollback")
         );
         assert_eq!(
             workflow_shell_line("      - run: cargo test --lib test_rollback"),

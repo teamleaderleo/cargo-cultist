@@ -97,6 +97,19 @@ The standard Rust suite requires:
 
 No new behavioral outcome or scoring model is introduced.
 
+## Executed current-main receipt
+
+The formatted semantic head was tested in the merge view of current `main@d18f3c1ebfc9b5c8d1a02ad6936e40008ff2997b`:
+
+```text
+head:       7d2024f2d8301d13d5c79f5c885b5d084b0a642f
+merge view: 775df66371bc09a1d161a13f08d142db2598b7ac
+CI:         32265476336 success
+provenance: 32265476673 success
+```
+
+That run passed formatter, all-target Clippy with warnings denied, full tests, project-memory/review/closure/redirect controls, and normal Cultist repository/history/CI/diff dogfood. The provider-specific carriers skipped on their path filters; this lane performed no provider fetch.
+
 ## Next research question
 
 The next stronger behavioral test should use a current task whose exact discriminator selects one prior temporal episode, then retain treatment/control receipts for whether the surfaced next action changes the work.

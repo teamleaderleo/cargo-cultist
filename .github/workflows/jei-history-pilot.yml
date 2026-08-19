@@ -1,0 +1,132 @@
+name: JEI historical budget pilot
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/jei-history-pilot.yml"
+      - "scripts/jei_history_pilot.py"
+      - "research/external-dogfood-cases.json"
+
+permissions:
+  contents: read
+
+jobs:
+  stensibly-1575-pre-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Resolve pinned pilot case
+        id: target
+        run: |
+          python cultist/scripts/external_dogfood_case.py \
+            --registry cultist/research/external-dogfood-cases.json \
+            --case stensibly-1575-pre-guard-jei \
+            --github-output "$GITHUB_OUTPUT" \
+            > resolved-target.json
+          cat resolved-target.json
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build agent context packet research example
+        run: cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
+
+      - name: Checkout pinned Stensibly state
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.target.outputs.repository }}
+          ref: ${{ steps.target.outputs.ref }}
+          fetch-depth: ${{ steps.target.outputs.fetch_depth }}
+          persist-credentials: false
+          path: target
+
+      - name: Verify exact historical coordinate
+        env:
+          EXPECTED_HEAD: ${{ steps.target.outputs.ref }}
+        run: |
+          set -euo pipefail
+          actual="$(git -C target rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
+          test -f "target/${{ steps.target.outputs.history_file }}"
+          git -C target log --no-merges --format='%H %s' -n 20 -- "${{ steps.target.outputs.history_file }}"
+
+      - name: Sweep JEI semantic budgets
+        env:
+          TARGET_FILE: ${{ steps.target.outputs.history_file }}
+          TARGET_REPOSITORY: ${{ steps.target.outputs.repository }}
+          TARGET_SOURCE: ${{ steps.target.outputs.source }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python cultist/scripts/jei_history_pilot.py \
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet" \
+            --repo "$PWD/target" \
+            --target "$TARGET_FILE" \
+            --repository-label "$TARGET_REPOSITORY" \
+            --source "$TARGET_SOURCE" \
+            --budget 1048576 \
+            --budget 32768 \
+            --budget 16384 \
+            --budget 8192 \
+            --budget 4096 \
+            --control-budget 1048576 \
+            --acceptance-budget 32768 \
+            --required-subject "Keep Gmail semantic-admission indexes deployable (#1571)" \
+            --required-subject "Keep Gmail mailbox-disposition indexes deployable (#1573)" \
+            --output "$PWD/artifacts/stensibly-1575-pre-guard-jei.json"
+
+      - name: Write pilot summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt_path = Path("artifacts/stensibly-1575-pre-guard-jei.json")
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Stensibly #1575 pre-guard JEI pilot\n\n")
+              out.write("Ground truth: PR #1575 later generalized the repeated Convex identifier-limit deployment failures into CI. The guard commit is outside the pinned packet state.\n\n")
+              if not receipt_path.is_file():
+                  out.write("Pilot receipt was unavailable.\n")
+                  raise SystemExit(0)
+              receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+              out.write(f"Pinned revision: `{receipt['revision']}`  \n")
+              out.write(f"Target: `{receipt['target']}`  \n")
+              out.write(f"Acceptance: `{'PASS' if receipt['acceptance']['passed'] else 'FAIL'}`\n\n")
+              out.write("| budget | status | candidate bytes | selected bytes | lessons survive | evictions |\n")
+              out.write("|---:|---|---:|---:|---|---|\n")
+              for result in receipt["results"]:
+                  evictions = ", ".join(
+                      f"{entry.get('class')}={entry.get('count')}"
+                      for entry in result.get("semantic_evictions", [])
+                  ) or "—"
+                  out.write(
+                      f"| {result['budget']} | {result['status']} | "
+                      f"{result.get('candidate_serialized_bytes', '—')} | "
+                      f"{result.get('serialized_bytes', '—')} | "
+                      f"{'yes' if result.get('preserves_all_required') else 'no'} | {evictions} |\n"
+                  )
+              out.write("\n")
+              out.write(
+                  f"Minimum tested budget preserving both lessons: `{receipt.get('minimum_tested_preserving_budget')}` bytes.\n\n"
+              )
+              out.write(
+                  f"First tested loss below the 32 KiB acceptance budget: `{receipt.get('first_tested_loss_below_acceptance')}`.\n"
+              )
+          PY
+
+      - name: Upload JEI pilot receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stensibly-1575-pre-guard-jei-${{ github.run_id }}
+          path: artifacts/stensibly-1575-pre-guard-jei.json
+          if-no-files-found: error

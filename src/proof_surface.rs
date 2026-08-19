@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::project_memory::{ArtifactRef, ProjectArtifact, ProjectMemoryPacket};
+use crate::project_memory::{ArtifactKind, ArtifactRef, ProjectArtifact, ProjectMemoryPacket};
 
 pub const PROOF_SURFACE_SCHEMA_VERSION: u32 = 1;
 pub const MAX_PROOF_SURFACE_BYTES: usize = 128 * 1024;
@@ -143,8 +143,8 @@ impl ProofSurfaceClaim {
         }
         validate_repository(&self.repository)?;
         validate_single_line(&self.candidate_id, "candidate_id", MAX_ID_BYTES)?;
-        if self.subject.number == 0 {
-            return Err("proof-surface subject number must be positive".to_string());
+        if self.subject.kind != ArtifactKind::PullRequest || self.subject.number == 0 {
+            return Err("proof-surface subject must be a positive pull-request reference".to_string());
         }
         validate_evidence(&self.behavior_evidence, "behavior_evidence")?;
         validate_evidence(&self.requirement_evidence, "requirement_evidence")?;
@@ -191,8 +191,8 @@ fn classify_provider_artifact(claim: &ProofSurfaceClaim) -> Option<ProofArtifact
 
 fn canonical_requirement_marker(kind: ProofArtifactKind) -> &'static str {
     match kind {
-        ProofArtifactKind::IssueConversationComment => "ordinary conversation comment",
-        ProofArtifactKind::PullRequestReview => "PR review COMMENT",
+        ProofArtifactKind::IssueConversationComment => "required ordinary conversation comment",
+        ProofArtifactKind::PullRequestReview => "required PR review COMMENT",
     }
 }
 
@@ -237,7 +237,10 @@ fn validate_provider_event(event: &ProviderProofArtifact) -> Result<(), String> 
     {
         return Err("provider event URL is empty, malformed, or too long".to_string());
     }
-    if event.body.is_empty() || event.body.len() > MAX_EVENT_BODY_BYTES || event.body.contains('\0') {
+    if event.body.is_empty()
+        || event.body.len() > MAX_EVENT_BODY_BYTES
+        || event.body.contains('\0')
+    {
         return Err("provider event body is empty, malformed, or too long".to_string());
     }
     if let Some(review_state) = &event.review_state {

@@ -10,6 +10,9 @@ on:
       - "examples/agent_context_packet.rs"
       - "examples/scoped_agent_context_packet.rs"
       - "examples/support/scoped_agent_context_packet_impl.rs"
+      - "examples/capability_demand_pair_prepare.rs"
+      - "examples/support/capability_demand_pair_execution_impl.rs"
+      - "examples/support/capability_demand_pair_trial_binding.rs"
       - "research/external-dogfood-cases.json"
       - "scripts/external_dogfood_case.py"
 
@@ -40,10 +43,11 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Build packet examples
+      - name: Build packet and blind-pair examples
         run: |
           cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
           cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
+          cargo build --release --example capability_demand_pair_prepare --manifest-path cultist/Cargo.toml
 
       - name: Checkout exact pre-guard Stensibly state
         uses: actions/checkout@v4
@@ -184,6 +188,84 @@ jobs:
           print(json.dumps(manifest, indent=2, sort_keys=True))
           PY
 
+      - name: Require exact retained run-2 input identity
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          generated = json.loads(Path("artifacts/trial-input-manifest.json").read_text(encoding="utf-8"))
+          retained = json.loads(Path(
+              "cultist/research/capability-demand-retirement/stensibly-convex-index-review-v1-input-manifest-32264661913.json"
+          ).read_text(encoding="utf-8"))
+          assert generated == retained, {
+              "generated": generated,
+              "retained": retained,
+          }
+          PY
+
+      - name: Package blind pair 0001
+        run: |
+          set -euo pipefail
+          "$PWD/cultist/target/release/examples/capability_demand_pair_prepare" \
+            "$PWD/cultist/research/capability-demand-retirement/stensibly-convex-index-review-v1.json" \
+            "$PWD/artifacts/trial-input-manifest.json" \
+            "$PWD/artifacts/worker-task.txt" \
+            "$PWD/artifacts/proposed.patch" \
+            "$PWD/artifacts/file-local-32k.json" \
+            "$PWD/artifacts/scoped-convex-32k.json" \
+            "$PWD/artifacts/blind-pair" \
+            "stensibly-convex-index-review-v1-pair-0001" \
+            "seed:capability-demand-retirement-v1-pair-0001" \
+            > "$PWD/artifacts/blind-pair-plan.stdout.json"
+
+      - name: Verify blind pair boundary
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path("artifacts/blind-pair")
+          plan = json.loads((root / "organizer-plan.json").read_text(encoding="utf-8"))
+          manifest = json.loads(Path("artifacts/trial-input-manifest.json").read_text(encoding="utf-8"))
+
+          assert plan["pair_id"] == "stensibly-convex-index-review-v1-pair-0001"
+          assert {slot["condition_id"] for slot in plan["slots"]} == {"file_local_jei", "scoped_jei"}
+          assert {slot["sequence_index"] for slot in plan["slots"]} == {1, 2}
+
+          expected_files = {"worker-input.json", "task.txt", "proposed.patch", "evidence.json"}
+          for index in (1, 2):
+              slot_dir = root / f"slot-{index}"
+              assert {path.name for path in slot_dir.iterdir()} == expected_files
+              metadata = json.loads((slot_dir / "worker-input.json").read_text(encoding="utf-8"))
+              rendered = json.dumps(metadata, sort_keys=True)
+              for forbidden in (
+                  "condition_id",
+                  "file_local_jei",
+                  "scoped_jei",
+                  "baseline",
+                  "treatment",
+                  "decisive_evidence",
+                  "oracle",
+              ):
+                  assert forbidden not in rendered, (forbidden, rendered)
+
+              assert hashlib.sha256((slot_dir / "task.txt").read_bytes()).hexdigest() == manifest["worker_visible_common"]["task"]["sha256"]
+              assert hashlib.sha256((slot_dir / "proposed.patch").read_bytes()).hexdigest() == manifest["worker_visible_common"]["patch"]["sha256"]
+              evidence_sha = hashlib.sha256((slot_dir / "evidence.json").read_bytes()).hexdigest()
+              assert evidence_sha in {
+                  manifest["conditions"]["file_local_jei"]["packet"]["sha256"],
+                  manifest["conditions"]["scoped_jei"]["packet"]["sha256"],
+              }
+
+          plan_sha = hashlib.sha256((root / "organizer-plan.json").read_bytes()).hexdigest()
+          Path("artifacts/blind-pair-plan.sha256").write_text(plan_sha + "\n", encoding="utf-8")
+          print(f"organizer-plan sha256 {plan_sha}")
+          PY
+
       - name: Write trial input summary
         if: always()
         run: |
@@ -206,7 +288,11 @@ jobs:
                   out.write(f"Target: `{manifest['target_path']}`  \n")
                   out.write(f"Baseline packet: `{baseline['packet']['bytes']}` bytes · decisive refs: `no`  \n")
                   out.write(f"Treatment packet: `{treatment['packet']['bytes']}` bytes · decisive refs: `yes`  \n")
-                  out.write("Worker task/patch hashes are shared across both conditions; oracle stays evaluator-only.\n")
+                  out.write("Generated inputs must equal the retained run-2 manifest exactly.  \n")
+                  plan_hash = Path("artifacts/blind-pair-plan.sha256")
+                  if plan_hash.is_file():
+                      out.write(f"Blind pair 0001 organizer-plan SHA-256: `{plan_hash.read_text().strip()}`  \n")
+                  out.write("Worker slot artifacts exclude organizer arm labels and evaluator oracle data.\n")
           PY
 
       - name: Upload frozen trial inputs
@@ -221,4 +307,30 @@ jobs:
             artifacts/scoped-convex-32k.json
             artifacts/evaluator-oracle.json
             artifacts/trial-input-manifest.json
+          if-no-files-found: error
+
+      - name: Upload organizer-only blind-pair plan
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-demand-pair-0001-organizer-${{ github.run_id }}
+          path: |
+            artifacts/blind-pair/organizer-plan.json
+            artifacts/blind-pair-plan.sha256
+          if-no-files-found: error
+
+      - name: Upload blind worker slot 1
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-demand-pair-0001-slot-1-${{ github.run_id }}
+          path: artifacts/blind-pair/slot-1/
+          if-no-files-found: error
+
+      - name: Upload blind worker slot 2
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-demand-pair-0001-slot-2-${{ github.run_id }}
+          path: artifacts/blind-pair/slot-2/
           if-no-files-found: error

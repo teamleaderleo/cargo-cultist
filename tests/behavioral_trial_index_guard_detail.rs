@@ -25,23 +25,19 @@ mod review_memory;
 
 use behavioral_trial::{
     BEHAVIORAL_TRIAL_SCHEMA_VERSION, BehavioralTrialArmKind, BehavioralTrialObservation,
-    BehavioralTrialPair, evaluate_behavioral_trial_pair, fingerprint_plan, materialize_worker_packet,
-    parse_behavioral_trial_plan,
+    BehavioralTrialPair, evaluate_behavioral_trial_pair, fingerprint_plan,
+    materialize_worker_packet, parse_behavioral_trial_plan,
 };
 use lesson_promotion::parse_lesson_promotion_claim;
 use prior_episode_detail::{PriorEpisodeDetail, project_prior_episode_detail};
 use prior_episode_front::PriorEpisodeInput;
 use project_memory::parse_project_memory_packet;
 
-const PLAN: &[u8] = include_bytes!(
-    "../research/behavioral-trials/stensibly-index-guard-detail.json"
-);
-const PLAN_FINGERPRINT: &str =
-    "cultist-behavioral-trial-plan-sha256-v1:6f3eddecf177271c0ad60f32fb17008841bdb81f34aa717f52be90c3bdd1f69b";
-const CONTROL_PACKET_FINGERPRINT: &str =
-    "cultist-behavioral-worker-packet-sha256-v1:9949665d13b162692ebd3f7d12b6f162881f18d2d381c7257100bbb89c317f01";
-const TREATMENT_PACKET_FINGERPRINT: &str =
-    "cultist-behavioral-worker-packet-sha256-v1:6d3d93c574e81800ef1829216356d258553cabc7d2bdce2d09c32f46659c738c";
+const PLAN: &[u8] =
+    include_bytes!("../research/behavioral-trials/stensibly-index-guard-detail.json");
+const PLAN_FINGERPRINT: &str = "cultist-behavioral-trial-plan-sha256-v1:6f3eddecf177271c0ad60f32fb17008841bdb81f34aa717f52be90c3bdd1f69b";
+const CONTROL_PACKET_FINGERPRINT: &str = "cultist-behavioral-worker-packet-sha256-v1:9949665d13b162692ebd3f7d12b6f162881f18d2d381c7257100bbb89c317f01";
+const TREATMENT_PACKET_FINGERPRINT: &str = "cultist-behavioral-worker-packet-sha256-v1:6d3d93c574e81800ef1829216356d258553cabc7d2bdce2d09c32f46659c738c";
 
 fn selected_detail() -> PriorEpisodeDetail {
     let memory = parse_project_memory_packet(include_bytes!(
@@ -68,13 +64,19 @@ fn plan_changes_only_worker_visible_selected_detail_after_the_compact_front() {
 
     let control = materialize_worker_packet(&plan, BehavioralTrialArmKind::Control).unwrap();
     let treatment = materialize_worker_packet(&plan, BehavioralTrialArmKind::Treatment).unwrap();
-    assert_eq!(control.worker_packet_fingerprint, CONTROL_PACKET_FINGERPRINT);
+    assert_eq!(
+        control.worker_packet_fingerprint,
+        CONTROL_PACKET_FINGERPRINT
+    );
     assert_eq!(
         treatment.worker_packet_fingerprint,
         TREATMENT_PACKET_FINGERPRINT
     );
     assert_eq!(control.task_instruction, treatment.task_instruction);
-    assert_eq!(control.allowed_first_actions, treatment.allowed_first_actions);
+    assert_eq!(
+        control.allowed_first_actions,
+        treatment.allowed_first_actions
+    );
     assert_eq!(control.context.as_bytes().len(), 1_082);
     assert_eq!(treatment.context.as_bytes().len(), 1_775);
 
@@ -83,8 +85,16 @@ fn plan_changes_only_worker_visible_selected_detail_after_the_compact_front() {
     assert!(suffix.starts_with("\n\nCultist selected accepted-guard detail:\n"));
     assert!(!control.context.contains("64-character identifier limit"));
     assert!(treatment.context.contains("64-character identifier limit"));
-    assert!(!control.context.contains("fails when any exceed 64 characters"));
-    assert!(treatment.context.contains("fails when any exceed 64 characters"));
+    assert!(
+        !control
+            .context
+            .contains("fails when any exceed 64 characters")
+    );
+    assert!(
+        treatment
+            .context
+            .contains("fails when any exceed 64 characters")
+    );
     assert!(!treatment.context.contains("max_identifier_length"));
     assert!(!treatment.context.contains("corrective_action"));
 

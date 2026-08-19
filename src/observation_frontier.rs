@@ -5,11 +5,11 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::discriminator_observation::{
-    DiscriminatorObservation, DiscriminatorObservationBatch, DiscriminatorValueState,
-    validate_discriminator_observation_batch,
+    DiscriminatorObservation, DiscriminatorObservationBatch, ObservationCurrentness,
+    classify_observation_currentness, validate_discriminator_observation_batch,
 };
 
-pub const OBSERVATION_FRONTIER_SCHEMA_VERSION: u32 = 1;
+pub const OBSERVATION_FRONTIER_SCHEMA_VERSION: u32 = 2;
 pub const MAX_OBSERVATION_FRONTIER_REQUEST_BYTES: usize = 512 * 1024;
 const MAX_REQUIREMENTS: usize = 256;
 const MAX_ID_BYTES: usize = 512;
@@ -64,8 +64,7 @@ pub struct CurrentObservationReceipt {
     pub observation_id: String,
     pub source_receipt: String,
     pub value_ref: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub applicability_ref: Option<String>,
+    pub applicability_ref: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -73,15 +72,17 @@ pub struct CurrentObservationReceipt {
 pub struct NonCurrentObservationReceipt {
     pub observation_id: String,
     pub source_receipt: String,
-    pub reason_ref: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub applicability_ref: Option<String>,
+    pub known_value_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_unknown_reason_ref: Option<String>,
+    pub applicability_ref: String,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ObservationValueStateKind {
-    Known,
+pub enum ObservationCurrentnessKind {
+    Current,
     Unknown,
     Invalid,
 }
@@ -92,7 +93,7 @@ pub struct OtherSubjectObservationReceipt {
     pub observation_id: String,
     pub subject_ref: String,
     pub source_receipt: String,
-    pub state: ObservationValueStateKind,
+    pub state: ObservationCurrentnessKind,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -166,41 +167,47 @@ fn evaluate_requirement(
         .iter()
         .filter(|observation| observation.discriminator_id == requirement.discriminator_id)
     {
+        let currentness = classify_observation_currentness(observation);
         if observation.subject_ref != requirement.subject_ref {
             other_subject.push(OtherSubjectObservationReceipt {
                 observation_id: observation.observation_id.clone(),
                 subject_ref: observation.subject_ref.clone(),
                 source_receipt: observation.source_receipt.clone(),
-                state: value_state_kind(&observation.value_state),
+                state: currentness_kind(currentness),
             });
             continue;
         }
 
-        match &observation.value_state {
-            DiscriminatorValueState::Known { value_ref } => {
-                current.push(CurrentObservationReceipt {
-                    observation_id: observation.observation_id.clone(),
-                    source_receipt: observation.source_receipt.clone(),
-                    value_ref: value_ref.clone(),
-                    applicability_ref: observation.applicability_ref.clone(),
-                });
-            }
-            DiscriminatorValueState::Unknown { reason_ref } => {
-                unknown.push(NonCurrentObservationReceipt {
-                    observation_id: observation.observation_id.clone(),
-                    source_receipt: observation.source_receipt.clone(),
-                    reason_ref: reason_ref.clone(),
-                    applicability_ref: observation.applicability_ref.clone(),
-                });
-            }
-            DiscriminatorValueState::Invalid { reason_ref } => {
-                invalid.push(NonCurrentObservationReceipt {
-                    observation_id: observation.observation_id.clone(),
-                    source_receipt: observation.source_receipt.clone(),
-                    reason_ref: reason_ref.clone(),
-                    applicability_ref: observation.applicability_ref.clone(),
-                });
-            }
+        match currentness {
+            ObservationCurrentness::Current {
+                value_ref,
+                applicability_ref,
+            } => current.push(CurrentObservationReceipt {
+                observation_id: observation.observation_id.clone(),
+                source_receipt: observation.source_receipt.clone(),
+                value_ref: value_ref.to_string(),
+                applicability_ref: applicability_ref.to_string(),
+            }),
+            ObservationCurrentness::Unknown {
+                known_value_ref,
+                value_unknown_reason_ref,
+                applicability_ref,
+            } => unknown.push(non_current_receipt(
+                observation,
+                known_value_ref,
+                value_unknown_reason_ref,
+                applicability_ref,
+            )),
+            ObservationCurrentness::Invalid {
+                known_value_ref,
+                value_unknown_reason_ref,
+                applicability_ref,
+            } => invalid.push(non_current_receipt(
+                observation,
+                known_value_ref,
+                value_unknown_reason_ref,
+                applicability_ref,
+            )),
         }
     }
 
@@ -230,11 +237,26 @@ fn evaluate_requirement(
     }
 }
 
-fn value_state_kind(value_state: &DiscriminatorValueState) -> ObservationValueStateKind {
-    match value_state {
-        DiscriminatorValueState::Known { .. } => ObservationValueStateKind::Known,
-        DiscriminatorValueState::Unknown { .. } => ObservationValueStateKind::Unknown,
-        DiscriminatorValueState::Invalid { .. } => ObservationValueStateKind::Invalid,
+fn currentness_kind(currentness: ObservationCurrentness<'_>) -> ObservationCurrentnessKind {
+    match currentness {
+        ObservationCurrentness::Current { .. } => ObservationCurrentnessKind::Current,
+        ObservationCurrentness::Unknown { .. } => ObservationCurrentnessKind::Unknown,
+        ObservationCurrentness::Invalid { .. } => ObservationCurrentnessKind::Invalid,
+    }
+}
+
+fn non_current_receipt(
+    observation: &DiscriminatorObservation,
+    known_value_ref: Option<&str>,
+    value_unknown_reason_ref: Option<&str>,
+    applicability_ref: &str,
+) -> NonCurrentObservationReceipt {
+    NonCurrentObservationReceipt {
+        observation_id: observation.observation_id.clone(),
+        source_receipt: observation.source_receipt.clone(),
+        known_value_ref: known_value_ref.map(str::to_string),
+        value_unknown_reason_ref: value_unknown_reason_ref.map(str::to_string),
+        applicability_ref: applicability_ref.to_string(),
     }
 }
 

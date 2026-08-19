@@ -1,0 +1,164 @@
+name: JEI change-set scope pilot
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/jei-change-scope-pilot.yml"
+      - "scripts/jei_change_scope_pilot.py"
+
+permissions:
+  contents: read
+
+jobs:
+  change-set-controls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build file-local and scoped packet examples
+        run: |
+          cargo build --release --example agent_context_packet --manifest-path cultist/Cargo.toml
+          cargo build --release --example scoped_agent_context_packet --manifest-path cultist/Cargo.toml
+
+      - name: Checkout Stensibly #1573 base
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/stensibly
+          ref: ca5d2c7fdf89666e523972ab6e81610d17b9611b
+          fetch-depth: 256
+          persist-credentials: false
+          path: target-stensibly
+
+      - name: Verify Stensibly review-time evidence
+        run: |
+          set -euo pipefail
+          test "$(git -C target-stensibly rev-parse HEAD)" = "ca5d2c7fdf89666e523972ab6e81610d17b9611b"
+          for path in \
+            convex/gmailMailboxDisposition.ts \
+            convex/gmailMailboxDispositionIndexes.test.ts \
+            convex/gmailMailboxDispositionSchema.ts
+          do
+            test -f "target-stensibly/$path"
+          done
+
+          target_history="$(git -C target-stensibly log --no-merges --format='%s' -n 20 -- convex/gmailMailboxDispositionSchema.ts)"
+          if grep -F "Keep Gmail semantic-admission indexes deployable (#1571)" <<<"$target_history"; then
+            echo "unexpected: #1571 already appears in primary-target history" >&2
+            exit 1
+          fi
+
+          scope_history="$(git -C target-stensibly log --no-merges --format='%s' -n 20 -- convex)"
+          grep -F "Keep Gmail semantic-admission indexes deployable (#1571)" <<<"$scope_history"
+          if grep -F "Keep Gmail mailbox-disposition indexes deployable (#1573)" <<<"$scope_history"; then
+            echo "unexpected: future #1573 repair appears in base history" >&2
+            exit 1
+          fi
+
+      - name: Replay Stensibly multi-path trigger
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python cultist/scripts/jei_change_scope_pilot.py \
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet" \
+            --scoped-exe "$PWD/cultist/target/release/examples/scoped_agent_context_packet" \
+            --repo "$PWD/target-stensibly" \
+            --primary-target convex/gmailMailboxDispositionSchema.ts \
+            --task-path convex/gmailMailboxDisposition.ts \
+            --task-path convex/gmailMailboxDispositionIndexes.test.ts \
+            --task-path convex/gmailMailboxDispositionSchema.ts \
+            --budget 32768 \
+            --expectation expand_adds_missing \
+            --repository-label teamleaderleo/stensibly \
+            --source "stensibly#1573 review base" \
+            --required-subject "Keep Gmail semantic-admission indexes deployable (#1571)" \
+            --output "$PWD/artifacts/stensibly-1573-change-scope.json"
+
+      - name: Checkout SmolRunner #540 base
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/smolrunner
+          ref: c8cb347eb1c85200793fd22693294f5f6a13f5f8
+          fetch-depth: 256
+          persist-credentials: false
+          path: target-smolrunner
+
+      - name: Verify SmolRunner single-path evidence
+        run: |
+          set -euo pipefail
+          test "$(git -C target-smolrunner rev-parse HEAD)" = "c8cb347eb1c85200793fd22693294f5f6a13f5f8"
+          test -f target-smolrunner/src/disposable_clone_runtime.rs
+          history="$(git -C target-smolrunner log --no-merges --format='%s' -n 20 -- src/disposable_clone_runtime.rs)"
+          printf '%s\n' "$history"
+          grep -F "Reduce live admission latency before JIT" <<<"$history"
+          grep -F "fix: collapse redundant clone admission polls (#533)" <<<"$history"
+          grep -F "keep clone preflight before durable checkpoint (#530)" <<<"$history"
+          if grep -F "Remove duplicate worker readiness probes (#540)" <<<"$history"; then
+            echo "unexpected: future #540 repair appears in base history" >&2
+            exit 1
+          fi
+
+      - name: Replay SmolRunner single-path control
+        run: |
+          set -euo pipefail
+          python cultist/scripts/jei_change_scope_pilot.py \
+            --packet-exe "$PWD/cultist/target/release/examples/agent_context_packet" \
+            --scoped-exe "$PWD/cultist/target/release/examples/scoped_agent_context_packet" \
+            --repo "$PWD/target-smolrunner" \
+            --primary-target src/disposable_clone_runtime.rs \
+            --task-path src/disposable_clone_runtime.rs \
+            --budget 32768 \
+            --expectation single_path_file_local \
+            --repository-label teamleaderleo/smolrunner \
+            --source "smolrunner#540 review base" \
+            --required-subject "Reduce live admission latency before JIT" \
+            --required-subject "fix: collapse redundant clone admission polls (#533)" \
+            --required-subject "keep clone preflight before durable checkpoint (#530)" \
+            --output "$PWD/artifacts/smolrunner-540-change-scope.json"
+
+      - name: Write change-set pilot summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          cases = [
+              ("Stensibly #1573 multi-path", Path("artifacts/stensibly-1573-change-scope.json")),
+              ("SmolRunner #540 single-path", Path("artifacts/smolrunner-540-change-scope.json")),
+          ]
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## Change-set-driven scope pilot\n\n")
+              out.write("| case | decision | common scope | file bytes | scoped bytes | overhead | scope rows | novel required | result |\n")
+              out.write("|---|---|---|---:|---:|---:|---:|---:|---|\n")
+              for title, path in cases:
+                  if not path.is_file():
+                      out.write(f"| {title} | — | — | — | — | — | — | — | missing receipt |\n")
+                      continue
+                  receipt = json.loads(path.read_text(encoding="utf-8"))
+                  out.write(
+                      f"| {title} | `{receipt['decision']}` | `{receipt.get('common_scope')}` | "
+                      f"{receipt['file_packet_serialized_bytes']} | {receipt.get('scoped_packet_serialized_bytes') or '—'} | "
+                      f"{receipt['selected_byte_overhead']} | {receipt['scope_history_count']} | "
+                      f"{receipt['novel_required_count']} | {'PASS' if receipt['acceptance']['passed'] else 'FAIL'} |\n"
+                  )
+          PY
+
+      - name: Upload change-set receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jei-change-set-scope-${{ github.run_id }}
+          path: |
+            artifacts/stensibly-1573-change-scope.json
+            artifacts/smolrunner-540-change-scope.json
+          if-no-files-found: error

@@ -1,8 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
@@ -43,6 +44,29 @@ struct SyntaxCohort {
     examples: Vec<CohortExample>,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum SourceChangeClass {
+    SyntaxChanged,
+    CommentsOrDocsOnly,
+    Unclassified,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct SourceHistoryRecord {
+    sha: String,
+    parent: Option<String>,
+    subject: String,
+    paths: BTreeSet<PathBuf>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ClassifiedSourceCommit {
+    sha: String,
+    subject: String,
+    paths: BTreeSet<PathBuf>,
+    class: SourceChangeClass,
+}
+
 pub fn add_generated_companion_findings(
     root: &Path,
     base: Option<&str>,
@@ -68,6 +92,7 @@ pub fn add_generated_companion_findings(
         return Ok(());
     }
     let generated_attrs = generated_attribute_paths(root);
+    let mut history_by_input = BTreeMap::<PathBuf, Vec<ClassifiedSourceCommit>>::new();
 
     for relation in relations {
         let input = PathBuf::from(&relation.input);
@@ -85,7 +110,14 @@ pub fn add_generated_companion_findings(
             continue;
         }
 
-        let cohort = analyze_syntax_cohort(root, &input, &output, MAX_HISTORY_COMMITS)?;
+        if !history_by_input.contains_key(&input) {
+            let history = classify_source_history(root, &input, MAX_HISTORY_COMMITS)?;
+            history_by_input.insert(input.clone(), history);
+        }
+        let history = history_by_input
+            .get(&input)
+            .expect("source history inserted above");
+        let cohort = build_syntax_cohort(history, &output);
         if cohort.opportunities < MIN_SYNTAX_COHORT || cohort.support != cohort.opportunities {
             continue;
         }
@@ -262,63 +294,113 @@ fn source_syntax_changed(root: &Path, anchor: &str, path: &Path) -> Result<bool,
     Ok(before != current)
 }
 
-fn analyze_syntax_cohort(
+fn classify_source_history(
     root: &Path,
     input: &Path,
-    output: &Path,
     max_commits: usize,
-) -> Result<SyntaxCohort, Box<dyn Error>> {
+) -> Result<Vec<ClassifiedSourceCommit>, Box<dyn Error>> {
+    let records = read_source_history(root, input, max_commits)?;
+    let considered: Vec<_> = records
+        .into_iter()
+        .filter(|record| {
+            !is_revert_subject(&record.subject) && record.paths.len() <= MAX_PATHS_PER_COMMIT
+        })
+        .collect();
+    let versions = read_source_versions(root, input, &considered)?;
+    let mut classified = Vec::with_capacity(considered.len());
+
+    for record in considered {
+        let class = match record.parent.as_deref() {
+            Some(parent) => {
+                let after_key = revision_spec(&record.sha, input);
+                let before_key = revision_spec(parent, input);
+                let after = versions
+                    .get(&after_key)
+                    .and_then(|source| source.as_deref());
+                let before = versions
+                    .get(&before_key)
+                    .and_then(|source| source.as_deref());
+                match (before, after) {
+                    (Some(before), Some(after)) => match (
+                        rust_syntax_fingerprint(before),
+                        rust_syntax_fingerprint(after),
+                    ) {
+                        (Some(before), Some(after)) if before == after => {
+                            SourceChangeClass::CommentsOrDocsOnly
+                        }
+                        (Some(_), Some(_)) => SourceChangeClass::SyntaxChanged,
+                        _ => SourceChangeClass::Unclassified,
+                    },
+                    _ => SourceChangeClass::Unclassified,
+                }
+            }
+            None => SourceChangeClass::Unclassified,
+        };
+
+        classified.push(ClassifiedSourceCommit {
+            sha: record.sha,
+            subject: record.subject,
+            paths: record.paths,
+            class,
+        });
+    }
+
+    Ok(classified)
+}
+
+fn build_syntax_cohort(history: &[ClassifiedSourceCommit], output: &Path) -> SyntaxCohort {
     let mut cohort = SyntaxCohort::default();
-    for sha in history_shas(root, input, max_commits)? {
-        let (subject, paths) = commit_metadata(root, &sha)?;
-        if is_revert_subject(&subject) || paths.len() > MAX_PATHS_PER_COMMIT {
-            continue;
-        }
 
-        let Some(after_source) = source_at_revision(root, &sha, input) else {
-            cohort.unclassified += 1;
-            continue;
-        };
-        let Some(before_source) = source_at_revision(root, &format!("{sha}^"), input) else {
-            cohort.unclassified += 1;
-            continue;
-        };
-        let (Some(before), Some(after)) = (
-            rust_syntax_fingerprint(&before_source),
-            rust_syntax_fingerprint(&after_source),
-        ) else {
-            cohort.unclassified += 1;
-            continue;
-        };
-
-        if before == after {
-            cohort.comments_or_docs_only += 1;
-            continue;
+    for commit in history {
+        match commit.class {
+            SourceChangeClass::CommentsOrDocsOnly => {
+                cohort.comments_or_docs_only += 1;
+                continue;
+            }
+            SourceChangeClass::Unclassified => {
+                cohort.unclassified += 1;
+                continue;
+            }
+            SourceChangeClass::SyntaxChanged => {}
         }
 
         cohort.opportunities += 1;
-        if paths.contains(output) {
+        if commit.paths.contains(output) {
             cohort.support += 1;
             if cohort.examples.len() < EXAMPLE_LIMIT {
                 cohort.examples.push(CohortExample {
-                    sha: sha.clone(),
-                    subject,
+                    sha: commit.sha.clone(),
+                    subject: commit.subject.clone(),
                 });
             }
         }
     }
-    Ok(cohort)
+
+    cohort
 }
 
-fn history_shas(
+fn read_source_history(
     root: &Path,
     input: &Path,
     max_commits: usize,
-) -> Result<Vec<String>, Box<dyn Error>> {
+) -> Result<Vec<SourceHistoryRecord>, Box<dyn Error>> {
     let output = Command::new("git")
         .arg("-C")
         .arg(root)
-        .args(["log", "--no-merges", "--format=%H", "-n"])
+        .args([
+            "-c",
+            "core.quotepath=false",
+            "log",
+            "--format=%x1e%H%x1f%P%x1f%s",
+            "--name-only",
+            "--no-renames",
+            "--no-color",
+            "--no-ext-diff",
+            "--root",
+            "--no-merges",
+            "--full-diff",
+            "-n",
+        ])
         .arg(max_commits.to_string())
         .arg("--")
         .arg(input)
@@ -331,56 +413,161 @@ fn history_shas(
         )
         .into());
     }
-    Ok(String::from_utf8(output.stdout)?
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-        .collect())
+
+    parse_source_history_log(&String::from_utf8(output.stdout)?)
+        .ok_or_else(|| format!("could not parse git history for {}", input.display()).into())
 }
 
-fn commit_metadata(root: &Path, sha: &str) -> Result<(String, BTreeSet<PathBuf>), Box<dyn Error>> {
-    let output = Command::new("git")
+fn parse_source_history_log(output: &str) -> Option<Vec<SourceHistoryRecord>> {
+    output
+        .split('\u{1e}')
+        .filter(|record| !record.trim().is_empty())
+        .map(parse_source_history_record)
+        .collect()
+}
+
+fn parse_source_history_record(record: &str) -> Option<SourceHistoryRecord> {
+    let record = record.trim_start_matches(['\n', '\r']);
+    let mut lines = record.lines();
+    let metadata = lines.next()?.trim();
+    let mut fields = metadata.splitn(3, '\u{1f}');
+    let sha = fields.next()?.trim().to_string();
+    let parent = fields
+        .next()?
+        .split_whitespace()
+        .next()
+        .map(ToOwned::to_owned);
+    let subject = fields.next()?.trim().to_string();
+    let paths = lines
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .collect();
+
+    Some(SourceHistoryRecord {
+        sha,
+        parent,
+        subject,
+        paths,
+    })
+}
+
+fn read_source_versions(
+    root: &Path,
+    input: &Path,
+    records: &[SourceHistoryRecord],
+) -> Result<BTreeMap<String, Option<String>>, Box<dyn Error>> {
+    let mut requested = BTreeSet::new();
+    for record in records {
+        requested.insert(revision_spec(&record.sha, input));
+        if let Some(parent) = &record.parent {
+            requested.insert(revision_spec(parent, input));
+        }
+    }
+
+    let mut results = BTreeMap::new();
+    let mut safe = Vec::new();
+    for spec in requested {
+        if spec.contains(['\n', '\r']) {
+            results.insert(spec, None);
+        } else {
+            safe.push(spec);
+        }
+    }
+    results.extend(read_git_blobs(root, &safe)?);
+    Ok(results)
+}
+
+fn read_git_blobs(
+    root: &Path,
+    specs: &[String],
+) -> Result<BTreeMap<String, Option<String>>, Box<dyn Error>> {
+    if specs.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+
+    let mut child = Command::new("git")
         .arg("-C")
         .arg(root)
-        .args([
-            "-c",
-            "core.quotepath=false",
-            "show",
-            "--format=%s%x1e",
-            "--name-only",
-            "--no-renames",
-            "--no-color",
-            "--no-ext-diff",
-            "--root",
-        ])
-        .arg(sha)
-        .arg("--")
-        .output()?;
-    if !output.status.success() {
-        return Err(format!(
-            "git show failed for {sha}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
+        .args(["cat-file", "--batch"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or("git cat-file did not provide a stdin pipe")?;
+        for spec in specs {
+            stdin.write_all(spec.as_bytes())?;
+            stdin.write_all(b"\n")?;
+        }
     }
-    let text = String::from_utf8(output.stdout)?;
-    let (subject, paths) = text
-        .split_once('\u{1e}')
-        .ok_or_else(|| format!("could not parse git show output for {sha}"))?;
-    Ok((
-        subject.trim().to_string(),
-        paths
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(PathBuf::from)
-            .collect(),
-    ))
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("git cat-file did not provide a stdout pipe")?;
+    let mut reader = BufReader::new(stdout);
+    let mut results = BTreeMap::new();
+
+    for spec in specs {
+        let mut header = String::new();
+        if reader.read_line(&mut header)? == 0 {
+            return Err(format!("git cat-file ended before reading `{spec}`").into());
+        }
+        let header = header.trim_end_matches(['\n', '\r']);
+        if header.ends_with(" missing") {
+            results.insert(spec.clone(), None);
+            continue;
+        }
+
+        let mut fields = header.split_whitespace();
+        let _object = fields
+            .next()
+            .ok_or_else(|| format!("invalid git cat-file header for `{spec}`"))?;
+        let kind = fields
+            .next()
+            .ok_or_else(|| format!("invalid git cat-file header for `{spec}`"))?;
+        let size = fields
+            .next()
+            .ok_or_else(|| format!("invalid git cat-file header for `{spec}`"))?
+            .parse::<usize>()?;
+        if fields.next().is_some() {
+            return Err(format!("invalid git cat-file header for `{spec}`").into());
+        }
+
+        let mut bytes = vec![0; size];
+        reader.read_exact(&mut bytes)?;
+        let mut terminator = [0_u8; 1];
+        reader.read_exact(&mut terminator)?;
+        if terminator != *b"\n" {
+            return Err(format!("invalid git cat-file payload terminator for `{spec}`").into());
+        }
+
+        let source = if kind == "blob" {
+            String::from_utf8(bytes).ok()
+        } else {
+            None
+        };
+        results.insert(spec.clone(), source);
+    }
+
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(format!("git cat-file failed with status {status}").into());
+    }
+
+    Ok(results)
+}
+
+fn revision_spec(revision: &str, path: &Path) -> String {
+    format!("{revision}:{}", normalize_path(path))
 }
 
 fn source_at_revision(root: &Path, revision: &str, path: &Path) -> Option<String> {
-    let spec = format!("{revision}:{}", normalize_path(path));
+    let spec = revision_spec(revision, path);
     let output = Command::new("git")
         .arg("-C")
         .arg(root)
@@ -499,7 +686,34 @@ fn short_sha(sha: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "cargo-cultist-generated-history-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    fn run_git(root: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git command failed: git {args:?}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     #[test]
     fn comments_and_docs_do_not_change_syntax_fingerprint() {
@@ -538,5 +752,76 @@ mod tests {
             ..SyntaxCohort::default()
         };
         assert_ne!(cohort.support, cohort.opportunities);
+    }
+
+    #[test]
+    fn parses_batched_source_history_records() {
+        let output = concat!(
+            "\x1eabc\x1fparent\x1ffeat: one\n\n",
+            "src/input.rs\n",
+            "generated/output.rs\n",
+            "\x1edef\x1fabc\x1fdocs: two\n\n",
+            "src/input.rs\n",
+        );
+        let records = parse_source_history_log(output).unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].sha, "abc");
+        assert_eq!(records[0].parent.as_deref(), Some("parent"));
+        assert!(records[0].paths.contains(Path::new("generated/output.rs")));
+        assert_eq!(records[1].subject, "docs: two");
+    }
+
+    #[test]
+    fn batched_history_preserves_syntax_cohort_semantics() {
+        let root = unique_temp_dir("cohort");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("generated")).unwrap();
+        run_git(&root, &["init", "-q", "-b", "main"]);
+        run_git(&root, &["config", "user.email", "cultist@example.invalid"]);
+        run_git(&root, &["config", "user.name", "Cargo Cultist Tests"]);
+
+        fs::write(root.join("src/input.rs"), "fn value() -> usize { 0 }\n").unwrap();
+        fs::write(
+            root.join("generated/output.rs"),
+            "const VALUE: usize = 0;\n",
+        )
+        .unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-q", "-m", "baseline"]);
+
+        fs::write(
+            root.join("src/input.rs"),
+            "// comment only\nfn value() -> usize { 0 }\n",
+        )
+        .unwrap();
+        run_git(&root, &["add", "src/input.rs"]);
+        run_git(&root, &["commit", "-q", "-m", "docs only"]);
+
+        fs::write(root.join("src/input.rs"), "fn value() -> usize { 1 }\n").unwrap();
+        fs::write(
+            root.join("generated/output.rs"),
+            "const VALUE: usize = 1;\n",
+        )
+        .unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-q", "-m", "syntax one"]);
+
+        fs::write(root.join("src/input.rs"), "fn value() -> usize { 2 }\n").unwrap();
+        fs::write(
+            root.join("generated/output.rs"),
+            "const VALUE: usize = 2;\n",
+        )
+        .unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-q", "-m", "syntax two"]);
+
+        let history = classify_source_history(&root, Path::new("src/input.rs"), 10).unwrap();
+        let cohort = build_syntax_cohort(&history, Path::new("generated/output.rs"));
+        assert_eq!(cohort.opportunities, 2);
+        assert_eq!(cohort.support, 2);
+        assert_eq!(cohort.comments_or_docs_only, 1);
+        assert_eq!(cohort.unclassified, 1);
+
+        fs::remove_dir_all(root).unwrap();
     }
 }

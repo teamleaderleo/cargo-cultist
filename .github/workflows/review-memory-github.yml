@@ -1,0 +1,209 @@
+name: GitHub review-memory carrier
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Public GitHub owner/repository
+        required: true
+        default: The-PR-Agent/pr-agent
+        type: string
+      pull_request:
+        description: Pull request number
+        required: true
+        default: "2424"
+        type: string
+      comment_node_id:
+        description: Root inline-review comment node ID
+        required: true
+        default: PRRC_kwDOJ4EDks7IBoVk
+        type: string
+      resolution_comment_node_id:
+        description: Direct reply node ID for a resolved outcome
+        required: false
+        default: PRRC_kwDOJ4EDks7IB1zX
+        type: string
+      concern_key:
+        description: Caller-supplied semantic concern identity
+        required: true
+        default: pr-agent:persistent-inline-comments:github-fallback-publish-state
+        type: string
+      outcome:
+        description: Caller-supplied review outcome
+        required: true
+        default: patch_changed
+        type: choice
+        options:
+          - open
+          - patch_changed
+          - rejected_with_evidence
+          - dismissed
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review-memory:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'research/github-review-memory-adapter'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Run adapter regression controls
+        run: |
+          python -m py_compile \
+            scripts/project_memory_github.py \
+            scripts/review_memory_github.py \
+            scripts/review_memory_github_test.py
+          python scripts/review_memory_github_test.py
+
+      - name: Resolve carrier inputs
+        id: carrier
+        env:
+          INPUT_REPOSITORY: ${{ inputs.repository }}
+          INPUT_PULL_REQUEST: ${{ inputs.pull_request }}
+          INPUT_COMMENT_NODE_ID: ${{ inputs.comment_node_id }}
+          INPUT_RESOLUTION_NODE_ID: ${{ inputs.resolution_comment_node_id }}
+          INPUT_CONCERN_KEY: ${{ inputs.concern_key }}
+          INPUT_OUTCOME: ${{ inputs.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            repository="The-PR-Agent/pr-agent"
+            pull_request="2424"
+            comment_node_id="PRRC_kwDOJ4EDks7IBoVk"
+            resolution_node_id="PRRC_kwDOJ4EDks7IB1zX"
+            concern_key="pr-agent:persistent-inline-comments:github-fallback-publish-state"
+            outcome="patch_changed"
+            carrier="true"
+          else
+            repository="$INPUT_REPOSITORY"
+            pull_request="$INPUT_PULL_REQUEST"
+            comment_node_id="$INPUT_COMMENT_NODE_ID"
+            resolution_node_id="$INPUT_RESOLUTION_NODE_ID"
+            concern_key="$INPUT_CONCERN_KEY"
+            outcome="$INPUT_OUTCOME"
+            carrier="false"
+          fi
+          {
+            echo "repository=$repository"
+            echo "pull_request=$pull_request"
+            echo "comment_node_id=$comment_node_id"
+            echo "resolution_node_id=$resolution_node_id"
+            echo "concern_key=$concern_key"
+            echo "outcome=$outcome"
+            echo "carrier=$carrier"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect selected review memory
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ steps.carrier.outputs.repository }}
+          TARGET_PR: ${{ steps.carrier.outputs.pull_request }}
+          ROOT_NODE: ${{ steps.carrier.outputs.comment_node_id }}
+          RESOLUTION_NODE: ${{ steps.carrier.outputs.resolution_node_id }}
+          CONCERN_KEY: ${{ steps.carrier.outputs.concern_key }}
+          OUTCOME: ${{ steps.carrier.outputs.outcome }}
+        run: |
+          set -euo pipefail
+          resolution=()
+          if [[ -n "$RESOLUTION_NODE" ]]; then
+            resolution=(--resolution-comment-node-id "$RESOLUTION_NODE")
+          fi
+          python scripts/review_memory_github.py \
+            --repository "$TARGET_REPOSITORY" \
+            --pull-request "$TARGET_PR" \
+            --comment-node-id "$ROOT_NODE" \
+            --concern-key "$CONCERN_KEY" \
+            --outcome "$OUTCOME" \
+            "${resolution[@]}" \
+            --output review-memory-query.json \
+            --receipt-output review-memory-github-receipt.json \
+            > /tmp/review-memory-github.stdout
+
+      - name: Validate through independent Rust evaluator
+        run: |
+          cargo run --quiet --example review_memory \
+            < review-memory-query.json \
+            > review-memory-evaluation.json
+
+      - name: Assert PR-Agent review lifecycle carrier
+        if: steps.carrier.outputs.carrier == 'true'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          query = json.loads(Path("review-memory-query.json").read_text())
+          receipt = json.loads(Path("review-memory-github-receipt.json").read_text())
+          evaluation = json.loads(Path("review-memory-evaluation.json").read_text())
+
+          assert receipt["repository"] == "The-PR-Agent/pr-agent", receipt
+          assert receipt["pull_request"] == 2424, receipt
+          assert receipt["root"]["node_id"] == "PRRC_kwDOJ4EDks7IBoVk", receipt
+          assert receipt["resolution"]["node_id"] == "PRRC_kwDOJ4EDks7IB1zX", receipt
+          assert receipt["resolution"]["in_reply_to_id"] == receipt["root"]["id"], receipt
+          assert receipt["root"]["path"] == "pr_agent/git_providers/github_provider.py", receipt
+          assert "Dedup blocks gh fallback" in receipt["root"]["body"], receipt
+          assert "f699e7ea" in receipt["resolution"]["body"], receipt
+          assert receipt["root"]["commit_id"] != receipt["current_head_sha"], receipt
+
+          record = query["records"][0]
+          assert record["subject"]["revision"] == receipt["root"]["commit_id"], query
+          assert record["outcome"] == "patch_changed", query
+          assert record["resolution_ref"].endswith(
+              f"/{receipt['resolution']['id']}"
+          ), query
+
+          assert evaluation["disposition"] == "refresh_existing_thread", evaluation
+          assert evaluation["matches"][0]["match_kind"] == "prior_head", evaluation
+          assert evaluation["matches"][0]["applicability"]["status"] == "invalid", evaluation
+          assert evaluation["matches"][0]["outcome"] == "patch_changed", evaluation
+          PY
+
+      - name: Write job summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = json.loads(Path("review-memory-github-receipt.json").read_text())
+          evaluation = json.loads(Path("review-memory-evaluation.json").read_text())
+          root = receipt["root"]
+          resolution = receipt["resolution"]
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as out:
+              out.write("## GitHub review memory\n\n")
+              out.write(
+                  f"PR: `{receipt['repository']}#{receipt['pull_request']}` · "
+                  f"comments scanned: **{receipt['review_comment_count']}**\n\n"
+              )
+              out.write(f"Root review comment: `{root['id']}` / `{root['node_id']}`\n\n")
+              out.write(f"Reviewed commit: `{root['commit_id']}`\n\n")
+              out.write(f"Current PR head: `{receipt['current_head_sha']}`\n\n")
+              if resolution:
+                  out.write(
+                      f"Resolution reply: `{resolution['id']}` / `{resolution['node_id']}`\n\n"
+                  )
+              out.write(
+                  f"Evaluation: **{evaluation['disposition']}** · prior applicability: "
+                  f"**{evaluation['matches'][0]['applicability']['status']}**\n"
+              )
+          PY
+
+      - name: Upload provider receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-memory-github-${{ github.run_id }}
+          path: |
+            review-memory-query.json
+            review-memory-github-receipt.json
+            review-memory-evaluation.json
+          if-no-files-found: error

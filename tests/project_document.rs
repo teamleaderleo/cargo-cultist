@@ -44,7 +44,10 @@ fn validates_exact_revision_path_blob_and_source() {
         summary.documents[0].path,
         "investigations/cloud-hypervisor-qcow-r609-review/README.md"
     );
-    assert_eq!(summary.documents[0].source.number, 609);
+    assert_eq!(
+        summary.documents[0].source.number,
+        609
+    );
     assert!(summary.documents[0].text_complete);
 }
 

@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
+use crate::performance;
 use crate::rust_facts::{RustFactScan, scan_rust_paths, scan_rust_repository};
 
 const SKIPPED_DIRS: &[&str] = &[".git", "target", "node_modules"];
@@ -44,6 +45,7 @@ pub fn analyze_test_module_files(paths: &[PathBuf]) -> Result<TestModuleReport, 
 }
 
 fn test_module_report(scan: RustFactScan) -> TestModuleReport {
+    performance::record_rust_scan(scan.parsed_files, scan.cache_hits, 0);
     let mut report = TestModuleReport::default();
 
     for file in scan.files {

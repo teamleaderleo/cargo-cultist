@@ -1,0 +1,154 @@
+name: Decision memory longitudinal handoff research
+
+on:
+  pull_request:
+    paths:
+      - examples/agent_context_packet.rs
+      - examples/decision_memory.rs
+      - .github/workflows/decision-memory-handoff-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current Cargo Cultist research code
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Quality gates
+        working-directory: cultist
+        run: |
+          cargo fmt --check
+          cargo clippy --example decision_memory -- -D warnings
+          cargo test --example decision_memory
+          cargo clippy --example agent_context_packet -- -D warnings
+          cargo build --example agent_context_packet
+
+      - name: Checkout repository state before reviewed memory
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/cargo-cultist
+          ref: b013aa660a4a74b4c75149fb171077d38b2c02af
+          path: corpus/before
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout repository state after reviewed memory
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/cargo-cultist
+          ref: 245116ff6f026e60b545cd2b953b35d7685de4d6
+          path: corpus/after
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove target code is unchanged across the handoff
+        run: |
+          set -euo pipefail
+          before_blob=$(git -C corpus/before rev-parse HEAD:src/history.rs)
+          after_blob=$(git -C corpus/after rev-parse HEAD:src/history.rs)
+          test "$before_blob" = "$after_blob"
+          test ! -e corpus/before/research/decision-memory
+          test -f corpus/after/research/decision-memory/history-cochange-remains-association.json
+          mkdir -p research-output
+          printf '%s\n' "$before_blob" > research-output/history-target-blob.txt
+
+      - name: Build fresh agent packets from both repository states
+        run: |
+          set -euo pipefail
+          cultist/target/debug/examples/agent_context_packet \
+            corpus/before/src/history.rs \
+            > research-output/before-memory-packet.json
+          cultist/target/debug/examples/agent_context_packet \
+            corpus/after/src/history.rs \
+            > research-output/after-memory-packet.json
+
+      - name: Prove reviewed memory is the isolated context delta
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          before = json.loads(Path('research-output/before-memory-packet.json').read_text())
+          after = json.loads(Path('research-output/after-memory-packet.json').read_text())
+
+          assert before['schema_version'] == 3, before['schema_version']
+          assert after['schema_version'] == 3, after['schema_version']
+          assert before['target']['path'] == 'src/history.rs', before['target']
+          assert after['target']['path'] == 'src/history.rs', after['target']
+
+          for field in [
+              'budget',
+              'direct_evidence',
+              'guidance',
+              'recent_history',
+              'historical_companions',
+              'companion_exclusions',
+              'unknowns',
+              'truncation',
+          ]:
+              assert before[field] == after[field], field
+
+          assert before['reviewed_decisions'] == [], before['reviewed_decisions']
+          assert len(after['reviewed_decisions']) == 1, after['reviewed_decisions']
+          decision = after['reviewed_decisions'][0]
+          record = decision['record']
+          assert decision['source_file'] == 'research/decision-memory/history-cochange-remains-association.json', decision
+          assert record['id'] == 'history-cochange-remains-association-v1', record
+          assert record['kind'] == 'historical-companion-policy', record
+          assert record['scope']['path_prefix'] == 'src/history.rs', record
+          assert [item['reference'] for item in record['authority']] == ['#34', '#39', '#19'], record
+          assert 'association evidence' in record['reason'], record['reason']
+          assert 'does not establish' in record['reason'], record['reason']
+
+          summary = {
+              'target': 'src/history.rs',
+              'target_blob_equal': True,
+              'unchanged_local_packet_fields': [
+                  'budget', 'direct_evidence', 'guidance', 'recent_history',
+                  'historical_companions', 'companion_exclusions', 'unknowns',
+                  'truncation',
+              ],
+              'before_reviewed_decisions': 0,
+              'after_reviewed_decisions': 1,
+              'decision_id': record['id'],
+              'authority': [item['reference'] for item in record['authority']],
+          }
+          Path('research-output/handoff-summary.json').write_text(
+              json.dumps(summary, indent=2) + '\n'
+          )
+          print(json.dumps(summary, indent=2))
+          PY
+
+      - name: Keep unrelated target free of the scoped decision
+        run: |
+          set -euo pipefail
+          cultist/target/debug/examples/agent_context_packet \
+            corpus/after/src/main.rs \
+            > research-output/after-unrelated-packet.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          packet = json.loads(Path('research-output/after-unrelated-packet.json').read_text())
+          assert packet['target']['path'] == 'src/main.rs', packet['target']
+          assert packet['reviewed_decisions'] == [], packet['reviewed_decisions']
+          PY
+
+      - name: Upload longitudinal handoff receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: decision-memory-longitudinal-handoff
+          path: research-output/
+          if-no-files-found: error

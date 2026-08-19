@@ -259,6 +259,16 @@ impl PathScope {
 }
 
 fn validate_requirements(requirements: &EvidenceRequirements) -> Result<(), ApplicabilityError> {
+    if requirements.repository.is_none()
+        && requirements.revision.is_none()
+        && requirements.work.is_none()
+        && requirements.scope.is_none()
+    {
+        return Err(ApplicabilityError::new(
+            "at least one explicit applicability requirement is required",
+        ));
+    }
+
     validate_coordinate(
         requirements.repository.as_deref(),
         "requirements.repository",
@@ -551,9 +561,26 @@ mod tests {
     }
 
     #[test]
+    fn rejects_empty_requirements_instead_of_treating_them_as_global() {
+        let error = evaluate_query(&query(
+            EvidenceRequirements::default(),
+            EvaluationContext::default(),
+        ))
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("at least one explicit applicability requirement")
+        );
+    }
+
+    #[test]
     fn rejects_unknown_schema_and_unknown_json_fields() {
         let mut unsupported = query(
-            EvidenceRequirements::default(),
+            EvidenceRequirements {
+                work: Some("#1".to_string()),
+                ..EvidenceRequirements::default()
+            },
             EvaluationContext::default(),
         );
         unsupported.schema_version = 2;

@@ -115,7 +115,11 @@ fn rereport_evidence_must_name_the_declared_prior_issue() {
     let mut arbitrary = episode();
     arbitrary.re_report.evidence = "Related to #10".to_string();
     let error = evaluate_closure_episode(&arbitrary).unwrap_err();
-    assert!(error.to_string().contains("not an admitted exact re-report form"));
+    assert!(
+        error
+            .to_string()
+            .contains("not an admitted exact re-report form")
+    );
 }
 
 #[test]

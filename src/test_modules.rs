@@ -1,14 +1,10 @@
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::fs;
 use std::path::{Path, PathBuf};
 
-use proc_macro2::Span;
-use syn::parse::Parser;
-use syn::punctuated::Punctuated;
-use syn::visit::{self, Visit};
-use syn::{Attribute, ItemMod, Meta, Token};
-use walkdir::{DirEntry, WalkDir};
+use crate::rust_facts::{RustFactScan, scan_rust_paths, scan_rust_repository};
+
+const SKIPPED_DIRS: &[&str] = &[".git", "target", "node_modules"];
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TestModuleOccurrence {
@@ -39,56 +35,34 @@ pub fn analyze_test_modules_excluding(
     root: &Path,
     excluded_paths: &BTreeSet<PathBuf>,
 ) -> Result<TestModuleReport, Box<dyn Error>> {
-    let mut report = TestModuleReport::default();
-
-    for entry in WalkDir::new(root).into_iter().filter_entry(should_visit) {
-        let entry = entry?;
-        if !entry.file_type().is_file()
-            || entry.path().extension().and_then(|ext| ext.to_str()) != Some("rs")
-            || excluded_paths.contains(entry.path())
-        {
-            continue;
-        }
-
-        analyze_test_module_file(entry.path(), &mut report)?;
-    }
-
-    sort_report(&mut report);
-    Ok(report)
+    let scan = scan_rust_repository(root, excluded_paths, SKIPPED_DIRS)?;
+    Ok(test_module_report(scan))
 }
 
 pub fn analyze_test_module_files(paths: &[PathBuf]) -> Result<TestModuleReport, Box<dyn Error>> {
+    Ok(test_module_report(scan_rust_paths(paths)?))
+}
+
+fn test_module_report(scan: RustFactScan) -> TestModuleReport {
     let mut report = TestModuleReport::default();
 
-    for path in paths {
-        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") || !path.is_file() {
+    for file in scan.files {
+        if let Some(error) = file.facts.parse_error {
+            report.parse_failures.push((file.path, error));
             continue;
         }
-        analyze_test_module_file(path, &mut report)?;
+
+        for occurrence in file.facts.test_modules {
+            report.occurrences.push(TestModuleOccurrence {
+                name: occurrence.name,
+                path: file.path.clone(),
+                line: occurrence.line,
+            });
+        }
     }
 
     sort_report(&mut report);
-    Ok(report)
-}
-
-fn analyze_test_module_file(
-    path: &Path,
-    report: &mut TestModuleReport,
-) -> Result<(), Box<dyn Error>> {
-    let source = fs::read_to_string(path)?;
-    match syn::parse_file(&source) {
-        Ok(file) => {
-            let mut visitor = TestModuleVisitor {
-                path,
-                occurrences: &mut report.occurrences,
-            };
-            visitor.visit_file(&file);
-        }
-        Err(error) => report
-            .parse_failures
-            .push((path.to_path_buf(), error.to_string())),
-    }
-    Ok(())
+    report
 }
 
 fn sort_report(report: &mut TestModuleReport) {
@@ -98,96 +72,12 @@ fn sort_report(report: &mut TestModuleReport) {
     report.parse_failures.sort_by(|a, b| a.0.cmp(&b.0));
 }
 
-fn should_visit(entry: &DirEntry) -> bool {
-    if !entry.file_type().is_dir() {
-        return true;
-    }
-
-    !matches!(
-        entry.file_name().to_str(),
-        Some(".git" | "target" | "node_modules")
-    )
-}
-
-struct TestModuleVisitor<'a> {
-    path: &'a Path,
-    occurrences: &'a mut Vec<TestModuleOccurrence>,
-}
-
-impl<'ast> Visit<'ast> for TestModuleVisitor<'_> {
-    fn visit_item_mod(&mut self, node: &'ast ItemMod) {
-        if is_test_module(&node.attrs) {
-            self.occurrences.push(TestModuleOccurrence {
-                name: node.ident.to_string(),
-                path: self.path.to_path_buf(),
-                line: span_line(node.ident.span()),
-            });
-        }
-
-        visit::visit_item_mod(self, node);
-    }
-}
-
-fn span_line(span: Span) -> usize {
-    span.start().line
-}
-
-fn is_test_module(attrs: &[Attribute]) -> bool {
-    attrs
-        .iter()
-        .filter(|attr| attr.path().is_ident("cfg"))
-        .any(|attr| match &attr.meta {
-            Meta::List(list) => parse_meta_list(list.tokens.clone())
-                .is_some_and(|metas| metas.iter().any(|meta| meta_mentions_test(meta, false))),
-            _ => false,
-        })
-}
-
-fn parse_meta_list(tokens: proc_macro2::TokenStream) -> Option<Punctuated<Meta, Token![,]>> {
-    Punctuated::<Meta, Token![,]>::parse_terminated
-        .parse2(tokens)
-        .ok()
-}
-
-fn meta_mentions_test(meta: &Meta, negated: bool) -> bool {
-    match meta {
-        Meta::Path(path) => path.is_ident("test") && !negated,
-        Meta::List(list) => {
-            let nested_negated = if list.path.is_ident("not") {
-                !negated
-            } else {
-                negated
-            };
-            parse_meta_list(list.tokens.clone()).is_some_and(|metas| {
-                metas
-                    .iter()
-                    .any(|meta| meta_mentions_test(meta, nested_negated))
-            })
-        }
-        Meta::NameValue(_) => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-
-    fn names(source: &str) -> Vec<String> {
-        let file = syn::parse_file(source).unwrap();
-        let path = Path::new("fixture.rs");
-        let mut occurrences = Vec::new();
-        let mut visitor = TestModuleVisitor {
-            path,
-            occurrences: &mut occurrences,
-        };
-        visitor.visit_file(&file);
-        occurrences
-            .into_iter()
-            .map(|occurrence| occurrence.name)
-            .collect()
-    }
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -198,6 +88,20 @@ mod tests {
             "cargo-cultist-{name}-{}-{nanos}",
             std::process::id()
         ))
+    }
+
+    fn names(source: &str) -> Vec<String> {
+        let root = unique_temp_dir("test-module-names");
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("fixture.rs");
+        std::fs::write(&path, source).unwrap();
+        let report = analyze_test_module_files(&[path]).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        report
+            .occurrences
+            .into_iter()
+            .map(|occurrence| occurrence.name)
+            .collect()
     }
 
     #[test]

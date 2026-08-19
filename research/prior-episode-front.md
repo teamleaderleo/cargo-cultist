@@ -344,6 +344,55 @@ A negative control removes #1573 from the selected guard's coverage. The source 
 
 That is the composition property this experiment needs: the front cannot make an incomplete historical story actionable merely because the caller selected it.
 
+## Executed temporal composition receipt
+
+The formatted semantic composition head was:
+
+```text
+head:       102d9ce644928a8d93977e1ac3a3d11eae7888b7
+main:       660f7069a264281a7de07dd2b06caf32863c5ad5
+merge view: ce9bf0f3bcdfc3ef803c0cb68976c8750e976481
+```
+
+GitHub Actions receipt:
+
+```text
+CI run:                    32262851994  success
+Generated provenance run:  32262851951  success
+```
+
+The merge-view CI passed:
+
+```text
+rustfmt
+all-target Clippy with -D warnings
+project-memory lineage controls
+GitHub review-memory adapter controls
+GitHub issue-closure adapter controls
+external GitHub reference controls
+full Rust tests
+repository scan text + JSON dogfood
+bounded history text + JSON dogfood
+CI test-filter text + JSON dogfood
+positive/control CI-filter fixtures
+pull-request diff text + JSON dogfood
+```
+
+The four temporal inputs serialized and reparsed through the front query grammar and surfaced in exact input order:
+
+```text
+use_accepted_guard
+use_corrected_predicate
+await_bounded_convergence
+produce_required_proof_artifact
+```
+
+The incomplete-guard mutation failed closed with packet-local ID `stensibly:index-limit-guard` and source status `GuardCoverageIncomplete`.
+
+The existing live review-memory and issue-closure carrier workflows skipped on their path filters for this semantic head; temporal composition itself performed no provider fetch.
+
+The only change after this semantic receipt is the durable receipt prose in this research note.
+
 ## Quiet receipts are part of the experiment
 
 The front intentionally records why a review input stayed out of `items`:

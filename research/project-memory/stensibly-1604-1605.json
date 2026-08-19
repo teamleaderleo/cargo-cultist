@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "repository": "teamleaderleo/stensibly",
+  "anchor": {
+    "kind": "pull_request",
+    "number": 1605
+  },
+  "artifacts": [
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1604
+      },
+      "title": "Emit durable handoff and completion activity",
+      "state": "closed",
+      "created_at": "2026-08-16T09:42:36Z",
+      "closed_at": "2026-08-16T09:46:52Z",
+      "revision": {
+        "head_sha": "bcf5fdc5f322a92a7bb3ea4e1b9227c4c3194f97",
+        "base_sha": "34c8bcbb06bfa41738a60390057a417ee748b8b5",
+        "merged": true
+      },
+      "changed_paths": [
+        "convex/itemTransitionActivity.test.ts",
+        "convex/items.ts",
+        "convex/lib/claimActivity.ts",
+        "convex/lib/ledgerEventActivity.ts"
+      ],
+      "evidence_text": "## Purpose\n\nContinue #1149 from durable claim lifecycle activity into two ordinary item transitions that carry the highest project-history value: handoff and completion.\n\n#1600/#1602 made claim responsibility changes appear automatically in the durable activity store. This slice makes `work.handed_off` and `item.completed` join that same timeline inside the exact Convex transaction that commits the item transition.\n\n## Change\n\n- extract the canonical ledger-event → durable activity projection from the claim-only helper into one Convex-private `ledgerEventActivity` helper;\n- keep claim activity as a thin `responsibility` wrapper so #1600/#1602 semantics stay on the same persistence implementation;\n- project `work.handed_off` as `ledger_event` + `handoff` / `observed`;\n- project `item.completed` as `ledger_event` + `completed` / `succeeded`;\n- retain the exact transition event as source identity and hash its canonical event bytes without copying summary, next-action, target-actor, or completion prose into activity;\n- retain the responsibility generation being ended when it is positive;\n- omit responsibility generation for valid generation-0 transitions instead of inventing a claim that never existed;\n- keep block/unblock outside this slice.\n\n## Atomicity / replay\n\nThe activity append occurs after the canonical item event is appended and before the mutation returns, inside the same Convex transaction. If durable activity cannot commit, the item patch and transition event roll back with it. Existing transition idempotency replay returns without a second event or activity observation.\n\n## Proof\n\nFocused Convex controls cover:\n\n- claim → handoff → new claim → completion as one exact four-record activity timeline;\n- exact source classes, source event IDs, activity classes/states, and responsibility generations;\n- immediate handoff and completion replay creating no duplicate deliveries/observations;\n- handoff summary, next action, target actor, and completion summary absent from durable activity bytes;\n- direct completion from generation 0 yielding `completed/succeeded` with `responsibilityGeneration: null`;\n- actor IDs outside the activity identifier grammar remaining content-minimised;\n- forced activity append-order exhaustion rolling completion and `item.completed` back together.\n\nExisting claim producer/lifecycle suites continue to exercise the same generic projection through the claim wrapper.\n\n## Boundary\n\nHandoff/completion producer only. No block/unblock producer, provider producer, Project Activity live API/UI, Work Pulse live adapter, notification, prioritisation, new worker call, provider effect, or authority change.\n\nRefs #1149, #1602, #1600, #1593, #1592, #1586.\n\n— Keel · automatic item transition lane",
+      "evidence_complete": true
+    },
+    {
+      "reference": {
+        "kind": "pull_request",
+        "number": 1605
+      },
+      "title": "Emit durable block and unblock activity",
+      "state": "closed",
+      "created_at": "2026-08-16T09:52:37Z",
+      "closed_at": "2026-08-16T09:58:14Z",
+      "revision": {
+        "head_sha": "82bf8831ae45867e8d990e73f17b062c1a95f62c",
+        "base_sha": "6769bdc9f4a5d0d6070f8d6f17c36fdb7821788f",
+        "merged": true
+      },
+      "changed_paths": [
+        "convex/itemBlockActivity.test.ts",
+        "convex/items.ts"
+      ],
+      "evidence_text": "## Purpose\n\nFinish the ordinary item-state producer lane for #1149 by projecting block/unblock transitions into the same durable automatic activity store, while correcting one subtle responsibility-generation assumption exposed by this continuation.\n\n#1604 attached positive `claimGeneration` to handoff/completion activity. The counter also advances on unclaimed semantic transitions, so positivity alone does not prove a live responsibility. This slice binds `responsibilityGeneration` to actual live claim evidence instead.\n\n## Change\n\n- all four item transitions now use one ledger-event activity mapping after their canonical event commits:\n  - `item.completed` → `completed / succeeded`;\n  - `work.handed_off` → `handoff / observed`;\n  - `work.blocked` → `blocked / blocked`;\n  - `work.unblocked` → `progress_evidence / observed`;\n- source class remains `ledger_event`, with exact canonical event ID/fingerprint and zero retained transition prose;\n- `responsibilityGeneration` is included only when the item carries a live, unexpired claim held by the acting actor at transition time;\n- unclaimed transitions stay responsibility-null even when the monotonic claim-generation counter is positive because earlier semantic transitions advanced it;\n- block/unblock activity commits in the same Convex transaction as the item patch and canonical event.\n\n## Proof\n\nFocused Convex controls cover:\n\n- an entirely unclaimed block → unblock → handoff → completion chain advancing claim generation from 0 to 4 while all four activity observations keep `responsibilityGeneration: null`;\n- exact block/unblock/handoff/completion source events and activity class/state mappings;\n- exact semantic replay creating no duplicate deliveries/observations;\n- block reason, next actions, handoff summary, and completion summary absent from durable activity bytes;\n- blocking a real live claim retaining the exact responsibility generation being ended;\n- forced activity append-order exhaustion rolling the block item patch and `work.blocked` event back together;\n- existing #1604 claimed handoff/completion controls continue to prove responsibility generation is retained when a real live claim exists.\n\n## Boundary\n\nItem transition producer semantics only. No provider producer, Project Activity live API/UI, Work Pulse live adapter, notification, prioritisation, new worker call, provider effect, or authority change.\n\nRefs #1149, #1604, #1602, #1600, #1593, #1592, #1586.\n\n— Keel · automatic blocked-work lane",
+      "evidence_complete": true
+    }
+  ],
+  "edges": []
+}

@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 
 const SCHEMA_VERSION: u32 = 1;
 const MAX_HEADS_UP: usize = 12;
+const USAGE: &str =
+    "usage: cargo run --example active_work_heads_up -- ACTIVE_WORK_INVENTORY.json [FOCUS_PATH ...]";
 
 #[derive(Debug, Clone, Deserialize)]
 struct ActiveWorkInventory {
@@ -37,6 +39,8 @@ struct HeadsUpReport {
     source: String,
     observed_at: String,
     current: WorkIdentity,
+    current_changed_path_count: usize,
+    focus_paths: Vec<String>,
     candidates_examined: usize,
     self_candidates_excluded: usize,
     heads_up: Vec<HeadsUp>,
@@ -62,6 +66,8 @@ struct HeadsUp {
     claim_kind: &'static str,
     work: WorkIdentity,
     overlap_paths: Vec<String>,
+    changed_overlap_paths: Vec<String>,
+    focus_overlap_paths: Vec<String>,
     message: String,
     question: &'static str,
     unknowns: Vec<&'static str>,
@@ -75,22 +81,21 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn Error>> {
-    let path = env::args()
-        .nth(1)
-        .ok_or("usage: cargo run --example active_work_heads_up -- ACTIVE_WORK_INVENTORY.json")?;
-    if env::args().nth(2).is_some() {
-        return Err(
-            "usage: cargo run --example active_work_heads_up -- ACTIVE_WORK_INVENTORY.json".into(),
-        );
-    }
+    let mut args = env::args().skip(1);
+    let path = args.next().ok_or(USAGE)?;
+    let focus_paths = args.collect::<Vec<_>>();
 
     let inventory: ActiveWorkInventory = serde_json::from_slice(&fs::read(path)?)?;
-    let report = analyze(inventory).map_err(|error| format!("invalid inventory: {error}"))?;
+    let report = analyze(inventory, &focus_paths)
+        .map_err(|error| format!("invalid inventory or focus path: {error}"))?;
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
 }
 
-fn analyze(mut inventory: ActiveWorkInventory) -> Result<HeadsUpReport, String> {
+fn analyze(
+    mut inventory: ActiveWorkInventory,
+    raw_focus_paths: &[String],
+) -> Result<HeadsUpReport, String> {
     if inventory.schema_version != SCHEMA_VERSION {
         return Err(format!(
             "unsupported schema {}; expected {SCHEMA_VERSION}",
@@ -109,7 +114,13 @@ fn analyze(mut inventory: ActiveWorkInventory) -> Result<HeadsUpReport, String> 
         normalize_work(work)?;
     }
 
-    let current_paths: BTreeSet<_> = inventory.current.changed_paths.iter().cloned().collect();
+    let changed_paths: BTreeSet<_> = inventory.current.changed_paths.iter().cloned().collect();
+    let focus_paths = normalize_paths(raw_focus_paths)?;
+    let effective_paths = changed_paths
+        .union(&focus_paths)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
     let mut heads_up = Vec::new();
     let mut candidates_examined = 0;
     let mut self_candidates_excluded = 0;
@@ -122,24 +133,34 @@ fn analyze(mut inventory: ActiveWorkInventory) -> Result<HeadsUpReport, String> 
         candidates_examined += 1;
 
         let work_paths: BTreeSet<_> = work.changed_paths.iter().cloned().collect();
-        let overlap_paths = current_paths
+        let overlap_paths = effective_paths
             .intersection(&work_paths)
             .cloned()
             .collect::<Vec<_>>();
         if overlap_paths.is_empty() {
             continue;
         }
+        let changed_overlap_paths = changed_paths
+            .intersection(&work_paths)
+            .cloned()
+            .collect::<Vec<_>>();
+        let focus_overlap_paths = focus_paths
+            .intersection(&work_paths)
+            .cloned()
+            .collect::<Vec<_>>();
 
         heads_up.push(HeadsUp {
             kind: "active-direct-path-overlap",
             claim_kind: "proven",
             message: format!(
-                "Active work `{}` overlaps {} current path(s).",
+                "Active work `{}` overlaps {} current or intended path(s).",
                 work.id,
                 overlap_paths.len()
             ),
             work: identity(&work),
             overlap_paths,
+            changed_overlap_paths,
+            focus_overlap_paths,
             question: "Is there anything worth reconciling before continuing?",
             unknowns: vec![
                 "Path overlap does not establish duplicate intent, ownership, incompatibility, or required coordination.",
@@ -164,12 +185,15 @@ fn analyze(mut inventory: ActiveWorkInventory) -> Result<HeadsUpReport, String> 
         source: inventory.source,
         observed_at: inventory.observed_at,
         current: identity(&inventory.current),
+        current_changed_path_count: changed_paths.len(),
+        focus_paths: focus_paths.into_iter().collect(),
         candidates_examined,
         self_candidates_excluded,
         heads_up,
         omitted_heads_up,
         unknowns: vec![
             "No direct path overlap is not evidence that active work is semantically independent.",
+            "Focus paths represent caller-supplied intent; they do not prove the current work will modify those paths.",
             "This first experiment does not compare issue references, symbols, generated relationships, historical companions, policy, or behavior.",
             "Remote inventory completeness and freshness are properties of the supplying adapter and remain separate from overlap analysis.",
         ],
@@ -208,12 +232,15 @@ fn normalize_work(work: &mut WorkItem) -> Result<(), String> {
         }
     }
 
-    let mut paths = BTreeSet::new();
-    for path in &work.changed_paths {
-        paths.insert(normalize_repo_path(path)?);
-    }
-    work.changed_paths = paths.into_iter().collect();
+    work.changed_paths = normalize_paths(&work.changed_paths)?.into_iter().collect();
     Ok(())
+}
+
+fn normalize_paths(raw_paths: &[String]) -> Result<BTreeSet<String>, String> {
+    raw_paths
+        .iter()
+        .map(|path| normalize_repo_path(path))
+        .collect()
 }
 
 fn normalize_repo_path(raw: &str) -> Result<String, String> {
@@ -259,29 +286,62 @@ mod tests {
         }
     }
 
+    fn focus(paths: &[&str]) -> Vec<String> {
+        paths.iter().map(|path| (*path).to_string()).collect()
+    }
+
     #[test]
     fn emits_direct_overlap_only() {
-        let report = analyze(inventory(
-            work("#1", "aaa", &["src/a.rs", "src/b.rs"]),
-            vec![
-                work("#2", "bbb", &["src/b.rs", "src/c.rs"]),
-                work("#3", "ccc", &["docs/readme.md"]),
-            ],
-        ))
+        let report = analyze(
+            inventory(
+                work("#1", "aaa", &["src/a.rs", "src/b.rs"]),
+                vec![
+                    work("#2", "bbb", &["src/b.rs", "src/c.rs"]),
+                    work("#3", "ccc", &["docs/readme.md"]),
+                ],
+            ),
+            &[],
+        )
         .unwrap();
 
         assert_eq!(report.candidates_examined, 2);
         assert_eq!(report.heads_up.len(), 1);
         assert_eq!(report.heads_up[0].work.id, "#2");
         assert_eq!(report.heads_up[0].overlap_paths, vec!["src/b.rs"]);
+        assert_eq!(report.heads_up[0].changed_overlap_paths, vec!["src/b.rs"]);
+        assert!(report.heads_up[0].focus_overlap_paths.is_empty());
+    }
+
+    #[test]
+    fn surfaces_focus_path_before_current_diff_changes() {
+        let report = analyze(
+            inventory(
+                work("#1", "aaa", &[]),
+                vec![work("#2", "bbb", &["src/parser.rs"])],
+            ),
+            &focus(&["src/parser.rs"]),
+        )
+        .unwrap();
+
+        assert_eq!(report.current_changed_path_count, 0);
+        assert_eq!(report.focus_paths, vec!["src/parser.rs"]);
+        assert_eq!(report.heads_up.len(), 1);
+        assert!(report.heads_up[0].changed_overlap_paths.is_empty());
+        assert_eq!(
+            report.heads_up[0].focus_overlap_paths,
+            vec!["src/parser.rs"]
+        );
     }
 
     #[test]
     fn stays_quiet_for_disjoint_active_work() {
-        let report = analyze(inventory(
-            work("#1", "aaa", &["src/a.rs"]),
-            vec![work("#2", "bbb", &["src/b.rs"])],
-        ))
+        let report = analyze(
+            inventory(
+                work("#1", "aaa", &["src/a.rs"]),
+                vec![work("#2", "bbb", &["src/b.rs"])],
+            ),
+            &[],
+        )
         .unwrap();
 
         assert!(report.heads_up.is_empty());
@@ -290,7 +350,7 @@ mod tests {
     #[test]
     fn excludes_current_work_from_remote_inventory() {
         let current = work("#1", "aaa", &["src/a.rs"]);
-        let report = analyze(inventory(current.clone(), vec![current])).unwrap();
+        let report = analyze(inventory(current.clone(), vec![current]), &[]).unwrap();
 
         assert_eq!(report.self_candidates_excluded, 1);
         assert_eq!(report.candidates_examined, 0);
@@ -299,10 +359,13 @@ mod tests {
 
     #[test]
     fn normalizes_and_deduplicates_repository_paths() {
-        let report = analyze(inventory(
-            work("#1", "aaa", &["./src/a.rs", "src/a.rs"]),
-            vec![work("#2", "bbb", &["src\\a.rs"])],
-        ))
+        let report = analyze(
+            inventory(
+                work("#1", "aaa", &["./src/a.rs", "src/a.rs"]),
+                vec![work("#2", "bbb", &["src\\a.rs"])],
+            ),
+            &[],
+        )
         .unwrap();
 
         assert_eq!(report.heads_up[0].overlap_paths, vec!["src/a.rs"]);
@@ -310,7 +373,11 @@ mod tests {
 
     #[test]
     fn rejects_paths_that_escape_repository() {
-        let error = analyze(inventory(work("#1", "aaa", &["../outside"]), Vec::new())).unwrap_err();
+        let error = analyze(
+            inventory(work("#1", "aaa", &["../outside"]), Vec::new()),
+            &[],
+        )
+        .unwrap_err();
 
         assert!(error.contains("may not escape"));
     }

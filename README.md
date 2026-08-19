@@ -4,81 +4,52 @@
 
 `cargo-cultist` is an experiment in repository-aware analysis for Rust codebases.
 
-> Status: very early prototype. The current analyzer is deterministic, local, and read-only.
+> Status: very early prototype. The public analyzer commands are deterministic, local, and read-only.
 
 See [ROADMAP.md](ROADMAP.md) for the project thesis, design principles, and active research directions. The umbrella tracking issue is #19.
 
-Traditional linters are strongest when a rule is already known. `cargo-cultist` starts one step earlier: it gathers facts about what a repository actually does, identifies deviations or unexplained patterns, and raises questions without pretending every observation is an error.
+Traditional linters are strongest when a rule is already known. `cargo-cultist` starts one step earlier: it gathers facts about what a repository actually does, identifies deviations or unexplained relationships, searches for counterexamples, and raises questions without pretending every observation is an error.
 
-The long-term model is deliberately split into three layers:
+The core evidence model distinguishes:
 
-- **Facts** — deterministic information extracted from source, Cargo metadata, and Git history.
-- **Observations** — repository-specific patterns and deviations derived from those facts.
-- **Explanations** — optional interpretation of why those patterns may exist. This layer may eventually use an LLM, but the tool should not require one to discover that something is interesting.
+- **PROVEN** — exact machine facts or guarantees;
+- **DERIVED** — deterministic conclusions from explicit facts;
+- **OBSERVED** — empirical repository patterns and correlations;
+- **INFERRED** — plausible interpretations;
+- **UNKNOWN** — repository evidence is insufficient to recover the answer.
 
-## Current checks
+Human-readable and JSON output are rendered from the same provenance-bearing finding model where the command produces findings.
+
+## Current commands
 
 ### Repository test-module conventions
 
-The default command looks at `#[cfg(test)]` modules and reports the names a repository actually uses. It also calls out one-off names and files that mix multiple test-module names.
+The default command inspects `#[cfg(test)]` modules and reports the names a repository actually uses. It calls out one-off names and files that mix multiple test-module names without turning the majority spelling into a universal rule.
 
-```text
-$ cargo cultist
-
-TEST MODULE CONVENTIONS
-  unit_tests               24
-  tests                    19
-  special_tests             1
-
-OBSERVATION
-  `unit_tests` is the most frequent name (24 of 44 modules), but the repository uses 3 names.
-
-ONE-OFF NAMES
-  src/example.rs:120  mod special_tests
-
-QUESTION
-  Are these one-off names intentionally scoped, or accidental deviations from local precedent?
+```bash
+cargo cultist
+cargo cultist --format json
 ```
+
+The interesting primitive is a **finding**, not a lint error: repository statistics are evidence, and a local exception can be intentional.
 
 ### Diff-aware precedent
 
-`cargo cultist diff` looks only at test-module declarations added or renamed by the current change and compares them with both repository-wide and same-file precedent.
-
-By default it compares staged and unstaged work against `HEAD`:
+`cargo cultist diff` looks at test-module declarations added or renamed by the current change and compares them with existing repository-wide and file-local precedent.
 
 ```bash
 cargo cultist diff
-```
-
-For a branch or pull request, provide a base revision. `cargo-cultist` finds the merge base between that revision and `HEAD`, then compares the current working tree from that point so the result follows branch/PR semantics and still includes local staged or unstaged work:
-
-```bash
 cargo cultist diff --base origin/main
+cargo cultist diff --base origin/main --format json
 ```
 
-A finding can look like:
+With `--base REV`, Cargo Cultist finds the merge base between `REV` and `HEAD`, then analyzes the current working tree from that point so branch/PR semantics still include local staged or unstaged work.
 
-```text
-FINDING 1: test-module precedent
-  pci/src/vfio.rs:2675 adds `mod mmio_region_range_tests` behind a test cfg.
+When repository-wide and file-local precedent disagree, the analyzer surfaces **precedent tension** instead of silently choosing a winner. Changed-file parse failures remain explicit uncertainty instead of being converted into an observed absence claim.
 
-FACTS
-  `mmio_region_range_tests` appears 1 time(s) across 53 test-gated modules.
-  Repository counts: `unit_tests`=31, `tests`=21, `mmio_region_range_tests`=1.
-  The same file also uses: `tests`.
+### Historical companions
 
-OBSERVATION
-  The new name differs from this file's existing precedent and is unique in the repository.
-
-QUESTION
-  Is the distinct module name intentional, or should it follow nearby precedent?
-```
-
-That distinction is the point: the primitive is a **finding**, not a lint error.
-
-### Historical companions (experimental)
-
-`cargo cultist history FILE` is research instrumentation for temporal precedent (#4) and negative-space associations (#7). It looks at recent non-merge commits touching one current file path and reports which other paths changed in the same considered commits.
+`cargo cultist history FILE` explores which paths repeatedly changed with one current file in recent non-merge history.
 
 ```bash
 cargo cultist history src/protocol.rs
@@ -86,30 +57,74 @@ cargo cultist history --max-commits 200 src/protocol.rs
 cargo cultist history --format json src/protocol.rs
 ```
 
-The first cohort filter removes revert commits and commits changing more than 100 paths. Output keeps support counts, representative examples, absence counterexamples, exclusions, and current limitations visible:
+The explorer:
+
+- excludes revert commits and broad commits from its first comparison cohort;
+- reports directional support/opportunity counts;
+- preserves representative examples and absence counterexamples;
+- annotates current companion files that explicitly identify themselves as generated;
+- keeps limitations visible, including rename-history and semantic-cohort gaps.
+
+Historical co-change remains correlation evidence. Real-repository replays have already shown why direction and cohort selection matter: in Oxc, Rust-syntax-changing edits to the source rule registry moved with two generated registries in 99/99 sampled commits, while the reverse generated-to-source relation was 94/100. See `research/history-companion-replay.md` and `research/rust-syntax-cohort-replay.md` for the retained receipts.
+
+### CI test-filter inventory
+
+`cargo cultist ci-tests` looks for a deliberately narrow GitHub Actions command family:
 
 ```text
-HISTORICAL COMPANIONS
-  anchor: src/protocol.rs
-  cohort: 34 considered commit(s) from 37 discovered non-merge commit(s)
-
-COMPANIONS
-  generated/schema.json                                     31/34   91.2%
-    example abc12345  2026-07-03T10:20:00Z  regenerate protocol clients
-    example def45678  2026-06-12T08:05:00Z  add protocol field
-
-COUNTEREXAMPLE SAMPLE
-  generated/schema.json
-    absent 789abcde  2026-05-01T14:10:00Z  refactor protocol comments
-
-OBSERVATION
-  These are historical co-change associations for the current path, before semantic cohort selection or finding thresholds.
-
-QUESTION
-  Which of these companions represent a repository custom worth comparing against a future diff?
+cargo [ +TOOLCHAIN ] test --lib FILTER
 ```
 
-This command intentionally reports association evidence before deciding which associations deserve findings. The next research step is to run it against real repositories where Fieldwork already recovered source/generated, implementation/test, and other companion relationships.
+and compares the literal selector with explicit Rust `#[test]` function names plus declared module names used as conservative qualifier hints.
+
+```bash
+cargo cultist ci-tests
+cargo cultist ci-tests --format json
+```
+
+A zero syntax match is reported with separate claims:
+
+```text
+PROVEN
+  The supported workflow command and filter exist.
+
+OBSERVED
+  The explicit source inventory has no matching test/module name.
+
+UNKNOWN
+  Macro-generated or build-time tests may exist outside the syntax inventory.
+```
+
+Unsupported shell forms, ambiguous package/integration/bin targets, unknown flags, and parse failures are skipped or surfaced conservatively instead of guessed through.
+
+This check has a retained real-world witness: a pinned Tantivy workflow stayed green while `cargo test --lib test_rollback` selected zero tests, and Cargo Cultist identified that exact selector/location. The full acceptance receipt lives in `research/ci-test-filter-replay.md`.
+
+## Research layer
+
+The repository also contains standalone research examples and receipts that deliberately sit outside the public read-only command surface.
+
+Current research includes:
+
+- Rust-syntax cohorts for refining historical comparison sets;
+- explicit generated-file and Rust generator-ownership evidence;
+- execution-aware libtest `--list` verification of CI selectors;
+- agentic-history corpora from Stensibly and SmolRunner;
+- bounded repository-evidence packets for coding agents.
+
+Some research examples intentionally execute repository tooling. In particular, Cargo/libtest listing can compile code and run build scripts. Those experiments carry an explicit effect boundary and are not silently invoked by the ordinary analyzer commands.
+
+The research lifecycle is intentional:
+
+```text
+hypothesis
+-> deterministic probe
+-> real repository discriminator
+-> counterexample / negative control
+-> durable receipt
+-> keep, weaken, split, reject, or promote
+```
+
+A successful experiment does not automatically become a lint or public feature.
 
 ## Usage
 
@@ -119,6 +134,7 @@ From this repository while developing:
 cargo run -- /path/to/a/rust/repository
 cargo run -- diff --base origin/main /path/to/a/rust/repository
 cargo run -- history /path/to/a/rust/repository/src/file.rs
+cargo run -- ci-tests /path/to/a/rust/repository
 ```
 
 After installing locally:
@@ -129,29 +145,36 @@ cd /path/to/a/rust/repository
 cargo cultist
 cargo cultist diff
 cargo cultist history src/file.rs
+cargo cultist ci-tests
 ```
 
-You can also invoke the binary directly:
+The binary can also be invoked directly:
 
 ```bash
-cargo-cultist /path/to/a/rust/repository
-cargo-cultist diff --base origin/main /path/to/a/rust/repository
-cargo-cultist history /path/to/a/rust/repository/src/file.rs
+cargo-cultist .
+cargo-cultist diff --base origin/main .
+cargo-cultist history src/file.rs
+cargo-cultist ci-tests .
 ```
 
 ## Dogfooding
 
-CI runs formatting, Clippy, and tests, then runs `cargo-cultist` against its own repository. Pull-request and push CI also run the diff analyzer against the relevant base commit.
+CI runs formatting, Clippy, and tests, then dogfoods the public analyzers and their JSON output against Cargo Cultist itself. Pull-request and push CI run diff analysis against the relevant base/current change.
 
-The tool is expected to be able to inspect its own changes without special treatment.
+The tool is expected to inspect its own changes without special treatment. Disposable fixtures and pinned external replays are used when a detector needs a stronger discriminator; temporary network-heavy research workflows are retired after their evidence is recorded.
 
-## Near-term ideas
+## Active research directions
 
-- Extend diff analysis beyond test-module names.
-- Flag test-only global state and show nearby alternatives.
-- Find duplicated local mechanisms when a common helper already exists.
-- Connect unusual constants or workarounds to Git history.
-- Separate output into **proven**, **derived**, **observed**, **inferred**, and **unknown** claims.
-- Add optional explanations only after the deterministic evidence packet exists.
+Near-term work is increasingly about composing independent evidence instead of adding broad heuristics:
 
-The goal is not to make Clippy fuzzier. The goal is to explore the space between a known lint rule and handing an entire repository to an AI and asking it to figure everything out.
+- richer scoped and temporal precedent with explicit counterexamples;
+- generated-artifact ownership and missing-companion questions;
+- exception archaeology and expired-workaround evidence packets;
+- helper/dependency intent and locally expanded idioms;
+- explicit repository-guidance freshness and instruction lifecycle;
+- bounded agent context packets that optimize selected evidence per byte instead of context volume;
+- promotion of repeated, well-understood human consensus into deterministic policy.
+
+Optional model-assisted explanation can sit on top of bounded evidence later. The deterministic finding must remain useful without a model.
+
+The goal is to explore the space between a known lint rule and handing an entire repository to an AI and asking it to figure everything out.

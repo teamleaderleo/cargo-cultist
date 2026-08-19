@@ -105,7 +105,10 @@ jobs:
           from pathlib import Path
 
           artifact_dir = Path("artifacts")
-          spec = json.loads(Path("cultist/research/capability-demand-retirement/stensibly-convex-index-review-v1.json").read_text(encoding="utf-8"))
+          spec_path = Path("cultist/research/capability-demand-retirement/stensibly-convex-index-review-v1.json")
+          spec_raw = spec_path.read_bytes()
+          spec = json.loads(spec_raw)
+          condition_specs = {condition["id"]: condition for condition in spec["conditions"]}
           baseline_path = artifact_dir / "file-local-32k.json"
           treatment_path = artifact_dir / "scoped-convex-32k.json"
           baseline_raw = baseline_path.read_bytes()
@@ -143,6 +146,7 @@ jobs:
 
           manifest = {
               "schema_version": 1,
+              "trial_spec_sha256": hashlib.sha256(spec_raw).hexdigest(),
               "trial_id": spec["trial_id"],
               "repository": spec["repository"],
               "revision": spec["revision"],
@@ -158,10 +162,16 @@ jobs:
               "conditions": {
                   "file_local_jei": {
                       "packet": digest(baseline_path),
+                      "packet_kind": condition_specs["file_local_jei"]["packet_kind"],
+                      "budget_bytes": condition_specs["file_local_jei"]["budget_bytes"],
+                      "scope": condition_specs["file_local_jei"]["scope"],
                       "decisive_evidence_present": False,
                   },
                   "scoped_jei": {
                       "packet": digest(treatment_path),
+                      "packet_kind": condition_specs["scoped_jei"]["packet_kind"],
+                      "budget_bytes": condition_specs["scoped_jei"]["budget_bytes"],
+                      "scope": condition_specs["scoped_jei"]["scope"],
                       "decisive_evidence_present": True,
                       "decisive_evidence_refs": spec["conditions"][1]["decisive_evidence_refs"],
                   },

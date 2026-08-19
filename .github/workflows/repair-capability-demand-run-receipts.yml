@@ -1,0 +1,228 @@
+name: Repair capability-demand receipt binding
+
+on:
+  push:
+    branches:
+      - research/capability-demand-run-receipts
+    paths:
+      - .github/workflows/repair-capability-demand-run-receipts.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/capability-demand-run-receipts
+          fetch-depth: 0
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+      - name: Bind manifests and receipts to frozen trial bytes
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              assert count == 1, f"{label}: expected one match, found {count}"
+              return text.replace(old, new, 1)
+
+          source_path = Path("src/capability_demand_retirement.rs")
+          source = source_path.read_text()
+          source = replace_once(
+              source,
+              'use serde::{Deserialize, Serialize};\n',
+              'use serde::{Deserialize, Serialize};\nuse sha2::{Digest, Sha256};\n',
+              'sha2 import',
+          )
+          source = replace_once(
+              source,
+              'pub struct TrialSpec {\n    pub schema_version: u32,\n',
+              'pub struct TrialSpec {\n    pub schema_version: u32,\n    #[serde(skip)]\n    pub source_sha256: String,\n',
+              'trial source fingerprint',
+          )
+          source = replace_once(
+              source,
+              'pub struct TrialInputManifest {\n    pub schema_version: u32,\n',
+              'pub struct TrialInputManifest {\n    pub schema_version: u32,\n    pub trial_spec_sha256: String,\n',
+              'manifest trial fingerprint',
+          )
+          source = replace_once(
+              source,
+              'pub struct ManifestCondition {\n    pub packet: ArtifactDigest,\n    pub decisive_evidence_present: bool,\n',
+              'pub struct ManifestCondition {\n    pub packet: ArtifactDigest,\n    pub packet_kind: PacketKind,\n    pub budget_bytes: usize,\n    pub scope: Option<String>,\n    pub decisive_evidence_present: bool,\n',
+              'manifest condition recipe',
+          )
+          source = replace_once(
+              source,
+              'pub struct WorkerRunReceipt {\n    pub schema_version: u32,\n    pub trial_id: String,\n',
+              'pub struct WorkerRunReceipt {\n    pub schema_version: u32,\n    pub trial_id: String,\n    pub trial_spec_sha256: String,\n',
+              'receipt trial fingerprint',
+          )
+          source = replace_once(
+              source,
+              '    let spec: TrialSpec = serde_json::from_slice(input).map_err(|error| error.to_string())?;\n    validate_trial_spec(&spec)?;\n    Ok(spec)\n',
+              '    let mut spec: TrialSpec =\n        serde_json::from_slice(input).map_err(|error| error.to_string())?;\n    validate_trial_spec(&spec)?;\n    spec.source_sha256 = sha256_hex(input);\n    Ok(spec)\n',
+              'parse trial fingerprint',
+          )
+          source = replace_once(
+              source,
+              '        if condition.budget_bytes == 0 || condition.budget_bytes > 16 * 1024 * 1024 {\n            return Err(format!("condition {} has invalid budget", condition.id));\n        }\n',
+              '        validate_condition_recipe(\n            &condition.id,\n            condition.packet_kind,\n            condition.budget_bytes,\n            condition.scope.as_deref(),\n        )?;\n',
+              'spec condition recipe validation',
+          )
+          source = replace_once(
+              source,
+              '    validate_id(&manifest.trial_id, "trial_id")?;\n',
+              '    validate_id(&manifest.trial_id, "trial_id")?;\n    validate_sha256(&manifest.trial_spec_sha256, "trial_spec_sha256")?;\n',
+              'manifest trial fingerprint validation',
+          )
+          source = replace_once(
+              source,
+              '        validate_id(id, "condition id")?;\n        validate_artifact_digest(&condition.packet, "condition packet")?;\n',
+              '        validate_id(id, "condition id")?;\n        validate_artifact_digest(&condition.packet, "condition packet")?;\n        validate_condition_recipe(\n            id,\n            condition.packet_kind,\n            condition.budget_bytes,\n            condition.scope.as_deref(),\n        )?;\n',
+              'manifest condition recipe validation',
+          )
+          source = replace_once(
+              source,
+              '    let spec_conditions = spec\n',
+              '    if manifest.trial_spec_sha256 != spec.source_sha256 {\n        return Err("trial input manifest does not match exact frozen trial-spec bytes".into());\n    }\n\n    let expected_task = line_artifact_digest(&spec.worker_task.prompt);\n    let expected_patch = line_artifact_digest(&spec.worker_task.patch);\n    let expected_oracle = oracle_artifact_digest(&spec.oracle)?;\n    if manifest.worker_visible_common.task != expected_task {\n        return Err("task artifact does not match frozen trial spec".into());\n    }\n    if manifest.worker_visible_common.patch != expected_patch {\n        return Err("patch artifact does not match frozen trial spec".into());\n    }\n    if manifest.evaluator_only.oracle != expected_oracle {\n        return Err("oracle artifact does not match frozen trial spec".into());\n    }\n\n    let spec_conditions = spec\n',
+              'manifest common artifact binding',
+          )
+          source = replace_once(
+              source,
+              '        if expected.decisive_evidence_present != condition.decisive_evidence_present {\n',
+              '        if expected.packet_kind != condition.packet_kind\n            || expected.budget_bytes != condition.budget_bytes\n            || expected.scope != condition.scope\n        {\n            return Err(format!("condition {id} materialization recipe drifted"));\n        }\n        if expected.decisive_evidence_present != condition.decisive_evidence_present {\n',
+              'condition recipe cross-check',
+          )
+          source = replace_once(
+              source,
+              '        (&receipt.task_sha256, "task_sha256"),\n',
+              '        (&receipt.trial_spec_sha256, "trial_spec_sha256"),\n        (&receipt.task_sha256, "task_sha256"),\n',
+              'receipt fingerprint syntax validation',
+          )
+          source = replace_once(
+              source,
+              '    if receipt.trial_id != manifest.trial_id\n        || receipt.repository != manifest.repository\n',
+              '    if receipt.trial_id != manifest.trial_id\n        || receipt.trial_spec_sha256 != manifest.trial_spec_sha256\n        || receipt.repository != manifest.repository\n',
+              'receipt manifest trial binding',
+          )
+          source = replace_once(
+              source,
+              '        && first.trial_id == second.trial_id\n        && first.repository == second.repository\n',
+              '        && first.trial_id == second.trial_id\n        && first.trial_spec_sha256 == second.trial_spec_sha256\n        && first.repository == second.repository\n',
+              'pair trial fingerprint equality',
+          )
+          source = replace_once(
+              source,
+              'fn validate_artifact_digest(digest: &ArtifactDigest, field: &str) -> Result<(), String> {\n',
+              '''fn validate_condition_recipe(\n    id: &str,\n    packet_kind: PacketKind,\n    budget_bytes: usize,\n    scope: Option<&str>,\n) -> Result<(), String> {\n    if budget_bytes == 0 || budget_bytes > 16 * 1024 * 1024 {\n        return Err(format!("condition {id} has invalid budget"));\n    }\n    match (packet_kind, scope) {\n        (PacketKind::FileLocal, None) => Ok(()),\n        (PacketKind::Scoped, Some(scope)) => validate_path(scope, "condition scope"),\n        (PacketKind::FileLocal, Some(_)) => Err(format!(\n            "condition {id} is file-local but declares a scope"\n        )),\n        (PacketKind::Scoped, None) => Err(format!(\n            "condition {id} is scoped but omits its scope"\n        )),\n    }\n}\n\nfn line_artifact_digest(text: &str) -> ArtifactDigest {\n    let mut bytes = text.as_bytes().to_vec();\n    bytes.push(b'\\n');\n    artifact_digest(&bytes)\n}\n\nfn oracle_artifact_digest(oracle: &Oracle) -> Result<ArtifactDigest, String> {\n    let values = BTreeMap::from([\n        (\n            "blocking_reason",\n            serde_json::Value::String(oracle.blocking_reason.clone()),\n        ),\n        (\n            "corrective_action",\n            serde_json::Value::String(oracle.corrective_action.clone()),\n        ),\n        (\n            "expected_disposition",\n            serde_json::Value::String(oracle.expected_disposition.clone()),\n        ),\n        (\n            "max_identifier_length",\n            serde_json::Value::from(oracle.max_identifier_length),\n        ),\n        (\n            "proposed_identifier",\n            serde_json::Value::String(oracle.proposed_identifier.clone()),\n        ),\n        (\n            "proposed_identifier_length",\n            serde_json::Value::from(oracle.proposed_identifier_length),\n        ),\n    ]);\n    let mut bytes = serde_json::to_vec_pretty(&values).map_err(|error| error.to_string())?;\n    bytes.push(b'\\n');\n    Ok(artifact_digest(&bytes))\n}\n\nfn artifact_digest(bytes: &[u8]) -> ArtifactDigest {\n    ArtifactDigest {\n        sha256: sha256_hex(bytes),\n        bytes: bytes.len(),\n    }\n}\n\nfn sha256_hex(bytes: &[u8]) -> String {\n    let digest = Sha256::digest(bytes);\n    digest.iter().map(|byte| format!("{byte:02x}")).collect()\n}\n\nfn validate_artifact_digest(digest: &ArtifactDigest, field: &str) -> Result<(), String> {\n''',
+              'artifact binding helpers',
+          )
+          source_path.write_text(source)
+
+          test_path = Path("tests/capability_demand_retirement_receipts.rs")
+          tests = test_path.read_text()
+          tests = replace_once(
+              tests,
+              'const TASK_SHA: &str = "84aaf8f8d3b6880017d25432c763fea5732306117144fc37415992969754f873";\n',
+              'const TRIAL_SPEC_SHA: &str =\n    "296e575ad228b3b82adcf2d0d2f13c2e39cc0157cc0a322e02630b5eadbceb1e";\nconst TASK_SHA: &str = "84aaf8f8d3b6880017d25432c763fea5732306117144fc37415992969754f873";\n',
+              'test trial fingerprint constant',
+          )
+          tests = replace_once(
+              tests,
+              '        trial_id: "stensibly-convex-index-review-v1".into(),\n        pair_id: "pair-001".into(),\n',
+              '        trial_id: "stensibly-convex-index-review-v1".into(),\n        trial_spec_sha256: TRIAL_SPEC_SHA.into(),\n        pair_id: "pair-001".into(),\n',
+              'test receipt trial fingerprint',
+          )
+          tests = replace_once(
+              tests,
+              '    assert_eq!(manifest.trial_id, trial.trial_id);\n',
+              '    assert_eq!(manifest.trial_id, trial.trial_id);\n    assert_eq!(trial.source_sha256, TRIAL_SPEC_SHA);\n    assert_eq!(manifest.trial_spec_sha256, TRIAL_SPEC_SHA);\n',
+              'retained trial fingerprint assertion',
+          )
+          tests = replace_once(
+              tests,
+              '    assert!(!manifest.conditions["file_local_jei"].decisive_evidence_present);\n',
+              '    assert_eq!(\n        manifest.conditions["file_local_jei"].packet_kind,\n        capability_demand_retirement::PacketKind::FileLocal\n    );\n    assert_eq!(manifest.conditions["file_local_jei"].budget_bytes, 32_768);\n    assert!(manifest.conditions["file_local_jei"].scope.is_none());\n    assert!(!manifest.conditions["file_local_jei"].decisive_evidence_present);\n',
+              'baseline recipe assertion',
+          )
+          tests = replace_once(
+              tests,
+              '    assert!(manifest.conditions["scoped_jei"].decisive_evidence_present);\n}\n\n#[test]\nfn failed_baseline_then_successful_treatment_is_a_paired_signal() {\n',
+              '''    assert_eq!(\n        manifest.conditions["scoped_jei"].packet_kind,\n        capability_demand_retirement::PacketKind::Scoped\n    );\n    assert_eq!(manifest.conditions["scoped_jei"].budget_bytes, 32_768);\n    assert_eq!(manifest.conditions["scoped_jei"].scope.as_deref(), Some("convex"));\n    assert!(manifest.conditions["scoped_jei"].decisive_evidence_present);\n}\n\n#[test]\nfn substituted_manifest_common_artifacts_reject_before_pair_interpretation() {\n    let (trial, manifest) = trial_and_manifest();\n    let forged = "d".repeat(64);\n\n    let mut task_manifest = manifest.clone();\n    task_manifest.worker_visible_common.task.sha256 = forged.clone();\n    let mut baseline = receipt("file_local_jei", 1, RunOutcome::Failed);\n    let mut treatment = receipt("scoped_jei", 2, RunOutcome::Success);\n    baseline.task_sha256 = forged.clone();\n    treatment.task_sha256 = forged.clone();\n    let error = evaluate_pair(&trial, &task_manifest, &baseline, &treatment).unwrap_err();\n    assert!(error.contains("task artifact does not match frozen trial spec"));\n\n    let mut patch_manifest = manifest.clone();\n    patch_manifest.worker_visible_common.patch.sha256 = forged.clone();\n    let mut baseline = receipt("file_local_jei", 1, RunOutcome::Failed);\n    let mut treatment = receipt("scoped_jei", 2, RunOutcome::Success);\n    baseline.patch_sha256 = forged.clone();\n    treatment.patch_sha256 = forged.clone();\n    let error = evaluate_pair(&trial, &patch_manifest, &baseline, &treatment).unwrap_err();\n    assert!(error.contains("patch artifact does not match frozen trial spec"));\n\n    let mut oracle_manifest = manifest;\n    oracle_manifest.evaluator_only.oracle.sha256 = forged.clone();\n    let mut baseline = receipt("file_local_jei", 1, RunOutcome::Failed);\n    let mut treatment = receipt("scoped_jei", 2, RunOutcome::Success);\n    baseline.completion_contract_sha256 = forged.clone();\n    treatment.completion_contract_sha256 = forged;\n    let error = evaluate_pair(&trial, &oracle_manifest, &baseline, &treatment).unwrap_err();\n    assert!(error.contains("oracle artifact does not match frozen trial spec"));\n}\n\n#[test]\nfn substituted_manifest_condition_recipe_rejects_before_pair_interpretation() {\n    let (trial, mut manifest) = trial_and_manifest();\n    manifest.conditions.get_mut("scoped_jei").unwrap().scope = Some("src".into());\n    let baseline = receipt("file_local_jei", 1, RunOutcome::Failed);\n    let treatment = receipt("scoped_jei", 2, RunOutcome::Success);\n    let error = evaluate_pair(&trial, &manifest, &baseline, &treatment).unwrap_err();\n    assert!(error.contains("materialization recipe drifted"));\n}\n\n#[test]\nfn substituted_trial_spec_fingerprint_rejects_before_pair_interpretation() {\n    let (trial, mut manifest) = trial_and_manifest();\n    let forged = "e".repeat(64);\n    manifest.trial_spec_sha256 = forged.clone();\n    let mut baseline = receipt("file_local_jei", 1, RunOutcome::Failed);\n    let mut treatment = receipt("scoped_jei", 2, RunOutcome::Success);\n    baseline.trial_spec_sha256 = forged.clone();\n    treatment.trial_spec_sha256 = forged;\n    let error = evaluate_pair(&trial, &manifest, &baseline, &treatment).unwrap_err();\n    assert!(error.contains("exact frozen trial-spec bytes"));\n}\n\n#[test]\nfn failed_baseline_then_successful_treatment_is_a_paired_signal() {\n''',
+              'semantic substitution controls',
+          )
+          test_path.write_text(tests)
+
+          manifest_path = Path(
+              "research/capability-demand-retirement/stensibly-convex-index-review-v1-input-manifest-32264661913.json"
+          )
+          manifest = json.loads(manifest_path.read_text())
+          manifest["trial_spec_sha256"] = "296e575ad228b3b82adcf2d0d2f13c2e39cc0157cc0a322e02630b5eadbceb1e"
+          recipes = {
+              "file_local_jei": {"packet_kind": "file_local", "budget_bytes": 32768, "scope": None},
+              "scoped_jei": {"packet_kind": "scoped", "budget_bytes": 32768, "scope": "convex"},
+          }
+          for condition_id, recipe in recipes.items():
+              manifest["conditions"][condition_id].update(recipe)
+          manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+
+          workflow_path = Path(".github/workflows/capability-demand-retirement-inputs.yml")
+          workflow = workflow_path.read_text()
+          workflow = replace_once(
+              workflow,
+              '          artifact_dir = Path("artifacts")\n          spec = json.loads(Path("cultist/research/capability-demand-retirement/stensibly-convex-index-review-v1.json").read_text(encoding="utf-8"))\n          baseline_path = artifact_dir / "file-local-32k.json"\n',
+              '          artifact_dir = Path("artifacts")\n          spec_path = Path("cultist/research/capability-demand-retirement/stensibly-convex-index-review-v1.json")\n          spec_raw = spec_path.read_bytes()\n          spec = json.loads(spec_raw)\n          condition_specs = {condition["id"]: condition for condition in spec["conditions"]}\n          baseline_path = artifact_dir / "file-local-32k.json"\n',
+              'materializer trial bytes',
+          )
+          workflow = replace_once(
+              workflow,
+              '              "schema_version": 1,\n              "trial_id": spec["trial_id"],\n',
+              '              "schema_version": 1,\n              "trial_spec_sha256": hashlib.sha256(spec_raw).hexdigest(),\n              "trial_id": spec["trial_id"],\n',
+              'materializer trial fingerprint',
+          )
+          workflow = replace_once(
+              workflow,
+              '                  "file_local_jei": {\n                      "packet": digest(baseline_path),\n                      "decisive_evidence_present": False,\n                  },\n',
+              '                  "file_local_jei": {\n                      "packet": digest(baseline_path),\n                      "packet_kind": condition_specs["file_local_jei"]["packet_kind"],\n                      "budget_bytes": condition_specs["file_local_jei"]["budget_bytes"],\n                      "scope": condition_specs["file_local_jei"]["scope"],\n                      "decisive_evidence_present": False,\n                  },\n',
+              'materializer baseline recipe',
+          )
+          workflow = replace_once(
+              workflow,
+              '                  "scoped_jei": {\n                      "packet": digest(treatment_path),\n                      "decisive_evidence_present": True,\n',
+              '                  "scoped_jei": {\n                      "packet": digest(treatment_path),\n                      "packet_kind": condition_specs["scoped_jei"]["packet_kind"],\n                      "budget_bytes": condition_specs["scoped_jei"]["budget_bytes"],\n                      "scope": condition_specs["scoped_jei"]["scope"],\n                      "decisive_evidence_present": True,\n',
+              'materializer treatment recipe',
+          )
+          workflow_path.write_text(workflow)
+
+          docs_path = Path("research/capability-demand-retirement/run-receipts.md")
+          docs = docs_path.read_text()
+          marker = "## Frozen-spec binding"
+          if marker not in docs:
+              docs += '''\n\n## Frozen-spec binding\n\nReceipt admission binds three layers before interpreting a pair:\n\n```text\nTRIAL bytes\n  -> exact trial_spec_sha256\n  -> materialized manifest\n  -> each worker run receipt\n```\n\nThe evaluator also recomputes the canonical worker-task, proposed-patch, and evaluator-oracle artifact digests from the frozen trial spec. Manifest condition entries retain and must exactly match the registered packet kind, byte budget, scope, decisive-evidence state, and decisive refs. A substituted manifest therefore fails before pair semantics even when both run receipts drift with it.\n\nGenerated packet bytes remain an executed materializer receipt: their SHA-256 is bound from the admitted manifest into the corresponding run receipt.\n'''
+          docs_path.write_text(docs)
+          PY
+      - name: Format and verify
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --test capability_demand_retirement_receipts
+          cargo test
+          git diff --check
+      - name: Commit repair and remove temporary workflow
+        run: |
+          rm .github/workflows/repair-capability-demand-run-receipts.yml
+          git config user.name "Cultist repair carrier"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "research: bind retirement receipts to frozen trial inputs"
+          git push origin HEAD:research/capability-demand-run-receipts

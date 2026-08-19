@@ -336,9 +336,7 @@ fn acquired_lock_variable(expr: &Expr) -> Option<String> {
 
 fn print_boundary() {
     println!("\nEVIDENCE BOUNDARY");
-    println!(
-        "  Numeric ranks come only from exact lock-name samples in the repository inventory."
-    );
+    println!("  Numeric ranks come only from exact lock-name samples in the repository inventory.");
     println!(
         "  This adapter treats lower-to-higher numeric rank as the ordered hierarchy; the target repository's runtime checker independently enforces `new_rank < highest_held` as a violation."
     );

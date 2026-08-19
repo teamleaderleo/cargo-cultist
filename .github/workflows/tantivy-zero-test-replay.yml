@@ -1,0 +1,67 @@
+name: Tantivy zero-test replay
+
+on:
+  push:
+    branches:
+      - experiment/ci-test-filter-inventory
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cargo-cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build cargo-cultist
+        working-directory: cultist
+        run: cargo build
+
+      - name: Checkout exact Tantivy carrier
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/tantivy
+          ref: b92909ef3d5ac5695d1c85b1b0cb52a03ee51e49
+          path: corpus/tantivy
+          persist-credentials: false
+
+      - name: Replay syntax analyzer
+        run: |
+          mkdir -p research-output
+          cultist/target/debug/cargo-cultist ci-tests --format json corpus/tantivy \
+            > research-output/tantivy-ci-tests.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('research-output/tantivy-ci-tests.json').read_text())
+          matches = []
+          for finding in data.get('findings', []):
+              if finding.get('kind') != 'ci-test-filter-inventory-miss':
+                  continue
+              text = json.dumps(finding)
+              if 'test_rollback' in text:
+                  matches.append(finding)
+
+          assert len(matches) == 1, f'expected one test_rollback finding, got {len(matches)}'
+          finding = matches[0]
+          assert finding['location']['path'] == '.github/workflows/fieldwork-prepare-commit-generation-fence.yml'
+          print(json.dumps(finding, indent=2))
+          PY
+
+      - name: Upload replay receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: tantivy-zero-test-replay
+          path: research-output/
+          if-no-files-found: error

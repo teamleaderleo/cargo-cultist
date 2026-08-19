@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build live PR inventory, run Cultist heads-up analysis, and render CI advice."""
+"""Build live PR evidence, run Cultist preflight, and render CI advice."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+
+COORDINATION_PREFIX = "Do not merge while #"
 
 PR_PAGE_QUERY = r"""
 query($owner: String!, $name: String!, $after: String) {
@@ -24,6 +26,7 @@ query($owner: String!, $name: String!, $after: String) {
         number
         title
         url
+        body
         headRefName
         headRefOid
         updatedAt
@@ -141,9 +144,26 @@ def work_item(
     }
 
 
-def build_inventory(repo: str, current_number: int) -> dict[str, object]:
+def metadata_item(node: dict[str, object]) -> dict[str, object]:
+    number = int(node["number"])
+    body = node.get("body")
+    return {
+        "id": f"#{number}",
+        "kind": "pull_request",
+        "source": f"github:pull/{number}",
+        "head_sha": str(node["headRefOid"]),
+        "updated_at": str(node["updatedAt"]),
+        "body": "" if body is None else str(body),
+    }
+
+
+def build_inventory_and_metadata(
+    repo: str,
+    current_number: int,
+) -> tuple[dict[str, object], dict[str, object]]:
     owner, name = repo.split("/", 1)
     work: list[dict[str, object]] = []
+    metadata_work: list[dict[str, object]] = []
     cursor: str | None = None
 
     while True:
@@ -161,9 +181,13 @@ def build_inventory(repo: str, current_number: int) -> dict[str, object]:
         nodes = pull_requests.get("nodes")
         if not isinstance(nodes, list):
             raise RuntimeError("open pull-request connection is missing nodes")
-        work.extend(
-            work_item(owner, name, node) for node in nodes if isinstance(node, dict)
-        )
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            work.append(work_item(owner, name, node))
+            metadata_work.append(metadata_item(node))
+
         has_next, cursor = page_info(pull_requests)
         if not has_next:
             break
@@ -174,15 +198,29 @@ def build_inventory(repo: str, current_number: int) -> dict[str, object]:
     if current is None:
         raise RuntimeError(f"current PR #{current_number} was absent from open inventory")
 
-    return {
+    observed_at = (
+        datetime.datetime.now(datetime.timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    inventory = {
         "schema_version": 1,
         "source": "github_pull_requests_graphql",
-        "observed_at": datetime.datetime.now(datetime.timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z"),
+        "observed_at": observed_at,
         "current": current,
         "active_work": work,
     }
+    metadata = {
+        "schema_version": 1,
+        "source": "github_pull_requests_graphql",
+        "work": metadata_work,
+    }
+    return inventory, metadata
+
+
+def build_inventory(repo: str, current_number: int) -> dict[str, object]:
+    inventory, _metadata = build_inventory_and_metadata(repo, current_number)
+    return inventory
 
 
 def potential_direct_overlap(inventory: dict[str, object]) -> bool:
@@ -203,70 +241,147 @@ def potential_direct_overlap(inventory: dict[str, object]) -> bool:
     return False
 
 
-def quiet_summary(inventory: dict[str, object]) -> str:
-    return "\n".join(
-        [
-            "## Cargo Cultist active-work heads-up",
-            "",
-            f"Observed `{inventory['observed_at']}` from `{inventory['source']}`.",
-            "",
-            "No direct active-work path overlap worth surfacing.",
-            "",
-            "> Advisory only. No semantic independence is inferred from disjoint paths.",
-            "",
-        ]
+def potential_coordination_clause(metadata: dict[str, object]) -> bool:
+    work = metadata.get("work")
+    if not isinstance(work, list):
+        raise RuntimeError("metadata work field must be a list")
+    return any(
+        isinstance(item, dict)
+        and any(
+            line.strip("\r").startswith(COORDINATION_PREFIX)
+            for line in str(item.get("body", "")).splitlines()
+        )
+        for item in work
     )
 
 
-def render_summary(report: dict[str, object]) -> str:
-    heads_up = report["heads_up"]
-    if not isinstance(heads_up, list):
-        raise RuntimeError("heads_up report field must be a list")
+def extract_coordination_edges(
+    metadata: dict[str, object],
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    output = subprocess.check_output(
+        ["cargo", "run", "--quiet", "--example", "coordination_edges"],
+        input=json.dumps(metadata),
+        text=True,
+    )
+    report = json.loads(output)
+    edges = report.get("coordination_edges")
+    if not isinstance(edges, list):
+        raise RuntimeError("coordination extractor did not return an edge list")
+    return [edge for edge in edges if isinstance(edge, dict)], report
+
+
+def edge_involves_current(inventory: dict[str, object], edge: dict[str, object]) -> bool:
+    current = inventory.get("current")
+    if not isinstance(current, dict):
+        raise RuntimeError("current work item must be an object")
+    current_id = str(current["id"])
+    return str(edge.get("from", "")) == current_id or str(edge.get("to", "")) == current_id
+
+
+def quiet_summary(
+    inventory: dict[str, object],
+    metadata_note: str | None = None,
+) -> str:
+    lines = [
+        "## Cultist active-work heads-up",
+        "",
+        f"Observed `{inventory['observed_at']}` from `{inventory['source']}`.",
+        "",
+        "No active-work coordination signal worth surfacing.",
+        "",
+        "> Advisory only. Disjoint paths and absent reviewed metadata edges do not prove semantic independence.",
+    ]
+    if metadata_note:
+        lines.extend(["", f"> {metadata_note}"])
+    lines.append("")
+    return "\n".join(lines)
+
+
+def claim_kind_label(kind: object) -> str:
+    return str(kind).upper()
+
+
+def render_product_summary(
+    report: dict[str, object],
+    inventory: dict[str, object],
+    metadata_note: str | None = None,
+) -> str:
+    findings = report.get("findings")
+    if not isinstance(findings, list):
+        raise RuntimeError("product preflight report findings must be a list")
 
     lines = [
-        "## Cargo Cultist active-work heads-up",
+        "## Cultist active-work heads-up",
         "",
-        f"Observed `{report['observed_at']}` from `{report['source']}`.",
+        f"Observed `{inventory['observed_at']}` from `{inventory['source']}`.",
         "",
     ]
 
-    if not heads_up:
-        lines.append("No direct active-work path overlap worth surfacing.")
+    if not findings:
+        lines.append("No active-work coordination signal worth surfacing.")
     else:
-        lines.extend([f"**Heads up: {len(heads_up)} active overlap(s).**", ""])
-        for item in heads_up:
-            work = item["work"]
-            if not isinstance(work, dict):
-                raise RuntimeError("heads-up work field must be an object")
-            lines.extend(
-                [
-                    f"### {work['id']} — {work['title']}",
-                    "",
-                    f"- Active head: [`{work['head_ref']}@{str(work['head_sha'])[:8]}`]({work['url']})",
-                    f"- Updated: `{work['updated_at']}`",
-                    "- Exact overlapping paths:",
-                ]
-            )
-            for path in item["overlap_paths"]:
-                lines.append(f"  - `{path}`")
-            lines.extend(
-                [
-                    "- Interpretation: exact path overlap only; duplicate intent, ownership, incompatibility, and required coordination are not inferred.",
-                    "",
-                ]
-            )
+        lines.extend([f"**Heads up: {len(findings)} preflight finding(s).**", ""])
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            lines.append(f"### {finding.get('title', finding.get('kind', 'Finding'))}")
+            location = finding.get("location")
+            if isinstance(location, dict):
+                path = location.get("path")
+                line = location.get("line")
+                if path:
+                    suffix = f":{line}" if line else ""
+                    lines.append(f"- Location: `{path}{suffix}`")
 
-    omitted = int(report["omitted_heads_up"])
-    if omitted:
-        lines.append(f"Additional bounded heads-ups omitted: `{omitted}`.")
+            claims = finding.get("claims")
+            if isinstance(claims, list):
+                for claim in claims:
+                    if not isinstance(claim, dict):
+                        continue
+                    lines.append(
+                        f"- {claim_kind_label(claim.get('kind'))}: {claim.get('message', '')}"
+                    )
+                    evidence = claim.get("evidence")
+                    if isinstance(evidence, list):
+                        for item in evidence:
+                            if isinstance(item, dict) and item.get("message"):
+                                lines.append(f"  - evidence: {item['message']}")
+            question = finding.get("question")
+            if question:
+                lines.append(f"- Question: {question}")
+            lines.append("")
 
-    lines.extend(
-        [
-            "",
-            "> Advisory only. Inspect overlap if useful; continuing independently may be correct.",
-        ]
-    )
-    return "\n".join(lines) + "\n"
+    if metadata_note:
+        lines.append(f"> {metadata_note}")
+        lines.append("")
+    lines.append("> Advisory only. Inspect the evidence and coordinate only when useful.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def run_product_preflight(inventory: dict[str, object]) -> dict[str, object]:
+    with tempfile.TemporaryDirectory(prefix="cultist-active-work-") as temporary:
+        inventory_path = Path(temporary, "inventory.json")
+        inventory_path.write_text(json.dumps(inventory, indent=2) + "\n")
+        output = subprocess.check_output(
+            [
+                "cargo",
+                "run",
+                "--quiet",
+                "--",
+                "preflight",
+                "--inventory",
+                str(inventory_path),
+                "--format",
+                "json",
+                ".",
+            ],
+            text=True,
+        )
+    report = json.loads(output)
+    if not isinstance(report, dict):
+        raise RuntimeError("product preflight did not return a JSON object")
+    return report
 
 
 def main() -> None:
@@ -274,7 +389,7 @@ def main() -> None:
     current_number = int(os.environ["CURRENT_PR"])
 
     inventory_started = time.monotonic()
-    inventory = build_inventory(repo, current_number)
+    inventory, metadata = build_inventory_and_metadata(repo, current_number)
     inventory_seconds = time.monotonic() - inventory_started
 
     current = inventory["current"]
@@ -289,63 +404,70 @@ def main() -> None:
         f"{len(current['changed_paths'])} current path(s)"
     )
 
+    direct_overlap = potential_direct_overlap(inventory)
+    metadata_candidate = potential_coordination_clause(metadata)
+    coordination_seconds = 0.0
+    metadata_note: str | None = None
+    relevant_edges: list[dict[str, object]] = []
+
+    if metadata_candidate:
+        started = time.monotonic()
+        try:
+            edges, extraction_report = extract_coordination_edges(metadata)
+            relevant_edges = [
+                edge for edge in edges if edge_involves_current(inventory, edge)
+            ]
+            print(
+                "coordination metadata: "
+                f"{len(edges)} extracted edge(s), {len(relevant_edges)} involving current work"
+            )
+            unknowns = extraction_report.get("unknowns")
+            if relevant_edges and isinstance(unknowns, list) and unknowns:
+                metadata_note = str(unknowns[0])
+        except (subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as error:
+            metadata_note = (
+                "Reviewed coordination metadata could not be fully analyzed; "
+                f"direct path evidence remains usable. Detail: {error}"
+            )
+            print(f"coordination metadata unavailable: {error}")
+        coordination_seconds = time.monotonic() - started
+
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if not potential_direct_overlap(inventory):
+    if not direct_overlap and not relevant_edges:
+        print("No active-work coordination signal worth surfacing.")
         print(
-            "No direct active-work path overlap worth surfacing. "
-            "Rust analyzer skipped after exact provider-path prefilter."
+            f"timing: inventory {inventory_seconds:.2f}s; "
+            f"coordination {coordination_seconds:.2f}s; product 0.00s"
         )
-        print(f"timing: inventory {inventory_seconds:.2f}s; analyzer 0.00s")
         if summary_path:
             with Path(summary_path).open("a") as summary:
-                summary.write(quiet_summary(inventory))
+                summary.write(quiet_summary(inventory, metadata_note))
         return
 
-    analyzer_started = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix="cultist-active-work-") as temporary:
-        inventory_path = Path(temporary, "inventory.json")
-        inventory_path.write_text(json.dumps(inventory, indent=2) + "\n")
-        output = subprocess.check_output(
-            [
-                "cargo",
-                "run",
-                "--quiet",
-                "--example",
-                "active_work_heads_up",
-                "--",
-                str(inventory_path),
-            ],
-            text=True,
-        )
-    analyzer_seconds = time.monotonic() - analyzer_started
+    if relevant_edges:
+        inventory["coordination_edges"] = relevant_edges
 
-    report = json.loads(output)
-    heads_up = report["heads_up"]
-    if not isinstance(heads_up, list):
-        raise RuntimeError("heads_up report field must be a list")
-
-    print(
-        f"examined: {report['candidates_examined']} active candidate(s); "
-        f"self excluded: {report['self_candidates_excluded']}"
-    )
-    print(f"HEADS UP: {len(heads_up)} active overlap(s)")
-    for item in heads_up:
-        work = item["work"]
-        print(
-            f"  {work['id']} {work['title']} "
-            f"[{str(work['head_sha'])[:8]} updated {work['updated_at']}]"
-        )
-        for path in item["overlap_paths"]:
-            print(f"    overlaps {path}")
-        print("    No duplicate intent or incompatibility inferred.")
+    product_started = time.monotonic()
+    report = run_product_preflight(inventory)
+    product_seconds = time.monotonic() - product_started
+    findings = report.get("findings")
+    finding_count = len(findings) if isinstance(findings, list) else 0
+    print(f"HEADS UP: {finding_count} product preflight finding(s)")
+    if isinstance(findings, list):
+        for finding in findings:
+            if isinstance(finding, dict):
+                print(
+                    f"  {finding.get('kind', 'finding')}: "
+                    f"{finding.get('title', '')}"
+                )
     print(
         f"timing: inventory {inventory_seconds:.2f}s; "
-        f"analyzer {analyzer_seconds:.2f}s"
+        f"coordination {coordination_seconds:.2f}s; product {product_seconds:.2f}s"
     )
 
     if summary_path:
         with Path(summary_path).open("a") as summary:
-            summary.write(render_summary(report))
+            summary.write(render_product_summary(report, inventory, metadata_note))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,89 @@
+name: External dogfood carrier
+
+on:
+  push:
+    branches:
+      - dogfood/external-repo-harness
+
+permissions:
+  contents: read
+
+jobs:
+  smolrunner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cultist
+        uses: actions/checkout@v4
+        with:
+          path: cultist
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build Cultist
+        run: cargo build --release --manifest-path cultist/Cargo.toml
+
+      - name: Check runner syntax
+        run: python -m py_compile cultist/scripts/external_dogfood.py
+
+      - name: Checkout pinned SmolRunner replay
+        uses: actions/checkout@v4
+        with:
+          repository: teamleaderleo/smolrunner
+          ref: ed3b70e375a57eabce26f2311f798f75b33bdeb0
+          fetch-depth: 256
+          persist-credentials: false
+          path: target
+
+      - name: Run bounded external probes
+        run: |
+          python cultist/scripts/external_dogfood.py \
+            --cultist "$PWD/cultist/target/release/cargo-cultist" \
+            --repo "$PWD/target" \
+            --output-dir "$PWD/artifacts" \
+            --cache-dir "$RUNNER_TEMP/cultist-cache" \
+            --checkout-depth 256 \
+            --repeat-scan \
+            --history-file src/disposable_clone_runtime.rs \
+            --history-max 100
+
+      - name: Assert carrier discriminator
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected_head = "ed3b70e375a57eabce26f2311f798f75b33bdeb0"
+          summary = json.loads(Path("artifacts/summary.json").read_text())
+          assert summary["target"]["head"] == expected_head, summary["target"]
+          assert summary["safety"] == {
+              "target_build_executed": False,
+              "target_tests_executed": False,
+              "target_commands_executed": False,
+          }, summary["safety"]
+
+          probes = {probe["name"]: probe for probe in summary["probes"]}
+          assert set(probes) == {"scan", "scan-warm", "ci-tests", "history"}, probes
+          for probe in probes.values():
+              assert probe["errors"] == [], probe
+              assert probe["exit_code"] == 0, probe
+              assert probe["performance"] is not None, probe
+
+          warm = probes["scan-warm"]["performance"]
+          assert warm["rust_files_parsed"] == 0, warm
+          assert warm["rust_cache_hits"] > 0, warm
+
+          history = json.loads(Path("artifacts/history.json").read_text())
+          assert history["anchor"] == "src/disposable_clone_runtime.rs", history
+          assert history["considered_commits"] > 0, history
+          PY
+
+      - name: Upload carrier receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-dogfood-carrier-${{ github.run_id }}
+          path: artifacts
+          if-no-files-found: error

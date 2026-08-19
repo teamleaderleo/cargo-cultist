@@ -279,7 +279,8 @@ fn validate_facts(facts: &BTreeMap<String, String>, field: &str) -> Result<(), R
 }
 
 fn validate_atom(value: &str, field: &str, max_bytes: usize) -> Result<(), RefinementError> {
-    if value.is_empty() || value.trim() != value || value.len() > max_bytes || value.contains('\0') {
+    if value.is_empty() || value.trim() != value || value.len() > max_bytes || value.contains('\0')
+    {
         return Err(RefinementError::new(format!(
             "{field} must be bounded canonical text"
         )));

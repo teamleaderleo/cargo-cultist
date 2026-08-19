@@ -1,8 +1,8 @@
 # Prior-episode front: selected action vs operational detail
 
-The merged temporal `prior_episode_front` can now select an already-observed historical disposition and put an exact next action at the front of task context.
+The merged temporal `prior_episode_front` can select an already-observed historical disposition and put an exact next action at the front of task context.
 
-The newly landed capability-demand retirement replay supplies a held-out Stensibly task that lets us ask a sharper question:
+The landed capability-demand retirement replay supplies a held-out Stensibly task that lets us ask a sharper question:
 
 > Does the compact front carry enough operational detail to execute the selected historical action, or does the worker still need one deeper evidence acquisition step?
 
@@ -82,11 +82,11 @@ This is a useful negative result about task-facing memory compression.
 
 Selection and action projection succeeded. Operational execution detail remains a separate evidence need.
 
-That suggests the next behavioral treatment should avoid either extreme:
+That suggests a later behavioral treatment should avoid either extreme:
 
 ```text
-A. dump full historical source text into every front item
-B. assume use_accepted_guard is self-executing
+A. eagerly attach full historical source text to every front item
+B. treat use_accepted_guard as self-executing
 ```
 
 A stronger composition is:
@@ -95,18 +95,39 @@ A stronger composition is:
 selected prior episode
 -> exact next action
 -> identify missing guard detail
--> bounded acquisition of the accepted guard evidence
+-> bounded acquisition of accepted guard evidence
 -> worker action
 -> behavioral receipt
 ```
 
-The current front should remain compact. The missing detail can be acquired only when the selected action requires it.
+The current front can stay compact. Missing detail can be acquired only when the selected action requires it.
 
-## Relationship to current research
+## Executed current-main receipt
 
-Open #231 demonstrates a related design principle in a different lane: source-owned exact mappings bind selected refinement needs to exact observation subjects. This experiment does not stack on or copy those unpublished types.
+The formatted semantic head was tested against `main@d18f3c1ebfc9b5c8d1a02ad6936e40008ff2997b`:
 
-The existing #145/#164 evidence-acquisition work is the more natural future composition point for fetching the selected guard detail after the front identifies `use_accepted_guard`.
+```text
+head:       636eebe6f0b04a605f2336954589cc9a21d5d384
+CI:         32265811976 success
+provenance: 32265811717 success
+```
+
+The ordinary CI run passed formatter, strict all-target Clippy, the operational-detail gap test, full tests, project-memory/review/closure/redirect controls, and normal Cultist repository/history/CI/diff dogfood. Provider-specific carriers skipped on their path filters.
+
+`main` subsequently advanced through the standalone #242 behavioral receipt. This note update is the only change after the semantic head; its final merge-view pass therefore tests the same two-file negative control on the newest base.
+
+## Active trial ownership
+
+Two new research owners appeared after this probe started:
+
+- [#245](https://redirect.github.com/teamleaderleo/cultist/pull/245) owns blindable paired behavioral-trial plans/materialization/reconciliation for prior-episode-front treatments.
+- [#246](https://redirect.github.com/teamleaderleo/cultist/pull/246) owns externally executable capability-demand worker run receipts and pair interpretation.
+
+This lane does not add a competing trial plan, run receipt, worker harness, or model execution surface. The gap result can inform those owners: a `use_accepted_guard` treatment may still need exact accepted-guard detail before execution.
+
+Open [#231](https://redirect.github.com/teamleaderleo/cultist/pull/231) demonstrates a related exact-mapping principle in a different refinement lane. This experiment does not stack on or copy its unpublished types.
+
+The merged `main` also has no `src/evidence_acquisition.rs` module, so this lane stops at the negative result instead of importing an unpublished planner stack.
 
 ## Boundary
 
@@ -116,8 +137,9 @@ The existing #145/#164 evidence-acquisition work is the more natural future comp
 - no model run;
 - no provider/network call;
 - no automatic policy authority;
-- no requirement that every prior episode attach source prose eagerly.
+- no eager source-prose attachment;
+- no competing paired-trial or run-receipt implementation.
 
-The result is narrower: the currently serialized front does not itself contain the held-out task's explicit operational threshold/corrective-action fields, even though the retained source lesson does.
+The result is narrow: the currently serialized front does not itself contain the held-out task's explicit operational threshold/corrective-action fields, even though the retained source lesson does.
 
-Refs #41 #137 #145 #164 #217 #219 #222 #231 #237.
+Refs #41 #137 #145 #164 #217 #219 #222 #231 #237 #242 #245 #246.

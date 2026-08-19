@@ -24,7 +24,7 @@ pub struct ObservationReconciliationClaim {
     pub lagging_value_ref: String,
     pub implementation_path: String,
     pub test_path: String,
-    pub predecessor_evidence: String,
+    pub reconciler_predecessor_evidence: String,
     pub authority_evidence: String,
     pub observation_evidence: String,
     pub convergence_evidence: String,
@@ -114,23 +114,13 @@ pub fn evaluate_observation_reconciliation(
     let predecessor = artifact(memory, claim.predecessor)?;
     let reconciler = artifact(memory, claim.reconciler)?;
     for evidence in [
-        &claim.predecessor_evidence,
+        &claim.reconciler_predecessor_evidence,
         &claim.authority_evidence,
         &claim.observation_evidence,
         &claim.convergence_evidence,
         &claim.exhaustion_evidence,
     ] {
-        let source = if std::ptr::eq(evidence, &claim.predecessor_evidence) {
-            predecessor
-        } else {
-            reconciler
-        };
-        let reference = if std::ptr::eq(evidence, &claim.predecessor_evidence) {
-            claim.predecessor
-        } else {
-            claim.reconciler
-        };
-        validate_exact_source_excerpt(source, evidence, reference)?;
+        validate_exact_source_excerpt(reconciler, evidence, claim.reconciler)?;
     }
 
     let predecessor_marker = format!("#{}", claim.predecessor.number);
@@ -138,7 +128,10 @@ pub fn evaluate_observation_reconciliation(
         ObservationReconciliationStatus::PredecessorUnmerged
     } else if !merged(reconciler) {
         ObservationReconciliationStatus::ReconcilerUnmerged
-    } else if !claim.predecessor_evidence.contains(&predecessor_marker) {
+    } else if !claim
+        .reconciler_predecessor_evidence
+        .contains(&predecessor_marker)
+    {
         ObservationReconciliationStatus::ReconcilerDoesNotNamePredecessor
     } else if !claim.authority_evidence.contains(&claim.authority_marker) {
         ObservationReconciliationStatus::AuthorityRuleMissing
@@ -217,7 +210,10 @@ impl ObservationReconciliationClaim {
         validate_repository_path(&self.implementation_path)?;
         validate_repository_path(&self.test_path)?;
         for (label, evidence) in [
-            ("predecessor_evidence", &self.predecessor_evidence),
+            (
+                "reconciler_predecessor_evidence",
+                &self.reconciler_predecessor_evidence,
+            ),
             ("authority_evidence", &self.authority_evidence),
             ("observation_evidence", &self.observation_evidence),
             ("convergence_evidence", &self.convergence_evidence),

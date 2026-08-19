@@ -221,7 +221,10 @@ fn unique_field_ranks(ranks: &BTreeMap<String, RankRule>) -> BTreeMap<String, St
     unique
 }
 
-fn find_impl_function(source: &str, function_name: &str) -> Result<syn::ImplItemFn, Box<dyn Error>> {
+fn find_impl_function(
+    source: &str,
+    function_name: &str,
+) -> Result<syn::ImplItemFn, Box<dyn Error>> {
     let file = syn::parse_file(source)?;
     for item in file.items {
         let Item::Impl(item_impl) = item else {

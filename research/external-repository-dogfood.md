@@ -96,6 +96,66 @@ src/disposable_clone_runtime.rs
 
 That target is a good first carrier because it has known earned-history discriminators and counterexamples. The generic manual workflow defaults to the living `main` branch so it can also reveal drift; an exact SHA can be supplied whenever a reproducible historical replay is desired.
 
+### Executed receipt
+
+PR #129 ran the temporary carrier against that exact SmolRunner coordinate:
+
+```text
+workflow run: 32240366281
+job:          96029365880
+artifact:     9360596386
+sha256:       9794b9958627cb1b88d5f347496a1fc76b720d789ab8f66f1a48067989f2bf2b
+checkout:     shallow, depth 256
+```
+
+All four probes and the safety discriminator passed.
+
+Observed Cultist work receipts:
+
+```text
+scan
+  findings:          4
+  git subprocesses:  4
+  Rust files parsed: 259
+  cache hits:         0
+  wall time:          591307 us
+
+scan-warm
+  findings:          4
+  git subprocesses:  4
+  Rust files parsed: 0
+  cache hits:         259
+  wall time:          31640 us
+
+ci-tests
+  findings:          0
+  git subprocesses:  1
+  Rust files parsed: 0
+  cache hits:         0
+  wall time:          1197 us
+
+history
+  discovered:         14 commits
+  considered:         14 commits
+  git subprocesses:   2
+  Rust files parsed:  0
+  wall time:           9842 us
+```
+
+The history replay recovered the same strongest raw companion pattern recorded in #62:
+
+```text
+docs/DISPOSABLE_AUTOSCALING_CI.md                 7/14
+src/disposable_lima_worker.rs                     6/14
+src/disposable_template_runtime.rs                 4/14
+src/disposable_worker_coordinator.rs               4/14
+src/unix_personal_worker_store/disposable_clone_transaction.rs  4/14
+```
+
+The cold repository scan also surfaced four existing naming findings. Those are now useful signal-quality corpus candidates; this carrier records them without declaring them useful or noisy before review.
+
+The temporary PR-only carrier is removed after this receipt. The generic local runner and manual workflow remain.
+
 ## Corpus direction
 
 This harness is the execution primitive for #16 rather than a fixed list of repositories. Candidate cases already include:

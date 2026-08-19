@@ -77,6 +77,8 @@ Selection therefore answers:
 
 It does not itself execute the probe or mint execution authority.
 
+A `SelectedProbe` remains an **expected evidence contract** until the probe actually runs and produces a separate observed receipt. The planner cannot clear its own obligation merely by selecting a capable probe.
+
 ## Forecast cost versus measured performance
 
 V0 `ProbeCost` is a pre-execution forecast:
@@ -116,6 +118,35 @@ The carrier tests:
 - simulated execution of the selected probe can emit the exact typed receipt that #144 evaluates from `open -> cleared`;
 - malformed effect/cost declarations fail explicitly.
 
+## Executed GitHub receipt
+
+Draft stacked PR #164 ran against exact parent #159 head:
+
+```text
+parent  1c1a0086a199168fd0e21445d103936183063dc7
+child   179a2b45267b36d9dfd92eddca93f70aac1744d4
+```
+
+GitHub Actions CI run `32244269156` / run number `1083` completed successfully on the stacked PR merge ref. The job passed:
+
+- `cargo fmt --check`;
+- `cargo clippy --all-targets -- -D warnings`;
+- active-work heads-up;
+- full `cargo test` including the evidence-planner harness;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON plus positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+The PR-only push-diff step remained skipped by workflow context.
+
+Two preceding runs were useful controls:
+
+1. run `32243927421` exposed handwritten rustfmt differences before semantic validation;
+2. run `32244049236` passed format/Clippy and all planner semantics except one test assertion that expected the plural phrase `effectful executions` while the intentional validation error used singular `effectful execution`.
+
+The second failure changed only the test's string expectation. The planner contract stayed unchanged, and the next full run passed.
+
 ## Boundary
 
 - candidate capability comes from typed probe declarations, never prose keyword inference;
@@ -123,11 +154,12 @@ The carrier tests:
 - historical co-change remains association evidence even when it is the cheapest probe;
 - selection is deterministic under the declared policy;
 - a selected effectful probe remains unexecuted until an external caller/orchestrator grants that action;
+- selection produces an expected receipt contract, not observed clearing evidence;
 - no model, network request, test command, or repository mutation occurs inside the planner;
 - planner output is research-only and does not change the product CLI/report schema.
 
 ## Next discriminator
 
-If this carrier survives CI, replay one real Cultist research frontier where two probes can answer the same typed discriminator at different costs. Then compare forecast work with existing performance receipts after execution.
+Replay one real Cultist research frontier where two probes can answer the same typed discriminator at different costs. Then compare forecast work with existing performance receipts after execution.
 
 A second follow-up should test whether probe prerequisites need their own typed relation beyond output applicability. Keep v0 small until a real probe requires a prerequisite that cannot be represented by the current obligation/context coordinates.

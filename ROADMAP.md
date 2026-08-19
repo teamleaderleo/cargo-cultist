@@ -26,6 +26,35 @@ deterministic facts
 
 The primitive is a **finding**, not an error. A good finding says what the repository evidence shows, what it does not establish, and why a worker may want to look.
 
+## Product pressure test
+
+Issue #137 adds a behavioral lens across the existing research program:
+
+> Does selected Cultist evidence change the next justified action, prevent an expensive wrong turn, or reduce important repository knowledge that a later worker has to rediscover manually?
+
+This complements provenance and precision rather than replacing them. A finding can be epistemically careful and still cost attention without changing a decision. Another finding can justify its interruption repeatedly by sending workers toward a missing validation step, active collaborator, reviewed decision, generated output, or decisive counterexample.
+
+Useful behavioral receipts include:
+
+```text
+surfaced
+-> consulted
+-> next inspection / validation / coordination / implementation changed
+-> wrong turn prevented or reversed
+```
+
+and quiet/negative outcomes such as:
+
+```text
+surfaced -> ignored
+surfaced -> irrelevant
+surfaced -> stale before action
+surfaced -> needed stronger evidence
+candidate evidence suppressed -> quiet case stayed quiet
+```
+
+These receipts should remain inspectable. Cultist does not need one universal actionability score.
+
 ## Agent work loop
 
 The newer agent-facing work composes those primitives across time:
@@ -36,7 +65,7 @@ BEFORE CODE
   recover the evidence most likely to matter before the edit
 
 DURING CODE
-  diff / preflight / evidence queries
+  check / diff / preflight / evidence queries
   reconcile live work with repository precedent, guidance,
   active changes, decisions, counterexamples, and unknowns
 
@@ -54,7 +83,7 @@ Compact form:
 retrieve -> work -> reconcile -> preserve -> retrieve
 ```
 
-Lifecycle composition is tracked in #74. Bounded pre-edit context work is tracked in #62.
+Lifecycle composition is tracked in #74. Bounded pre-edit context work is tracked in #62. Behavioral evaluation is tracked in #137.
 
 ## Different views, shared evidence
 
@@ -62,7 +91,7 @@ Several research directions answer different questions. They should compose rath
 
 ### Lifecycle: when?
 
-`brief -> diff -> teach` asks **when** evidence should be recovered, reconciled, and preserved.
+`brief -> check/diff -> teach` asks **when** evidence should be recovered, reconciled, and preserved.
 
 Tracking: #74, #62, #10.
 
@@ -93,6 +122,14 @@ Tracking: #113, #115.
 Decision-memory work asks **what reviewed rationale should remain recoverable** after the original task and conversation are gone.
 
 Tracking: #10 plus decision-memory research under #75.
+
+### Behavioral product pressure: did it help?
+
+Behavioral evaluation asks **whether the selected evidence changed the worker's justified behavior enough to earn its attention cost**.
+
+The first important comparison is held-out work with and without selected Cultist evidence while repository/task state stays equivalent. Record first relevant inspection, irrelevant expansion, known failed approaches, validation choices, coordination choices, and completion outcome.
+
+Tracking: #137, #16.
 
 A new projection should not invent a second provenance, authority, freshness, counterexample, unknown, or omission vocabulary merely because its layout differs.
 
@@ -136,6 +173,14 @@ This boundary is especially important for project-memory and coordination adapte
 
 If the repository cannot recover why an important-looking workaround, exception, stale branch, or metadata claim exists, say so instead of fabricating intent.
 
+### Earn the interruption
+
+Automatic evidence should increasingly justify the attention it consumes. High-value families repeatedly change inspection, validation, coordination, or preservation behavior. Lower-value observations can remain available through explicit queries, research views, or quieter projections.
+
+The action relevance of a finding is separate from its epistemic claim kind. A `PROVEN` fact can still be irrelevant to the current decision; an `UNKNOWN` can be highly actionable when it identifies the missing discriminator blocking safe progress.
+
+Tracking: #137, #109.
+
 ### Keep the core deterministic and bounded
 
 Model-assisted explanation may help interpret selected evidence, but the deterministic evidence packet must remain useful without a model. Remote/provider integrations should produce explicit bounded artifacts that local analyzers can validate.
@@ -156,9 +201,9 @@ Tracking: #11.
 
 ### Learn from the work itself
 
-Cultist development is part of the evaluation corpus. Duplicate work, stale evidence, failed experiments, noisy findings, metadata mismatch, and repeated manual archaeology are candidate product evidence.
+Cultist development is part of the evaluation corpus. Duplicate work, stale evidence, failed experiments, noisy findings, metadata mismatch, repeated manual archaeology, and action-changing findings are candidate product evidence.
 
-Workers should preserve the exact episode, test the generalization, and use the smallest appropriate durable follow-up. See `AGENTS.md`.
+Workers should preserve the exact episode, test the generalization, record the downstream consequence when observable, and use the smallest appropriate durable follow-up. See `AGENTS.md`.
 
 ## Workstreams
 
@@ -205,8 +250,9 @@ Current product supports local ref comparison and bounded active-work inventorie
 - #74 — before/during/after lifecycle
 - #106 — JEI work envelopes
 - #109 — review intelligence envelopes
+- #137 — behavioral decision-changing evidence evaluation
 
-The goal is evidence selected for the current decision, not giant repository summaries.
+The goal is evidence selected for the current decision, not giant repository summaries. Behavioral replays should test whether the selection changes investigation or action usefully.
 
 ### 6. Machine protocols and interoperability
 
@@ -229,16 +275,17 @@ Work should be proportional to the evidence actually needed. Cheap irrelevant pa
 
 - #16 — dogfood/evaluation corpus
 - #41 — Stensibly agentic organizational-history corpus
+- #137 — behavioral A/B and interruption outcomes
 - SmolRunner replay research
 
-Evaluation should include positive controls, quiet negatives, false assumptions, failed proofs, duplicate lanes, and second-order regressions—not only successful detections.
+Evaluation should include positive controls, quiet negatives, false assumptions, failed proofs, duplicate lanes, second-order regressions, and whether surfaced evidence actually changed behavior.
 
 ## Current product evidence
 
 Cultist already has executable slices of several parts of this roadmap:
 
 - provenance-bearing shared text/JSON findings;
-- changed-first diff analysis;
+- changed-first diff analysis, also exposed through the task-oriented `check` alias;
 - historical companion evidence with examples/counterexamples;
 - CI test-selector analysis;
 - generated-companion evidence;
@@ -255,21 +302,24 @@ These are evidence primitives and experiments, not a claim that the full agent l
 
 The most useful next work is composition and discrimination rather than adding broad new feature families:
 
-1. make pre-edit JEI consume the strongest already-earned evidence without becoming a context dump;
-2. connect live diff/preflight evidence to the same task envelope during work;
-3. keep review-attention output a projection over shared evidence rather than a second analyzer universe;
-4. improve explicit project-memory applicability/freshness before trusting remote prose as current intent;
-5. continue decision-memory authority research from current main after failed/stale carrier experiments;
-6. evolve compact representation only when a new semantic primitive has earned a stable contract;
-7. measure interruption/context economics and retire noisy evidence families;
-8. keep performance work proportional to evidence demand.
+1. run the #137 behavioral A/B gate on held-out tasks while #62/#106 packet work continues;
+2. make pre-edit JEI consume the strongest already-earned evidence without becoming a context dump;
+3. connect live check/diff/preflight evidence to the same task envelope during work;
+4. keep review-attention output a projection over shared evidence rather than a second analyzer universe;
+5. improve explicit project-memory applicability/freshness before trusting remote prose as current intent;
+6. continue decision-memory authority research from current main after failed/stale carrier experiments;
+7. evolve compact representation as new semantic primitives earn stable contracts;
+8. measure interruption/context economics and promote, demote, or quiet evidence families from receipts;
+9. keep performance work proportional to evidence demand.
 
 This is not a commitment to build everything in order. Small experiments that falsify an assumption are valuable, and failed carriers should be retired instead of remaining fake active work.
 
 ## Product test
 
-A useful recurring question is:
+Useful recurring questions are:
 
 > What did this worker have to discover manually that the repository could have surfaced, bounded, or preserved before the same mistake or investigation happens again?
 
-Cultist earns its place when the answer becomes progressively smaller without replacing project judgment with opaque automation.
+> Which surfaced evidence changed the next justified inspection, validation, coordination, implementation, or preservation step?
+
+Cultist earns its place as those manual rediscovery and avoidable wrong-turn burdens become progressively smaller without replacing project judgment with opaque automation.

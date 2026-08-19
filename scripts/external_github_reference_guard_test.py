@@ -127,6 +127,8 @@ def test_changed_markdown_uses_full_file_for_fence_context_but_only_added_lines(
             f"Intro\n\n```text\ncanonical example\n{EXTERNAL}\n```\n\nExisting prose.\nNew prose: {EXTERNAL}\n",
             encoding="utf-8",
         )
+        git(root, "add", "doc.md")
+        git(root, "commit", "-qm", "change")
 
         violations = guard.scan_changed_markdown(
             base=base,

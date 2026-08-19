@@ -351,7 +351,8 @@ fn evict_one_semantic_detail(packet: &mut AgentContextPacket) -> Option<&'static
     }
 
     for companion in packet.historical_companions.iter_mut().rev() {
-        if companion.counterexamples.pop().is_some() {
+        if companion.counterexamples.len() > 1 {
+            companion.counterexamples.pop();
             companion.counterexamples_omitted += 1;
             return Some("historical_counterexample");
         }
@@ -733,6 +734,45 @@ mod tests {
     }
 
     #[test]
+    fn final_counterexample_survives_until_relation_is_evicted() {
+        let mut packet = synthetic_packet(usize::MAX);
+        for companion in &mut packet.historical_companions {
+            companion.examples.clear();
+        }
+        packet.historical_companions[1]
+            .counterexamples
+            .push(summary("low-counter-extra", 900));
+
+        assert_eq!(
+            evict_one_semantic_detail(&mut packet),
+            Some("historical_counterexample")
+        );
+        assert_eq!(packet.historical_companions[1].counterexamples.len(), 1);
+
+        assert_eq!(
+            evict_one_semantic_detail(&mut packet),
+            Some("historical_companion_relation")
+        );
+        assert_eq!(packet.historical_companions.len(), 1);
+        assert_eq!(packet.historical_companions[0].path, "src/high.rs");
+        assert_eq!(packet.historical_companions[0].counterexamples.len(), 1);
+    }
+
+    #[test]
+    fn single_relation_is_evicted_before_its_last_counterexample() {
+        let mut packet = synthetic_packet(usize::MAX);
+        packet.historical_companions.truncate(1);
+        packet.historical_companions[0].examples.clear();
+
+        assert_eq!(packet.historical_companions[0].counterexamples.len(), 1);
+        assert_eq!(
+            evict_one_semantic_detail(&mut packet),
+            Some("historical_companion_relation")
+        );
+        assert!(packet.historical_companions.is_empty());
+    }
+
+    #[test]
     fn long_candidate_compiles_to_valid_json_with_exact_receipts() {
         let max = candidate_bytes() - 3_000;
         let mut packet = synthetic_packet(max);
@@ -752,6 +792,9 @@ mod tests {
         assert_eq!(packet.direct_evidence.len(), 1);
         assert_eq!(packet.guidance.len(), 1);
         assert_eq!(packet.unknowns.len(), 1);
+        assert!(packet.historical_companions.iter().all(|companion| {
+            companion.support == companion.opportunities || !companion.counterexamples.is_empty()
+        }));
     }
 
     #[test]

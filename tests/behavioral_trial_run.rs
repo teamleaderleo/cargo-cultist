@@ -20,6 +20,10 @@ const CONTROL_FILE_SHA: &str = "6a568aed1eb660141cd7e7759e47edeb10a5c759fe140268
 const TREATMENT_FILE_SHA: &str = "1063efc8ecdf0313b947923dad8216fb9fa43b2e8b8cafa7ab6b63d53eb65c7d";
 const SAMPLING_SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OUTPUT_SHA: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const OTHER_SAMPLING_SHA: &str =
+    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+type ReceiptMutation = fn(&mut BehavioralTrialRunReceipt);
 
 fn plan() -> BehavioralTrialPlan {
     parse_behavioral_trial_plan(PLAN).expect("retained Stensibly plan should parse")
@@ -53,6 +57,22 @@ fn receipt(
         raw_worker_output_sha256: OUTPUT_SHA.into(),
         first_action_id: first_action_id.into(),
     }
+}
+
+fn drift_worker(receipt: &mut BehavioralTrialRunReceipt) {
+    receipt.worker_identity = "other-worker@v1".into();
+}
+
+fn drift_harness(receipt: &mut BehavioralTrialRunReceipt) {
+    receipt.harness_identity = "other-harness@v1".into();
+}
+
+fn drift_affordance(receipt: &mut BehavioralTrialRunReceipt) {
+    receipt.affordance_identity = "other-affordance@v1".into();
+}
+
+fn drift_sampling(receipt: &mut BehavioralTrialRunReceipt) {
+    receipt.sampling_config_sha256 = OTHER_SAMPLING_SHA.into();
 }
 
 #[test]
@@ -152,18 +172,14 @@ fn frozen_worker_harness_affordance_or_sampling_drift_confounds_pair() {
         1,
         "inspect_accepted_guard_detail",
     );
-
-    let mut mutations: Vec<Box<dyn Fn(&mut BehavioralTrialRunReceipt)>> = vec![
-        Box::new(|receipt| receipt.worker_identity = "other-worker@v1".into()),
-        Box::new(|receipt| receipt.harness_identity = "other-harness@v1".into()),
-        Box::new(|receipt| receipt.affordance_identity = "other-affordance@v1".into()),
-        Box::new(|receipt| {
-            receipt.sampling_config_sha256 =
-                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".into()
-        }),
+    let mutations: [ReceiptMutation; 4] = [
+        drift_worker,
+        drift_harness,
+        drift_affordance,
+        drift_sampling,
     ];
 
-    for mutate in mutations.drain(..) {
+    for mutate in mutations {
         let mut treatment = receipt(&plan, BehavioralTrialArmKind::Treatment, 2, "block_patch");
         mutate(&mut treatment);
         let result = evaluate_behavioral_trial_runs(&plan, &baseline, &treatment).unwrap();

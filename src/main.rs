@@ -1,3 +1,4 @@
+mod ci_test_filters;
 mod diff;
 mod finding;
 mod history;
@@ -10,6 +11,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::process;
 
+use ci_test_filters::{analyze_ci_test_filters, build_ci_test_filter_analysis};
 use diff::{build_diff_analysis_report, git_repo_root};
 use finding::AnalysisReport;
 use history::{
@@ -68,6 +70,11 @@ fn run() -> Result<(), Box<dyn Error>> {
         return run_history(args);
     }
 
+    if args.first().is_some_and(|arg| arg == "ci-tests") {
+        args.remove(0);
+        return run_ci_tests(args);
+    }
+
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
         print_help();
         return Ok(());
@@ -95,7 +102,8 @@ fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     let requested_root = path.unwrap_or(env::current_dir()?);
     let requested_root = requested_root.canonicalize()?;
     let root = git_repo_root(&requested_root)?;
-    let analysis = build_diff_analysis_report(&root, base.as_deref())?;
+    let report = analyze_test_modules(&root)?;
+    let analysis = build_diff_analysis_report(&root, base.as_deref(), &report)?;
     emit_analysis(&analysis, format)
 }
 
@@ -169,6 +177,21 @@ fn run_history(args: Vec<String>) -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn run_ci_tests(args: Vec<String>) -> Result<(), Box<dyn Error>> {
+    if args.iter().any(|arg| arg == "-h" || arg == "--help") {
+        print_ci_tests_help();
+        return Ok(());
+    }
+
+    let (format, path) = parse_root_args(args)?;
+    let requested_root = path.unwrap_or(env::current_dir()?);
+    let requested_root = requested_root.canonicalize()?;
+    let root = git_repo_root(&requested_root)?;
+    let report = analyze_ci_test_filters(&root)?;
+    let analysis = build_ci_test_filter_analysis(&root, &report);
+    emit_analysis(&analysis, format)
 }
 
 fn parse_root_args(args: Vec<String>) -> Result<(OutputFormat, Option<PathBuf>), Box<dyn Error>> {
@@ -301,8 +324,8 @@ fn print_help() {
     println!(
         "cargo-cultist {VERSION}\n\
 Repository-aware analysis for Rust codebases.\n\n\
-USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist history [--max-commits N] [--format text|json] FILE\n\n\
-COMMANDS:\n    diff       Inspect changed Rust code against repository precedent.\n    history    Explore which paths historically change with one file.\n\n\
+USAGE:\n    cargo cultist [--format text|json] [PATH]\n    cargo cultist diff [--base REV] [--format text|json] [PATH]\n    cargo cultist history [--max-commits N] [--format text|json] FILE\n    cargo cultist ci-tests [--format text|json] [PATH]\n    cargo-cultist [--format text|json] [PATH]\n    cargo-cultist diff [--base REV] [--format text|json] [PATH]\n    cargo-cultist history [--max-commits N] [--format text|json] FILE\n    cargo-cultist ci-tests [--format text|json] [PATH]\n\n\
+COMMANDS:\n    diff       Inspect changed Rust code against repository precedent.\n    history    Explore which paths historically change with one file.\n    ci-tests   Compare supported CI test filters with explicit test-name evidence.\n\n\
 Without a command, cargo-cultist inspects repository-wide test-module naming\n\
 conventions without inventing a universal rule."
     );
@@ -329,6 +352,18 @@ commits changing more than 100 paths are excluded from the first-pass cohort.\n\
 This is research instrumentation for temporal and negative-space precedent.\n\
 It reports associations, examples, and counterexamples without turning\n\
 co-change frequency into a correctness claim."
+    );
+}
+
+fn print_ci_tests_help() {
+    println!(
+        "cargo-cultist ci-tests\n\n\
+USAGE:\n    cargo cultist ci-tests [--format text|json] [PATH]\n\n\
+Research instrumentation for CI test-filter drift. The first slice recognizes\n\
+literal single-line `cargo [ +TOOLCHAIN ] test --lib FILTER` commands in GitHub Actions and\n\
+compares FILTER with explicit #[test] function names plus declared Rust module names.\n\n\
+A zero syntax match remains a question. Macro-generated or build-time tests\n\
+are represented as UNKNOWN until authoritative test-listing evidence exists."
     );
 }
 

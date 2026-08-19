@@ -86,8 +86,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
 
     if args.first().is_some_and(|arg| is_change_command(arg)) {
-        args.remove(0);
-        return run_diff(args);
+        let command = args.remove(0);
+        return run_diff(&command, args);
     }
 
     if args.first().is_some_and(|arg| arg == "preflight") {
@@ -126,13 +126,13 @@ fn is_change_command(arg: &str) -> bool {
     matches!(arg, "check" | "diff")
 }
 
-fn run_diff(args: Vec<String>) -> Result<(), Box<dyn Error>> {
+fn run_diff(command: &str, args: Vec<String>) -> Result<(), Box<dyn Error>> {
     if args.iter().any(|arg| arg == "-h" || arg == "--help") {
-        print_diff_help();
+        print_change_help(command);
         return Ok(());
     }
 
-    let DiffArgs { base, path, format } = parse_diff_args(args)?;
+    let DiffArgs { base, path, format } = parse_diff_args(args, command)?;
     let requested_root = path.unwrap_or(env::current_dir()?);
     let requested_root = requested_root.canonicalize()?;
     let root = git_repo_root(&requested_root)?;
@@ -307,7 +307,8 @@ fn parse_root_args(args: Vec<String>) -> Result<(OutputFormat, Option<PathBuf>),
     Ok((format, path))
 }
 
-fn parse_diff_args(args: Vec<String>) -> Result<DiffArgs, Box<dyn Error>> {
+fn parse_diff_args(args: Vec<String>, command: &str) -> Result<DiffArgs, Box<dyn Error>> {
+    debug_assert!(is_change_command(command));
     let mut parsed = DiffArgs::default();
     let mut args = args.into_iter();
 
@@ -326,16 +327,16 @@ fn parse_diff_args(args: Vec<String>) -> Result<DiffArgs, Box<dyn Error>> {
             }
             _ if arg.starts_with('-') => {
                 return Err(format!(
-                    "unknown diff option `{arg}`; try `cargo cultist diff --help`"
+                    "unknown {command} option `{arg}`; try `cargo cultist {command} --help`"
                 )
                 .into());
             }
             _ => {
                 if parsed.path.is_some() {
-                    return Err(
-                        "expected at most one path argument; try `cargo cultist diff --help`"
-                            .into(),
-                    );
+                    return Err(format!(
+                        "expected at most one path argument; try `cargo cultist {command} --help`"
+                    )
+                    .into());
                 }
                 parsed.path = Some(PathBuf::from(arg));
             }
@@ -505,13 +506,13 @@ conventions without inventing a universal rule."#
     );
 }
 
-fn print_diff_help() {
-    println!(
-        r#"cargo-cultist check / diff
+fn change_help(command: &str) -> String {
+    debug_assert!(is_change_command(command));
+    format!(
+        r#"cargo-cultist {command}
 
 USAGE:
-    cargo cultist check [--base REV] [--format text|json] [PATH]
-    cargo cultist diff [--base REV] [--format text|json] [PATH]
+    cargo cultist {command} [--base REV] [--format text|json] [PATH]
 
 `check` and `diff` execute the same change analyzer and emit the same report.
 By default, the analyzer compares the working tree (including staged changes) against HEAD.
@@ -519,7 +520,11 @@ With --base REV, it compares changes from the merge base of REV and HEAD.
 
 Supported evidence currently includes changed Rust test-module precedent and
 generated-companion analysis when the repository provides the required evidence."#
-    );
+    )
+}
+
+fn print_change_help(command: &str) {
+    println!("{}", change_help(command));
 }
 
 fn print_preflight_help() {
@@ -585,19 +590,49 @@ mod tests {
     }
 
     #[test]
-    fn parses_diff_base_path_and_format() {
-        let parsed = parse_diff_args(vec![
+    fn parses_check_and_diff_args_identically() {
+        let args = vec![
             "--base".to_string(),
             "origin/main".to_string(),
             "--format".to_string(),
             "json".to_string(),
             ".".to_string(),
-        ])
-        .unwrap();
+        ];
+        let check = parse_diff_args(args.clone(), "check").unwrap();
+        let diff = parse_diff_args(args, "diff").unwrap();
+        assert_eq!(check, diff);
+    }
 
-        assert_eq!(parsed.base.as_deref(), Some("origin/main"));
-        assert_eq!(parsed.path, Some(PathBuf::from(".")));
-        assert_eq!(parsed.format, OutputFormat::Json);
+    #[test]
+    fn check_help_names_check_command() {
+        let help = change_help("check");
+        assert!(help.contains("cargo-cultist check"));
+        assert!(help.contains("cargo cultist check"));
+        assert!(!help.contains("cargo-cultist diff\n"));
+    }
+
+    #[test]
+    fn diff_help_names_diff_command() {
+        let help = change_help("diff");
+        assert!(help.contains("cargo-cultist diff"));
+        assert!(help.contains("cargo cultist diff"));
+        assert!(!help.contains("cargo-cultist check\n"));
+    }
+
+    #[test]
+    fn check_parse_errors_name_check_command() {
+        let error = parse_diff_args(vec!["--bogus".to_string()], "check").unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("unknown check option `--bogus`"));
+        assert!(message.contains("cargo cultist check --help"));
+    }
+
+    #[test]
+    fn diff_parse_errors_name_diff_command() {
+        let error = parse_diff_args(vec!["--bogus".to_string()], "diff").unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("unknown diff option `--bogus`"));
+        assert!(message.contains("cargo cultist diff --help"));
     }
 
     #[test]
@@ -699,6 +734,6 @@ mod tests {
 
     #[test]
     fn rejects_multiple_diff_paths() {
-        assert!(parse_diff_args(vec!["a".to_string(), "b".to_string()]).is_err());
+        assert!(parse_diff_args(vec!["a".to_string(), "b".to_string()], "diff").is_err());
     }
 }

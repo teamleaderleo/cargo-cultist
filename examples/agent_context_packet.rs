@@ -10,7 +10,7 @@ use serde::Serialize;
 #[path = "decision_memory.rs"]
 mod decision_memory;
 
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 const DEFAULT_MAX_HISTORY: usize = 20;
 const DEFAULT_MAX_COMPANIONS: usize = 8;
 const DEFAULT_MAX_EXAMPLES: usize = 2;
@@ -209,10 +209,11 @@ fn run() -> Result<(), Box<dyn Error>> {
         unknowns: vec![
             "Applicable guidance files are surfaced as source artifacts; this research example does not interpret their natural-language rules.".to_string(),
             "Repository decision-memory records are surfaced as a distinct evidence layer; this packet does not yet encode whether a record was merely proposed, reviewed, or merged.".to_string(),
+            "A decision matched through `git_file_lineage` relies on Git rename detection; the packet preserves that provenance instead of treating the match as a direct current-path scope.".to_string(),
             "Remote pull request, issue, and review rationale outside repository decision memory is unavailable in this local-only packet.".to_string(),
             "Chronological proximity between commits is not evidence that one change caused another.".to_string(),
             "Current Cargo Cultist analyzer findings are not yet composed into this standalone research example.".to_string(),
-            "This v3 research packet measures serialized bytes but does not yet enforce a hard byte budget or eviction policy.".to_string(),
+            "This v4 research packet measures serialized bytes but does not yet enforce a hard byte budget or eviction policy.".to_string(),
         ],
         truncation,
     };

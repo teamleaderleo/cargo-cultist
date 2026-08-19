@@ -111,8 +111,8 @@ pub fn parse_project_memory_packet(bytes: &[u8]) -> Result<ProjectMemoryPacket, 
             MAX_PROJECT_MEMORY_BYTES
         ));
     }
-    let packet: ProjectMemoryPacket =
-        serde_json::from_slice(bytes).map_err(|error| format!("invalid project-memory JSON: {error}"))?;
+    let packet: ProjectMemoryPacket = serde_json::from_slice(bytes)
+        .map_err(|error| format!("invalid project-memory JSON: {error}"))?;
     packet.validate()?;
     Ok(packet)
 }
@@ -330,7 +330,9 @@ fn validate_sha(value: &str, label: &str) -> Result<(), String> {
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
-        return Err(format!("{label} must be an exact lowercase 40-hex Git object id"));
+        return Err(format!(
+            "{label} must be an exact lowercase 40-hex Git object id"
+        ));
     }
     Ok(())
 }

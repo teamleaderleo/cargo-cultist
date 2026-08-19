@@ -106,6 +106,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           report = json.loads(Path("/tmp/active-work-heads-up.json").read_text())
@@ -114,21 +115,54 @@ jobs:
               f"examined: {report['candidates_examined']} active candidate(s); "
               f"self excluded: {report['self_candidates_excluded']}"
           )
+
+          summary = [
+              "## Cargo Cultist active-work heads-up",
+              "",
+              f"Observed `{report['observed_at']}` from `{report['source']}`.",
+              "",
+          ]
+
           if not heads_up:
-              print("No direct active-work path overlap worth surfacing.")
+              message = "No direct active-work path overlap worth surfacing."
+              print(message)
+              summary.append(message)
           else:
               print(f"HEADS UP: {len(heads_up)} active overlap(s)")
+              summary.append(f"**Heads up: {len(heads_up)} active overlap(s).**")
+              summary.append("")
               for item in heads_up:
                   work = item["work"]
                   print(
                       f"  {work['id']} {work['title']} "
                       f"[{work['head_sha'][:8]} updated {work['updated_at']}]"
                   )
+                  summary.extend([
+                      f"### {work['id']} — {work['title']}",
+                      "",
+                      f"- Active head: [`{work['head_ref']}@{work['head_sha'][:8]}`]({work['url']})",
+                      f"- Updated: `{work['updated_at']}`",
+                      "- Exact overlapping paths:",
+                  ])
                   for path in item["overlap_paths"]:
                       print(f"    overlaps {path}")
+                      summary.append(f"  - `{path}`")
                   print("    No duplicate intent or incompatibility inferred.")
+                  summary.extend([
+                      "- Interpretation: exact path overlap only; duplicate intent, ownership, incompatibility, and required coordination are not inferred.",
+                      "",
+                  ])
+
           if report["omitted_heads_up"]:
-              print(f"omitted heads-ups: {report['omitted_heads_up']}")
+              omitted = report["omitted_heads_up"]
+              print(f"omitted heads-ups: {omitted}")
+              summary.append(f"Additional bounded heads-ups omitted: `{omitted}`.")
+
+          summary.extend([
+              "",
+              "> Advisory only. Inspect overlap if useful; continuing independently may be correct.",
+          ])
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(summary) + "\n")
           PY
 
       - uses: actions/upload-artifact@v4

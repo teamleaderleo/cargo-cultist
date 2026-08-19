@@ -85,11 +85,13 @@ fn exact_small_plan_has_stable_known_digests_and_fingerprints() {
         context_digest("Prior episode: stale review; recompute before reuse."),
         EXPECTED_TREATMENT_DIGEST
     );
-    assert_eq!(fingerprint_plan(&plan()).unwrap(), EXPECTED_PLAN_FINGERPRINT);
+    assert_eq!(
+        fingerprint_plan(&plan()).unwrap(),
+        EXPECTED_PLAN_FINGERPRINT
+    );
 
     let control = materialize_worker_packet(&plan(), BehavioralTrialArmKind::Control).unwrap();
-    let treatment =
-        materialize_worker_packet(&plan(), BehavioralTrialArmKind::Treatment).unwrap();
+    let treatment = materialize_worker_packet(&plan(), BehavioralTrialArmKind::Treatment).unwrap();
     assert_eq!(control.worker_packet_fingerprint, EXPECTED_CONTROL_PACKET);
     assert_eq!(
         treatment.worker_packet_fingerprint,
@@ -146,7 +148,10 @@ fn one_byte_context_mutation_changes_arm_and_plan_fingerprints() {
 
 #[test]
 fn worker_packets_hide_arm_labels_and_context_refs() {
-    for arm in [BehavioralTrialArmKind::Control, BehavioralTrialArmKind::Treatment] {
+    for arm in [
+        BehavioralTrialArmKind::Control,
+        BehavioralTrialArmKind::Treatment,
+    ] {
         let packet = materialize_worker_packet(&plan(), arm).unwrap();
         let json = serde_json::to_string(&packet).unwrap();
         assert!(!json.contains("context_ref"));
@@ -160,8 +165,8 @@ fn worker_packets_hide_arm_labels_and_context_refs() {
 
 #[test]
 fn same_first_action_is_descriptive_only() {
-    let evaluation = evaluate_behavioral_trial_pair(&pair("inspect_history", "inspect_history"))
-        .unwrap();
+    let evaluation =
+        evaluate_behavioral_trial_pair(&pair("inspect_history", "inspect_history")).unwrap();
     assert!(evaluation.same_first_action);
     assert_eq!(evaluation.control.first_action_id, "inspect_history");
     assert_eq!(evaluation.treatment.first_action_id, "inspect_history");
@@ -187,8 +192,8 @@ fn observations_can_arrive_in_either_order() {
 
 #[test]
 fn observation_action_must_be_registered() {
-    let error = evaluate_behavioral_trial_pair(&pair("continue_current", "invented_action"))
-        .unwrap_err();
+    let error =
+        evaluate_behavioral_trial_pair(&pair("continue_current", "invented_action")).unwrap_err();
     assert!(error.to_string().contains("registered action vocabulary"));
 }
 
@@ -203,18 +208,23 @@ fn two_observations_for_same_arm_reject() {
 #[test]
 fn unknown_worker_packet_fingerprint_rejects() {
     let mut input = pair("continue_current", "inspect_history");
-    input.observations[1].worker_packet_fingerprint = format!(
-        "{WORKER_PACKET_FINGERPRINT_SCHEME}:{}",
-        "0".repeat(64)
-    );
+    input.observations[1].worker_packet_fingerprint =
+        format!("{WORKER_PACKET_FINGERPRINT_SCHEME}:{}", "0".repeat(64));
     let error = evaluate_behavioral_trial_pair(&input).unwrap_err();
-    assert!(error.to_string().contains("unknown worker-packet fingerprint"));
+    assert!(
+        error
+            .to_string()
+            .contains("unknown worker-packet fingerprint")
+    );
 }
 
 #[test]
 fn plan_mutation_after_observation_rejects() {
     let mut input = pair("continue_current", "inspect_history");
-    input.plan.task_instruction.push_str(" Changed after registration.");
+    input
+        .plan
+        .task_instruction
+        .push_str(" Changed after registration.");
     let error = evaluate_behavioral_trial_pair(&input).unwrap_err();
     assert!(error.to_string().contains("plan_fingerprint"));
 }
@@ -233,7 +243,11 @@ fn supplied_context_digest_must_match_exact_context() {
     let mut input = plan();
     input.control.context.push('!');
     let error = fingerprint_plan(&input).unwrap_err();
-    assert!(error.to_string().contains("does not match the exact context bytes"));
+    assert!(
+        error
+            .to_string()
+            .contains("does not match the exact context bytes")
+    );
 }
 
 #[test]
@@ -241,7 +255,11 @@ fn duplicate_action_ids_reject() {
     let mut input = plan();
     input.allowed_first_actions[1].id = "inspect_history".to_string();
     let error = fingerprint_plan(&input).unwrap_err();
-    assert!(error.to_string().contains("duplicate behavioral-trial action id"));
+    assert!(
+        error
+            .to_string()
+            .contains("duplicate behavioral-trial action id")
+    );
 }
 
 #[test]

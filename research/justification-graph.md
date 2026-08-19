@@ -62,6 +62,8 @@ cleared
   at least one clearing evidence object applies
 ```
 
+An open obligation is valid with **zero clearing edges**. The immediately stacked #144 experiment exposed this as a necessary case: a durable missing discriminator can exist before any clearing evidence object has arrived. Requiring a clearing edge would manufacture prospective evidence as if it had already been observed.
+
 When exact-head clearing evidence later becomes INVALID after revision movement, the obligation reopens.
 
 ## Reevaluation receipt
@@ -84,10 +86,38 @@ The carrier includes controls for:
 - one invalidated support + one independent support -> claim remains supported;
 - sole invalidated support -> claim becomes unknown;
 - counterexample and limit receipts remain visible;
+- an obligation can remain open before any clearing evidence exists;
 - exact-head clearing evidence clears an obligation and head movement reopens it;
 - reevaluation names only targets downstream of changed evidence;
 - UNKNOWN dependency prevents a supported projection;
 - relation/target mismatch rejects rather than inventing cyclic/general graph semantics.
+
+## Executed GitHub receipt
+
+Draft PR #156 ran the ordinary repository gates after the open-obligation correction and fixture-only Clippy containment.
+
+Exact head under test:
+
+```text
+9399f29ebcb96e5b306e88b6ad12c0189f0e6f62
+```
+
+GitHub Actions CI run `32243151354` / run number `1018` completed successfully on the PR merge ref. The job passed:
+
+- `cargo fmt --check`;
+- `cargo clippy --all-targets -- -D warnings`;
+- active-work heads-up;
+- full `cargo test` including the justification integration harness;
+- repository text/JSON dogfood;
+- history text/JSON dogfood;
+- CI test-filter inventory text/JSON plus positive/control fixtures;
+- pull-request diff text/JSON dogfood.
+
+The PR-only push-diff step remained skipped by workflow context.
+
+Generated provenance review dogfood run `32243151304` / run number `160` also completed successfully for the same head.
+
+Two earlier CI attempts were useful mechanical controls rather than semantic failures: the first exposed rustfmt differences; the second reached Clippy and exposed one fixture-only unused applicability constant through the standalone example. Both were repaired before this executed receipt.
 
 ## Boundary
 
@@ -101,12 +131,12 @@ The carrier includes controls for:
 
 ## Next discriminator after this carrier
 
-If the controls hold, the next useful question is whether real Cultist evidence needs **alternative derivation groups** such as:
+The first follow-up is already concrete through #144: preserve open obligations and their future clearing conditions without pretending expected evidence is observed evidence.
+
+Beyond that, the next useful truth-maintenance question is whether real Cultist evidence needs **alternative derivation groups** such as:
 
 ```text
 (E1 AND E2) OR E3 -> C1
 ```
 
 before justification edges deserve canonical IR representation. Keep the v0 bipartite model until a real replay demonstrates that richer derivation semantics change the justified next action.
-
-CI/executed-run details should be appended after the carrier runs on GitHub.

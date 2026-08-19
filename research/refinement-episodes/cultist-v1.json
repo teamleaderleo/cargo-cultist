@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "episodes": [
+    {
+      "id": "justification/open-obligation-v1",
+      "family": "justification",
+      "hypothesis_before": {
+        "id": "requires-clearing-edge",
+        "statement": "Every obligation node requires at least one observed clearing edge."
+      },
+      "counterexample_refs": [
+        "github:issue/144#open-before-clearing-evidence"
+      ],
+      "admitted_discriminators": [
+        {
+          "id": "clearing_evidence_presence",
+          "source_ref": "github:pull/159@1c1a0086a199168fd0e21445d103936183063dc7"
+        }
+      ],
+      "candidate_refinements": [
+        {
+          "id": "allow-open-zero-edge",
+          "hypothesis_after": {
+            "id": "observed-clearing-edge-is-optional",
+            "statement": "An obligation may remain open before clearing evidence arrives; observed clearing edges remain typed receipts when present."
+          },
+          "discriminator_refs": [
+            "clearing_evidence_presence"
+          ],
+          "replay_result": {
+            "expected_cases_retained": 7,
+            "counterexamples_resolved": 1,
+            "expected_cases_lost": 0,
+            "counterexamples_remaining": 0,
+            "held_out_status": "not_run"
+          },
+          "status": "weakened",
+          "source_receipts": [
+            "github:pull/156@9beaeaab2bece20a4e0bb9c880f510f740bf8cfb",
+            "github:pull/159@1c1a0086a199168fd0e21445d103936183063dc7",
+            "github-actions:run/32243719268"
+          ]
+        }
+      ],
+      "selected_transition": "allow-open-zero-edge",
+      "source_receipts": [
+        "research:justification-graph.md",
+        "research:durable-unknown-obligation.md"
+      ],
+      "behavioral_episode_ids": []
+    },
+    {
+      "id": "history/oxc-edit-class-v1",
+      "family": "historical_companion",
+      "hypothesis_before": {
+        "id": "raw-source-change-cohort",
+        "statement": "Every source-file change belongs to one historical companion cohort for evaluating the generated-file expectation."
+      },
+      "counterexample_refs": [
+        "oxc:5e113baf716b9f3781331b268b4142d23cac0541#docs-license-notices"
+      ],
+      "admitted_discriminators": [
+        {
+          "id": "edit_class",
+          "source_ref": "research:rust-syntax-cohort-replay.md"
+        },
+        {
+          "id": "commit_identity",
+          "source_ref": "github:pull/168@b8c6457de8d05a38a662289962fc11a124d32861"
+        }
+      ],
+      "candidate_refinements": [
+        {
+          "id": "syntax-changing-current-cohort",
+          "hypothesis_after": {
+            "id": "syntax-changing-source-cohort",
+            "statement": "Evaluate the forward generated-companion expectation inside the supplied Rust syntax-changing edit cohort."
+          },
+          "discriminator_refs": [
+            "edit_class"
+          ],
+          "replay_result": {
+            "expected_cases_retained": 99,
+            "counterexamples_resolved": 1,
+            "expected_cases_lost": 0,
+            "counterexamples_remaining": 0,
+            "held_out_status": "passed"
+          },
+          "status": "weakened",
+          "source_receipts": [
+            "research:rust-syntax-cohort-replay.md",
+            "github:pull/168@b8c6457de8d05a38a662289962fc11a124d32861",
+            "github-actions:run/32245110401",
+            "github:pull/72"
+          ]
+        },
+        {
+          "id": "reverse-edit-class-control",
+          "hypothesis_after": {
+            "id": "reverse-syntax-cohort-improves",
+            "statement": "Applying the same edit-class discriminator to generated-to-source history should remove reverse-direction counterexamples."
+          },
+          "discriminator_refs": [
+            "edit_class"
+          ],
+          "replay_result": {
+            "expected_cases_retained": 94,
+            "counterexamples_resolved": 0,
+            "expected_cases_lost": 0,
+            "counterexamples_remaining": 6,
+            "held_out_status": "passed"
+          },
+          "status": "rejected_no_improvement",
+          "source_receipts": [
+            "research:rust-syntax-cohort-replay.md",
+            "github:pull/168@b8c6457de8d05a38a662289962fc11a124d32861"
+          ]
+        },
+        {
+          "id": "singleton-commit-partition",
+          "hypothesis_after": {
+            "id": "exact-commit-is-cohort",
+            "statement": "Use exact commit identity as the discriminator so the current observation defines its own cohort."
+          },
+          "discriminator_refs": [
+            "commit_identity"
+          ],
+          "replay_result": {
+            "expected_cases_retained": 1,
+            "counterexamples_resolved": 1,
+            "expected_cases_lost": 98,
+            "counterexamples_remaining": 0,
+            "held_out_status": "not_run"
+          },
+          "status": "rejected_overfit",
+          "source_receipts": [
+            "github:pull/168@b8c6457de8d05a38a662289962fc11a124d32861"
+          ]
+        }
+      ],
+      "selected_transition": "syntax-changing-current-cohort",
+      "source_receipts": [
+        "research:history-companion-replay.md",
+        "research:rust-syntax-cohort-replay.md",
+        "research:cohort-refinement.md"
+      ],
+      "behavioral_episode_ids": []
+    },
+    {
+      "id": "project-memory/primary-case-contract-collision-v1",
+      "family": "project_memory",
+      "hypothesis_before": {
+        "id": "single-line-admission-covers-collector-evidence",
+        "statement": "The existing project-memory relation admission contract composes with every explicit relationship evidence form emitted by current collectors."
+      },
+      "counterexample_refs": [
+        "github:issue/172#primary-case-multiline-contract-collision"
+      ],
+      "admitted_discriminators": [
+        {
+          "id": "primary_case_evidence_form",
+          "source_ref": "github:pull/174@e1196c553ab496df13a230535de997f30c2d63ca"
+        },
+        {
+          "id": "same_repository_issue_target",
+          "source_ref": "github:pull/174@e1196c553ab496df13a230535de997f30c2d63ca"
+        }
+      ],
+      "candidate_refinements": [
+        {
+          "id": "split-primary-case-admission",
+          "hypothesis_after": {
+            "id": "typed-primary-case-admission",
+            "statement": "Keep ordinary relation evidence on the strict single-line grammar and admit only the exact same-repository Primary case issue block through a separate validated path."
+          },
+          "discriminator_refs": [
+            "primary_case_evidence_form",
+            "same_repository_issue_target"
+          ],
+          "replay_result": {
+            "expected_cases_retained": 2,
+            "counterexamples_resolved": 1,
+            "expected_cases_lost": 0,
+            "counterexamples_remaining": 0,
+            "held_out_status": "passed"
+          },
+          "status": "split",
+          "source_receipts": [
+            "github:pull/174@e1196c553ab496df13a230535de997f30c2d63ca",
+            "github-actions:run/32246042100",
+            "github-actions:run/32246042091"
+          ]
+        }
+      ],
+      "selected_transition": "split-primary-case-admission",
+      "source_receipts": [
+        "github:pull/166",
+        "github:pull/167",
+        "github:issue/172",
+        "github:pull/174@e1196c553ab496df13a230535de997f30c2d63ca",
+        "github:pull/178@22fa1d9405737ae6868d9b1f6643b4107c6f058a",
+        "research:behavioral-receipts/project-memory-primary-case-collision-174.json"
+      ],
+      "behavioral_episode_ids": [
+        "project-memory:primary-case-contract-collision:9792bfe->df5ae59"
+      ]
+    }
+  ]
+}

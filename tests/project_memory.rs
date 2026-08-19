@@ -6,8 +6,7 @@ use project_memory::{
     parse_project_memory_packet,
 };
 
-const STENSIBLY_1575: &[u8] =
-    include_bytes!("../research/project-memory/stensibly-1575.json");
+const STENSIBLY_1575: &[u8] = include_bytes!("../research/project-memory/stensibly-1575.json");
 
 #[test]
 fn retained_stensibly_packet_preserves_explicit_lineage() {

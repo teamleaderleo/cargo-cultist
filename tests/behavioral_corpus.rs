@@ -14,11 +14,13 @@ const PROJECT_MEMORY_RECEIPT: &str =
     include_str!("../research/behavioral-receipts/project-memory-relation-166.json");
 const SEMANTIC_COLLISION_RECEIPT: &str =
     include_str!("../research/behavioral-receipts/project-memory-primary-case-collision-174.json");
+const KNOWN_STALE_OBSERVATION_RECEIPT: &str =
+    include_str!("../research/behavioral-receipts/known-stale-observation-210.json");
 
 #[test]
 fn retained_cultist_collaboration_batch_is_valid_and_unique() {
     let batch = parse_behavioral_episode_batch(CORPUS).unwrap();
-    assert_eq!(batch.episodes.len(), 4);
+    assert_eq!(batch.episodes.len(), 5);
 
     assert_eq!(batch.episodes[0].receipt.delivery, Delivery::Surfaced);
     assert_eq!(
@@ -49,13 +51,25 @@ fn retained_cultist_collaboration_batch_is_valid_and_unique() {
         batch.episodes[3].receipt.outcome,
         BehavioralOutcome::ChangedNextAction
     );
+
+    assert_eq!(
+        batch.episodes[4].receipt.evidence_kind,
+        "known-stale-observation-counterexample"
+    );
+    assert_eq!(
+        batch.episodes[4].receipt.outcome,
+        BehavioralOutcome::ChangedNextAction
+    );
 }
 
 #[test]
-fn standalone_project_memory_receipts_match_retained_episodes() {
+fn standalone_behavioral_receipts_match_retained_episodes() {
     let batch = parse_behavioral_episode_batch(CORPUS).unwrap();
     let relation: BehavioralReceipt = serde_json::from_str(PROJECT_MEMORY_RECEIPT).unwrap();
     let collision: BehavioralReceipt = serde_json::from_str(SEMANTIC_COLLISION_RECEIPT).unwrap();
+    let known_stale: BehavioralReceipt =
+        serde_json::from_str(KNOWN_STALE_OBSERVATION_RECEIPT).unwrap();
     assert_eq!(batch.episodes[2].receipt, relation);
     assert_eq!(batch.episodes[3].receipt, collision);
+    assert_eq!(batch.episodes[4].receipt, known_stale);
 }

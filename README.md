@@ -4,11 +4,11 @@
 
 Cultist is an experiment in repository-aware evidence for software work: recover deterministic facts, keep provenance and counterexamples visible, and ask useful questions before inventing project rules.
 
-A second product test is increasingly important: **does the selected evidence change the next justified action, prevent an expensive wrong turn, or spare a later worker from repeating manual investigation?** Issue #137 tracks that behavioral pressure test while the existing JEI, review, decision-memory, applicability, representation, and analyzer research continues in parallel.
+A central product test is now empirical: **does selected evidence change the next justified action, prevent an expensive wrong turn, or spare a later worker from repeating manual investigation?** That question is already producing retained behavioral evidence rather than sitting only as a future test. Issue #137 remains the broader pressure-test programme while blind paired trials, evidence selection, applicability, representation, and analyzer research continue.
 
-> Status: early prototype. The current Rust distribution is named `cargo-cultist`; its public analyzer commands are deterministic, local, and read-only. Remote/project adapters that build evidence inventories live outside the core analyzer boundary.
+> Status: active research prototype in sustained dogfood. The current Rust distribution is named `cargo-cultist`; its public analyzer commands are deterministic, local, and read-only. Research and integration lanes also retain real-repository discriminators, behavioral receipts, external replays, and promotion/demotion evidence. Remote/project adapters that build evidence inventories live outside the core analyzer boundary.
 
-Rust is the first deep semantic adapter, not the product boundary. Several useful primitives are repository-generic already: Git history, claim provenance, concurrent-change preflight, active-work inventories, and repo-local decision-memory research.
+Rust is the first deep semantic adapter, not the product boundary. Several useful primitives are repository-generic already: Git history, claim provenance, concurrent-change preflight, active-work inventories, scoped evidence packets, and repo-local decision-memory research.
 
 See [ROADMAP.md](ROADMAP.md) for the thesis and current research map. Agents working on Cultist should also follow [AGENTS.md](AGENTS.md).
 
@@ -140,7 +140,7 @@ Research under #62 asks the pre-edit question:
 
 The packet work emphasizes bounded defaults, truncation receipts, explicit guidance, history, companions/counterexamples, decisions, and useful `UNKNOWN`s rather than giant repository summaries.
 
-The next complementary gate is behavioral: compare fresh workers with and without the selected packet and record whether evidence is consulted earlier, changes a decision, prevents a repeated failed approach, or only consumes attention.
+That work has already produced real discriminators: scoped evidence recovered decision-changing Stensibly history that file-local packets missed, selected-evidence protection preserved those lessons under severe byte pressure, and retained behavioral episodes record cases where surfaced evidence changed the next action as well as a quiet negative. The next stronger gate is cleaner blind paired execution across fresh sessions, plus broader replication before promotion claims become general product policy.
 
 ### Compact C1 evidence grammar
 
@@ -211,7 +211,7 @@ surfaced
 -> ignored / irrelevant / stale / needed stronger evidence?
 ```
 
-This is an inspectable scorecard, not a single opaque risk or quality number.
+The retained collaboration corpus already contains both action-changing and quiet cases. This remains an inspectable scorecard, not a single opaque risk or quality number.
 
 ## Usage while developing
 
@@ -252,18 +252,19 @@ Do not turn task friction into a universal rule without a discriminator and nega
 
 ## Current direction
 
-Near-term work is increasingly about composing independent evidence instead of adding broad opaque heuristics:
+Near-term work is increasingly about promoting, weakening, and composing evidence from actual dogfood rather than merely adding new analyzers:
 
-- bounded pre-edit JEI and lifecycle integration;
-- behavioral A/B evaluation of selected evidence across held-out tasks (#137);
-- review-attention projections over the same evidence;
-- active-change coordination with explicit identity/freshness boundaries;
-- decision-memory authority/applicability research;
-- richer scoped and temporal precedent with counterexamples;
-- explicit repository guidance and instruction freshness;
-- compact interoperable machine representations;
-- performance work proportional to the evidence actually needed;
-- promotion, demotion, or quieting of evidence families based on inspectable interruption outcomes;
-- promotion of repeated, well-understood consensus into deterministic policy.
+- expand the retained behavioral corpus and run cleaner blind paired fresh-session trials (#137, #267);
+- preserve explicitly selected evidence through scoped packet budgeting and fail closed below the selected evidence floor;
+- reuse prior CI/promotion receipts when exact compatibility evidence supports reuse, while keeping semantic independence `UNKNOWN` when it has not been earned;
+- refine evidence acquisition so replay-rejected or unselected alternatives do not create needless investigation work;
+- continue bounded pre-edit JEI and lifecycle integration;
+- keep review-attention projections over the same evidence;
+- maintain active-change coordination with explicit identity/freshness boundaries;
+- continue decision-memory authority/applicability research;
+- enrich scoped and temporal precedent with counterexamples;
+- keep explicit repository guidance and instruction freshness separate from inferred precedent;
+- promote, demote, or quiet evidence families based on inspectable interruption outcomes;
+- move repeated, well-understood lessons into deterministic policy only after the evidence earns that promotion.
 
 Optional model-assisted explanation can sit on top of bounded evidence later. The deterministic evidence packet must remain useful without a model.

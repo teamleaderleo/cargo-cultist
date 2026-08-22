@@ -315,7 +315,10 @@ fn path_overlap_finding(current: &WorkItem, other: &WorkItem, display: String) -
         other.updated_at,
         other.activity().as_str()
     )))
-    .with_evidence(Evidence::new(format!("Provider reference: `{}`.", other.url)));
+    .with_evidence(Evidence::new(format!(
+        "Provider reference: `{}`.",
+        other.url
+    )));
 
     if other.activity() == WorkActivity::Unresolved {
         Finding::new(
@@ -766,15 +769,16 @@ mod tests {
         let inventory = parse(document(current, vec![other], Vec::new())).unwrap();
         let analysis = analyze_inventory(Path::new("/repo"), &inventory, None);
 
-        assert!(analysis.findings.iter().all(|finding| {
-            finding.kind != "preflight-inventory-path-overlap"
-        }));
+        assert!(
+            analysis
+                .findings
+                .iter()
+                .all(|finding| { finding.kind != "preflight-inventory-path-overlap" })
+        );
         let finding = analysis
             .findings
             .iter()
-            .find(|finding| {
-                finding.kind == "preflight-inventory-path-overlap-activity-unknown"
-            })
+            .find(|finding| finding.kind == "preflight-inventory-path-overlap-activity-unknown")
             .unwrap();
         assert_eq!(finding.title, "Path overlap with unresolved activity");
         assert!(finding.claims.iter().any(|claim| {
@@ -782,8 +786,7 @@ mod tests {
                 && claim.message.contains("modifying `tests/regression.rs`")
         }));
         assert!(finding.claims.iter().any(|claim| {
-            claim.kind == ClaimKind::Unknown
-                && claim.message.contains("currently active or owned")
+            claim.kind == ClaimKind::Unknown && claim.message.contains("currently active or owned")
         }));
         assert!(
             finding
@@ -811,9 +814,12 @@ mod tests {
         let inventory = parse(document(current, vec![other], Vec::new())).unwrap();
         let analysis = analyze_inventory(Path::new("/repo"), &inventory, None);
 
-        assert!(analysis.findings.iter().any(|finding| {
-            finding.kind == "preflight-inventory-path-overlap"
-        }));
+        assert!(
+            analysis
+                .findings
+                .iter()
+                .any(|finding| { finding.kind == "preflight-inventory-path-overlap" })
+        );
     }
 
     #[test]
@@ -835,8 +841,7 @@ mod tests {
             .find(|finding| finding.kind == "preflight-explicit-coordination")
             .unwrap();
         assert!(finding.claims.iter().any(|claim| {
-            claim.kind == ClaimKind::Unknown
-                && claim.message.contains("currently active or owned")
+            claim.kind == ClaimKind::Unknown && claim.message.contains("currently active or owned")
         }));
     }
 
@@ -919,7 +924,7 @@ mod tests {
         });
         let value = document(
             work("#1", "aaa", &["a"]),
-            vec![work("#2", "bbb", &["b"])],
+            vec![work("#2", "bbb", &["b"]),],
             vec![edge.clone(), edge],
         );
         assert!(parse(value).is_err());

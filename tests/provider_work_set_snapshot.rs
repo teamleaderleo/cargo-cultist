@@ -44,7 +44,10 @@ fn work(id: &str, head_sha: &str, activity: &str, changed_paths: &[&str]) -> Wor
         id: id.to_string(),
         head_sha: head_sha.to_string(),
         activity: activity.to_string(),
-        changed_paths: changed_paths.iter().map(|path| (*path).to_string()).collect(),
+        changed_paths: changed_paths
+            .iter()
+            .map(|path| (*path).to_string())
+            .collect(),
     }
 }
 
@@ -253,8 +256,8 @@ fn unavailable_current_provider_snapshot_is_unknown() {
 #[test]
 fn malformed_duplicate_work_identity_fails_closed() {
     let item = baseline_work().remove(0);
-    let error = snapshot_fingerprint(PROVIDER, QUERY, vec![item.clone(), item], Vec::new())
-        .unwrap_err();
+    let error =
+        snapshot_fingerprint(PROVIDER, QUERY, vec![item.clone(), item], Vec::new()).unwrap_err();
 
     assert!(error.contains("duplicate work id"));
 }

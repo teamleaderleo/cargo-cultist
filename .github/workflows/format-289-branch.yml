@@ -1,0 +1,38 @@
+name: Format #289 branch
+
+on:
+  push:
+    branches:
+      - fix/289-active-work-activity-state
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/289-active-work-activity-state
+          fetch-depth: 0
+      - name: Install rustfmt
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+      - name: Apply rustfmt
+        run: cargo fmt
+      - name: Commit formatter output
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'rustfmt already clean'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/active_changes.rs
+          git commit -m 'style: apply hosted rustfmt'
+          git push origin HEAD:fix/289-active-work-activity-state

@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 const QUARRY_MAIN: &str = "26f3ab7e4dc223b91524b94595592eee5cb7ed1a";
 const OBSERVED_AT: &str = "2026-08-22T16:40:14Z";
 
+#[allow(clippy::too_many_arguments)]
 fn work(
     id: &str,
     kind: &str,

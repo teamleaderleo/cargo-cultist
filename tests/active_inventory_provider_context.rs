@@ -97,13 +97,8 @@ fn provider_work_head_applies_even_when_checkout_uses_a_distinct_merge_view() {
     let provider_context = evaluate_query(&work_query(PR_HEAD, "#604", PR_HEAD, "#604")).unwrap();
     assert_eq!(provider_context.status, ApplicabilityStatus::Applies);
 
-    let checkout_context = evaluate_query(&work_query(
-        PR_HEAD,
-        "#604",
-        SYNTHETIC_MERGE_VIEW,
-        "#604",
-    ))
-    .unwrap();
+    let checkout_context =
+        evaluate_query(&work_query(PR_HEAD, "#604", SYNTHETIC_MERGE_VIEW, "#604")).unwrap();
     assert_eq!(checkout_context.status, ApplicabilityStatus::Invalid);
     assert!(checkout_context.dimensions.iter().any(|dimension| {
         dimension.dimension == ApplicabilityDimension::Revision
@@ -115,8 +110,10 @@ fn provider_work_head_applies_even_when_checkout_uses_a_distinct_merge_view() {
 
 #[test]
 fn provider_current_context_does_not_need_a_wall_clock_freshness_rule() {
-    let same_coordinate = evaluate_query(&revision_query(ADVANCED_MAIN, Some(ADVANCED_MAIN))).unwrap();
-    let moved_coordinate = evaluate_query(&revision_query(SNAPSHOT_MAIN, Some(ADVANCED_MAIN))).unwrap();
+    let same_coordinate =
+        evaluate_query(&revision_query(ADVANCED_MAIN, Some(ADVANCED_MAIN))).unwrap();
+    let moved_coordinate =
+        evaluate_query(&revision_query(SNAPSHOT_MAIN, Some(ADVANCED_MAIN))).unwrap();
 
     assert_eq!(same_coordinate.status, ApplicabilityStatus::Applies);
     assert_eq!(moved_coordinate.status, ApplicabilityStatus::Invalid);

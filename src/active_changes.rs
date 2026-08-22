@@ -6,7 +6,17 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 
+#[allow(dead_code)]
+#[path = "applicability.rs"]
+mod applicability;
+
+use applicability::{
+    APPLICABILITY_SCHEMA_VERSION, ApplicabilityQuery, ApplicabilityStatus, EvaluationContext,
+    EvidenceRequirements, evaluate_query,
+};
+
 use crate::finding::{AnalysisReport, Claim, ClaimKind, Evidence, Finding, Location};
+use crate::performance;
 
 const INVENTORY_SCHEMA_VERSION: u32 = 1;
 const MAX_INVENTORY_BYTES: usize = 1024 * 1024;
@@ -112,13 +122,34 @@ pub fn build_active_inventory_analysis_report(
 ) -> Result<AnalysisReport, Box<dyn Error>> {
     let bytes = read_bounded_inventory(inventory_path)?;
     let inventory = validate_inventory(serde_json::from_slice(&bytes)?)?;
-    Ok(analyze_inventory(root, &inventory, scope))
+    let repository_revision = repository_head_revision(root);
+    Ok(analyze_inventory_with_revision(
+        root,
+        &inventory,
+        scope,
+        repository_revision.as_deref(),
+    ))
 }
 
+#[cfg(test)]
 fn analyze_inventory(
     root: &Path,
     inventory: &ValidatedInventory,
     scope: Option<&Path>,
+) -> AnalysisReport {
+    analyze_inventory_with_revision(
+        root,
+        inventory,
+        scope,
+        Some(inventory.current.head_sha.as_str()),
+    )
+}
+
+fn analyze_inventory_with_revision(
+    root: &Path,
+    inventory: &ValidatedInventory,
+    scope: Option<&Path>,
+    repository_revision: Option<&str>,
 ) -> AnalysisReport {
     let mut analysis = AnalysisReport::new(
         "preflight-active-inventory",
@@ -143,6 +174,83 @@ fn analyze_inventory(
             inventory.current.draft
         ),
     ));
+
+    let applicability = evaluate_query(&ApplicabilityQuery {
+        schema_version: APPLICABILITY_SCHEMA_VERSION,
+        requirements: EvidenceRequirements {
+            revision: Some(inventory.current.head_sha.clone()),
+            ..EvidenceRequirements::default()
+        },
+        context: EvaluationContext {
+            revision: repository_revision.map(str::to_string),
+            ..EvaluationContext::default()
+        },
+    })
+    .expect("validated active-work head must be an admitted applicability coordinate");
+
+    match applicability.status {
+        ApplicabilityStatus::Applies => {
+            analysis.claims.push(Claim::new(
+                ClaimKind::Derived,
+                format!(
+                    "The inventory current head `{}` exactly matches repository HEAD, so exact-revision applicability is `applies`.",
+                    inventory.current.head_sha
+                ),
+            ));
+        }
+        ApplicabilityStatus::Invalid => {
+            let actual = repository_revision
+                .expect("revision applicability is invalid only when repository HEAD is known");
+            analysis.findings.push(
+                Finding::new(
+                    "preflight-inventory-revision-mismatch",
+                    "Active-work inventory revision mismatch",
+                )
+                .with_claim(
+                    Claim::new(
+                        ClaimKind::Derived,
+                        format!(
+                            "The inventory current head `{}` differs from repository HEAD `{actual}`, so exact-revision applicability is `invalid` for current-routing analysis.",
+                            inventory.current.head_sha
+                        ),
+                    )
+                    .with_evidence(Evidence::new(format!(
+                        "Inventory required revision: `{}`.",
+                        inventory.current.head_sha
+                    )))
+                    .with_evidence(Evidence::new(format!(
+                        "Consumed repository revision: `{actual}`."
+                    ))),
+                )
+                .with_question(
+                    "Refresh the active-work inventory against the current repository revision before using it for current routing.",
+                ),
+            );
+            return analysis;
+        }
+        ApplicabilityStatus::Unknown => {
+            analysis.findings.push(
+                Finding::new(
+                    "preflight-inventory-revision-unknown",
+                    "Active-work inventory revision applicability unknown",
+                )
+                .with_claim(
+                    Claim::new(
+                        ClaimKind::Unknown,
+                        "Repository HEAD could not be established, so exact-revision applicability for current-routing analysis remains unknown.",
+                    )
+                    .with_evidence(Evidence::new(format!(
+                        "Inventory required revision: `{}`.",
+                        inventory.current.head_sha
+                    ))),
+                )
+                .with_question(
+                    "Can the repository revision be established before using this inventory for current routing?",
+                ),
+            );
+            return analysis;
+        }
+    }
 
     let current_paths = scoped_paths(&inventory.current.changed_paths, scope);
     analysis.claims.push(Claim::new(
@@ -284,6 +392,21 @@ fn analyze_inventory(
     ));
 
     analysis
+}
+
+fn repository_head_revision(root: &Path) -> Option<String> {
+    let output = performance::git_command()
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    let revision = stdout.trim();
+    (!revision.is_empty()).then(|| revision.to_string())
 }
 
 fn same_work(current: &WorkItem, other: &WorkItem) -> bool {
@@ -657,6 +780,45 @@ mod tests {
             .find(|finding| finding.kind == "preflight-inventory-path-overlap")
             .unwrap();
         assert_eq!(overlap.claims[0].kind, ClaimKind::Observed);
+    }
+
+    #[test]
+    fn revision_mismatch_blocks_collision_analysis() {
+        let current = work("#1", "aaa", &["src/a.rs"]);
+        let other = work("#2", "bbb", &["src/a.rs"]);
+        let inventory = parse(document(current, vec![other], Vec::new())).unwrap();
+        let analysis = analyze_inventory_with_revision(
+            Path::new("/repo"),
+            &inventory,
+            None,
+            Some("ccc"),
+        );
+
+        assert!(analysis.findings.iter().any(|finding| {
+            finding.kind == "preflight-inventory-revision-mismatch"
+                && finding.claims[0].kind == ClaimKind::Derived
+        }));
+        assert!(analysis
+            .findings
+            .iter()
+            .all(|finding| finding.kind != "preflight-inventory-path-overlap"));
+    }
+
+    #[test]
+    fn missing_repository_revision_surfaces_unknown_and_blocks_collision_analysis() {
+        let current = work("#1", "aaa", &["src/a.rs"]);
+        let other = work("#2", "bbb", &["src/a.rs"]);
+        let inventory = parse(document(current, vec![other], Vec::new())).unwrap();
+        let analysis = analyze_inventory_with_revision(Path::new("/repo"), &inventory, None, None);
+
+        assert!(analysis.findings.iter().any(|finding| {
+            finding.kind == "preflight-inventory-revision-unknown"
+                && finding.claims[0].kind == ClaimKind::Unknown
+        }));
+        assert!(analysis
+            .findings
+            .iter()
+            .all(|finding| finding.kind != "preflight-inventory-path-overlap"));
     }
 
     #[test]

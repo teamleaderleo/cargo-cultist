@@ -206,9 +206,7 @@ fn quarry_phase0_activity_replay_preserves_decision_boundary() {
             .as_array()
             .unwrap()
             .iter()
-            .find(|finding| {
-                finding["kind"] == "preflight-inventory-path-overlap-activity-unknown"
-            })
+            .find(|finding| finding["kind"] == "preflight-inventory-path-overlap-activity-unknown")
             .unwrap();
         assert!(finding["claims"].as_array().unwrap().iter().any(|claim| {
             claim["kind"] == "unknown"

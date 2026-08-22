@@ -924,7 +924,7 @@ mod tests {
         });
         let value = document(
             work("#1", "aaa", &["a"]),
-            vec![work("#2", "bbb", &["b"]),],
+            vec![work("#2", "bbb", &["b"])],
             vec![edge.clone(), edge],
         );
         assert!(parse(value).is_err());
